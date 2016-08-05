@@ -124,13 +124,19 @@ def do_election_orchestra(dir_path, version):
 def do_agora_dev_box(dir_path, version):
     print("repos.yml...")
     repos = read_text_file(dir_path + "/repos.yml")
-    repos = re.sub('version:\s*next', 'version: '+ version, repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
     write_text_file(dir_path + "/repos.yml", repos)
 
     print("agora-gui/templates/avConfig.js...")
     Gruntfile = read_text_file(dir_path + "/agora-gui/templates/avConfig.js")
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
     write_text_file(dir_path + "/agora-gui/templates/avConfig.js", Gruntfile)
+
+def do_agora_results(dir_path, version):
+    print("setup.py...")
+    repos = read_text_file(dir_path + "/setup.py")
+    repos = re.sub("version\s*=\s*'[0-9.]+'\s*,", "version='" + version +"',", repos)
+    write_text_file(dir_path + "/setup.py", repos)
 
 def main():
     dir_path = os.getcwd()
@@ -140,8 +146,13 @@ def main():
     if 3 == len(sys.argv):
         dir_path = sys.argv[1]
         version = sys.argv[2]
+
+        if len(dir_path) > 1 and '/' == dir_path[-1:]:
+            dir_path = dir_path[:-1]
+
         if not os.path.isdir(dir_path):
             raise Exception(dir_path + ": path does not exist or is not a folder")
+
         print("dir_path : " + dir_path + " version: " + version)
 
     else:
@@ -165,6 +176,12 @@ def main():
         do_agora_verifier(dir_path, version)
     elif project_type == 'agora-dev-box':
         do_agora_dev_box(dir_path, version)
+    elif project_type == 'agora-results':
+        do_agora_results(dir_path, version)
+    elif project_type == 'agora-tally':
+        do_agora_results(dir_path, version)
+    elif project_type == 'frestq':
+        do_agora_results(dir_path, version)
 
     print("done")
 
