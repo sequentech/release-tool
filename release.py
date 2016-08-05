@@ -121,6 +121,17 @@ def do_election_orchestra(dir_path, version):
     requirements = re.sub('git\+https://github.com/agoravoting/frestq\.git@.*', 'git+https://github.com/agoravoting/frestq.git@'+ version, requirements)
     write_text_file(dir_path + "/requirements.txt", requirements)
 
+def do_agora_dev_box(dir_path, version):
+    print("repos.yml...")
+    repos = read_text_file(dir_path + "/repos.yml")
+    repos = re.sub('version:\s*next', 'version: '+ version, repos)
+    write_text_file(dir_path + "/repos.yml", repos)
+
+    print("agora-gui/templates/avConfig.js...")
+    Gruntfile = read_text_file(dir_path + "/agora-gui/templates/avConfig.js")
+    Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
+    write_text_file(dir_path + "/agora-gui/templates/avConfig.js", Gruntfile)
+
 def main():
     dir_path = os.getcwd()
     version = "1.0.0"
@@ -152,6 +163,8 @@ def main():
         do_election_orchestra(dir_path, version)
     elif project_type == 'agora-verifier':
         do_agora_verifier(dir_path, version)
+    elif project_type == 'agora-dev-box':
+        do_agora_dev_box(dir_path, version)
 
     print("done")
 
