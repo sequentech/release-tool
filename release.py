@@ -37,26 +37,32 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(dir_path + "/.git/config")
-    my_match = re.search('url = git@github.com:agoravoting/(?P<proj_name>.+)\.git', config_file)
+    my_match = re.search('url\s*=\s*git@github.com:agoravoting/(?P<proj_name>.+)\.git', config_file)
+
+    try:
+        my_match.group('proj_name')
+    except:
+        my_match = re.search('url\s*=\s*https://github.com/agoravoting/(?P<proj_name>.+)\.git', config_file)
+
     return my_match.group('proj_name')
 
 def do_gui_common(dir_path, version):
-    
+
     print("avConfig.js...")
     avConfig = read_text_file(dir_path + "/avConfig.js")
     avConfig = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", avConfig)
     write_text_file(dir_path + "/avConfig.js", avConfig)
-    
+
     print("bower.json...")
     bower = read_text_file(dir_path + "/bower.json")
     bower = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', bower)
     write_text_file(dir_path + "/bower.json", bower)
-    
+
     print("package.json...")
     package = read_text_file(dir_path + "/package.json")
     package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', package)
     write_text_file(dir_path + "/package.json", package)
-    
+
     print("Gruntfile.js...")
     Gruntfile = read_text_file(dir_path + "/Gruntfile.js")
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
@@ -78,7 +84,7 @@ def do_gui_other(dir_path, version):
     index = re.sub("appCommon-v[0-9.]+\.js", "appCommon-v" + version + ".js", index)
     index = re.sub("libCommon-v[0-9.]+\.js", "libCommon-v" + version + ".js", index)
     write_text_file(dir_path + "/index.html", index)
-    
+
     print("Gruntfile.js...")
     Gruntfile = read_text_file(dir_path + "/Gruntfile.js")
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
@@ -92,16 +98,28 @@ def do_gui_other(dir_path, version):
     Gruntfile = re.sub("app-v[0-9.]+\.min\.js", "app-v" + version + ".min.js", Gruntfile)
     Gruntfile = re.sub("lib-v[0-9.]+\.min\.js", "lib-v" + version + ".min.js", Gruntfile)
     write_text_file(dir_path + "/Gruntfile.js", Gruntfile)
-    
+
     print("bower.json...")
     bower = read_text_file(dir_path + "/bower.json")
     bower = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', bower)
     write_text_file(dir_path + "/bower.json", bower)
-    
+
     print("package.json...")
     package = read_text_file(dir_path + "/package.json")
     package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', package)
     write_text_file(dir_path + "/package.json", package)
+
+def do_agora_verifier(dir_path, version):
+    print("build.sbt...")
+    build = read_text_file(dir_path + "/build.sbt")
+    build = re.sub('version\s*:=\s*"[0-9.]+"', 'version := "'+ version + '"', build)
+    write_text_file(dir_path + "/build.sbt", build)
+
+def do_election_orchestra(dir_path, version):
+    print("requirements.txt...")
+    requirements = read_text_file(dir_path + "/requirements.txt")
+    requirements = re.sub('git\+https://github.com/agoravoting/frestq\.git@.*', 'git+https://github.com/agoravoting/frestq.git@'+ version, requirements)
+    write_text_file(dir_path + "/requirements.txt", requirements)
 
 def main():
     dir_path = os.getcwd()
@@ -121,7 +139,7 @@ def main():
 
     project_type = get_project_type(dir_path)
     print("project: " + project_type)
-    
+
     if project_type == 'agora-gui-common':
         do_gui_common(dir_path, version)
     elif project_type == 'agora-gui-admin':
@@ -130,7 +148,11 @@ def main():
         do_gui_other(dir_path, version)
     elif project_type == 'agora-gui-booth':
         do_gui_other(dir_path, version)
-    
+    elif project_type == 'election-orchestra':
+        do_election_orchestra(dir_path, version)
+    elif project_type == 'agora-verifier':
+        do_agora_verifier(dir_path, version)
+
     print("done")
 
 main()
