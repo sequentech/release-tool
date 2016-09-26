@@ -166,7 +166,7 @@ def main():
         do_gui_common(dir_path, version)
     elif project_type == 'agora-gui-admin':
         do_gui_other(dir_path, version)
-    elif project_type == 'agora-gui-election':
+    elif project_type == 'agora-gui-elections':
         do_gui_other(dir_path, version)
     elif project_type == 'agora-gui-booth':
         do_gui_other(dir_path, version)
