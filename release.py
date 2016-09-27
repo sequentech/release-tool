@@ -37,12 +37,12 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(dir_path + "/.git/config")
-    my_match = re.search('url\s*=\s*git@github.com:agoravoting/(?P<proj_name>.+)\.git', config_file)
+    my_match = re.search('url\s*=\s*git@(github|gitlab).com:agoravoting/(?P<proj_name>.+)\.git', config_file)
 
     try:
         my_match.group('proj_name')
     except:
-        my_match = re.search('url\s*=\s*https://github.com/agoravoting/(?P<proj_name>.+)\.git', config_file)
+        my_match = re.search('url\s*=\s*https://(github|gitlab).com/agoravoting/(?P<proj_name>.+)\.git', config_file)
 
     return my_match.group('proj_name')
 
@@ -138,6 +138,12 @@ def do_agora_results(dir_path, version):
     repos = re.sub("version\s*=\s*'[0-9.]+'\s*,", "version='" + version +"',", repos)
     write_text_file(dir_path + "/setup.py", repos)
 
+def do_agora_payment_api(dir_path, version):
+    print("setup.py...")
+    repos = read_text_file(dir_path + "/setup.py")
+    repos = re.sub("version\s*=\s*'[0-9.]+'\s*,", "version='" + version +"',", repos)
+    write_text_file(dir_path + "/setup.py", repos)
+
 def main():
     dir_path = os.getcwd()
     version = "1.0.0"
@@ -162,26 +168,28 @@ def main():
     project_type = get_project_type(dir_path)
     print("project: " + project_type)
 
-    if project_type == 'agora-gui-common':
+    if 'agora-gui-common' == project_type:
         do_gui_common(dir_path, version)
-    elif project_type == 'agora-gui-admin':
+    elif 'agora-gui-admin' == project_type:
         do_gui_other(dir_path, version)
-    elif project_type == 'agora-gui-elections':
+    elif 'agora-gui-elections' == project_type:
         do_gui_other(dir_path, version)
-    elif project_type == 'agora-gui-booth':
+    elif 'agora-gui-booth' == project_type:
         do_gui_other(dir_path, version)
-    elif project_type == 'election-orchestra':
+    elif 'election-orchestra' == project_type:
         do_election_orchestra(dir_path, version)
-    elif project_type == 'agora-verifier':
+    elif 'agora-verifier' == project_type:
         do_agora_verifier(dir_path, version)
-    elif project_type == 'agora-dev-box':
+    elif 'agora-dev-box' == project_type:
         do_agora_dev_box(dir_path, version)
-    elif project_type == 'agora-results':
+    elif 'agora-results' == project_type:
         do_agora_results(dir_path, version)
-    elif project_type == 'agora-tally':
+    elif 'agora-tally' == project_type:
         do_agora_results(dir_path, version)
-    elif project_type == 'frestq':
+    elif 'frestq' == project_type:
         do_agora_results(dir_path, version)
+    elif 'agora-payment-api' == project_type:
+        do_agora_payment_api(dir_path, version)
 
     print("done")
 
