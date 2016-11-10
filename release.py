@@ -113,7 +113,31 @@ def do_agora_verifier(dir_path, version):
     print("build.sbt...")
     build = read_text_file(dir_path + "/build.sbt")
     build = re.sub('version\s*:=\s*"[0-9.]+"', 'version := "'+ version + '"', build)
+    m = re.search('scalaVersion := "(?P<scalaVersion>[0-9]+\.[0-9]+)\.[0-9]"', 'scalaVersion := "2.10.4"')
+    scalaVersion = m.group('scalaVersion')
+    print("scalaVersion is " + scalaVersion)
     write_text_file(dir_path + "/build.sbt", build)
+
+    print("package.sh...")
+    package = read_text_file(dir_path + "/package.sh")
+    package = re.sub('cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-[0-9.]+jar dist',
+                     'cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-' + version + '.jar dist',
+                     package)
+    write_text_file(dir_path + "/package.sh", package)
+
+    print('pverify.sh..')
+    pverify = read_text_file(dir_path + "/pverify.sh")
+    pverify = re.sub('java -Djava\.security\.egd=file:/dev/\./urandom -classpath agora-verifier_' + scalaVersion + '-[0-9.]+jar org\.agoravoting\.agora\.Verifier \$1 \$2',
+                     'java -Djava.security.egd=file:/dev/./urandom -classpath agora-verifier_' + scalaVersion + '-'  + version + '.jar org.agoravoting.agora.Verifier $1 $2',
+                     pverify)
+    write_text_file(dir_path + "/pverify.sh", pverify)
+
+    print('vmnc.sh..')
+    vmnc = read_text_file(dir_path + "/vmnc.sh")
+    vmnc = re.sub('java -Djava.security\.egd=file:/dev/\./urandom -classpath \$DIR/agora-verifier_' + scalaVersion + '-[0-9.]+jar org\.agoravoting\.agora\.Vmnc "\$@"',
+                  'java -Djava.security.egd=file:/dev/./urandom -classpath $DIR/agora-verifier_' + scalaVersion + '-' + version + '.jar org.agoravoting.agora.Vmnc "$@"',
+                  vmnc)
+    write_text_file(dir_path + "/vmnc.sh", vmnc)
 
 def do_election_orchestra(dir_path, version):
     print("requirements.txt...")
