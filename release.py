@@ -60,7 +60,7 @@ def do_gui_common(dir_path, version):
 
     print("package.json...")
     package = read_text_file(dir_path + "/package.json")
-    package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', package)
+    package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '.0"', package)
     write_text_file(dir_path + "/package.json", package)
 
     print("Gruntfile.js...")
@@ -106,7 +106,7 @@ def do_gui_other(dir_path, version):
 
     print("package.json...")
     package = read_text_file(dir_path + "/package.json")
-    package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '"', package)
+    package = re.sub('"version"\s*:\s*"[0-9.]+"', '"version" : "'+ version + '.0"', package)
     write_text_file(dir_path + "/package.json", package)
 
 def do_agora_verifier(dir_path, version):

@@ -7,4 +7,4 @@ release.py [path] [version]
 
 For example:
 
-    $ python release.py /path/to/agora-verifier 3.3.1
+    $ python release.py /path/to/agora-verifier 3.3
