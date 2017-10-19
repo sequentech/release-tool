@@ -151,6 +151,46 @@ def do_agora_dev_box(dir_path, version):
     repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
     write_text_file(dir_path + "/repos.yml", repos)
 
+    print("config.yml...")
+    repos = read_text_file(dir_path + "/config.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/config.yml", repos)
+
+    print("doc/devel/agora.config.yml...")
+    repos = read_text_file(dir_path + "/doc/devel/agora.config.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/doc/devel/agora.config.yml", repos)
+
+    print("doc/devel/auth1.config.yml...")
+    repos = read_text_file(dir_path + "/doc/devel/auth1.config.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/doc/devel/auth1.config.yml", repos)
+
+    print("doc/devel/auth2.config.yml...")
+    repos = read_text_file(dir_path + "/doc/devel/auth2.config.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/doc/devel/auth2.config.yml", repos)
+
+    print("doc/production/config.auth.yml...")
+    repos = read_text_file(dir_path + "/doc/production/config.auth.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/doc/production/config.auth.yml", repos)
+
+    print("doc/production/config.master.yml...")
+    repos = read_text_file(dir_path + "/doc/production/config.master.yml")
+    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    write_text_file(dir_path + "/doc/production/config.master.yml", repos)
+
+    print("helper-tools/config_prod_env.py...")
+    helper_script = read_text_file(dir_path + "/helper-tools/config_prod_env.py")
+    rx = re.compile("\s*OUTPUT_PROD_VERSION\s*=\s*['|\"]?([0-9.]*)['|\"]?\s*\n", re.MULTILINE)
+    search = rx.search(helper_script)
+    old_version = search.group(1)
+    helper_script = re.sub("INPUT_PROD_VERSION\s*=\s*['|\"]?[0-9.]*['|\"]?\s*\n", "INPUT_PROD_VERSION=\""+ old_version + "\"\n", helper_script)
+    helper_script = re.sub("INPUT_PRE_VERSION\s*=\s*['|\"]?[0-9.]*['|\"]?\s*\n", "INPUT_PRE_VERSION=\""+ version + "\"\n", helper_script)
+    helper_script = re.sub("OUTPUT_PROD_VERSION\s*=\s*['|\"]?[0-9.]*['|\"]?\s*\n", "OUTPUT_PROD_VERSION=\""+ version + "\"\n", helper_script)
+    write_text_file(dir_path + "/helper-tools/config_prod_env.py", helper_script)
+
     print("agora-gui/templates/avConfig.js...")
     Gruntfile = read_text_file(dir_path + "/agora-gui/templates/avConfig.js")
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[0-9.]+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
