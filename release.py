@@ -51,7 +51,7 @@ def do_gui_common(dir_path, version):
 
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
-    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '.0"', package)
+    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
     print("Gruntfile.js...")
@@ -95,7 +95,7 @@ def do_gui_other(dir_path, version):
 
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
-    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '.0"', package)
+    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
 def do_agora_elections(dir_path, version):
@@ -262,7 +262,7 @@ def do_vfork(dir_path, version):
 def do_admin_manual(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
-    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '.0"', package)
+    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
 
