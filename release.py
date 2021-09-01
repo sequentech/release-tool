@@ -203,12 +203,12 @@ def do_agora_dev_box(dir_path, version):
 
     print("helper-tools/config_prod_env.py...")
     helper_script = read_text_file(os.path.join(dir_path, "helper-tools/config_prod_env.py"))
-    rx = re.compile("\s*OUTPUT_PROD_VERSION\s*=\s*['|\"]?([0-9a-zA-Z.-+]*)['|\"]?\s*\n", re.MULTILINE)
+    rx = re.compile("\s*OUTPUT_PROD_VERSION\s*=\s*['|\"]?([0-9a-zA-Z.\-+]*)['|\"]?\s*\n", re.MULTILINE)
     search = rx.search(helper_script)
     old_version = search.group(1)
-    helper_script = re.sub("INPUT_PROD_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.-+]*['|\"]?\s*\n", "INPUT_PROD_VERSION=\""+ old_version + "\"\n", helper_script)
-    helper_script = re.sub("INPUT_PRE_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.-+]*['|\"]?\s*\n", "INPUT_PRE_VERSION=\""+ version + "\"\n", helper_script)
-    helper_script = re.sub("OUTPUT_PROD_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.-+]*['|\"]?\s*\n", "OUTPUT_PROD_VERSION=\""+ version + "\"\n", helper_script)
+    helper_script = re.sub("INPUT_PROD_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.\-+]*['|\"]?\s*\n", "INPUT_PROD_VERSION=\""+ old_version + "\"\n", helper_script)
+    helper_script = re.sub("INPUT_PRE_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.\-+]*['|\"]?\s*\n", "INPUT_PRE_VERSION=\""+ version + "\"\n", helper_script)
+    helper_script = re.sub("OUTPUT_PROD_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.\-+]*['|\"]?\s*\n", "OUTPUT_PROD_VERSION=\""+ version + "\"\n", helper_script)
     write_text_file(os.path.join(dir_path, "helper-tools/config_prod_env.py"), helper_script)
 
     print("agora-gui/templates/avConfig.js...")
