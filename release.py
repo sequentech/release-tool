@@ -259,6 +259,16 @@ def do_vfork(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
+def do_admin_manual(dir_path, version):
+    print("package.json...")
+    package = read_text_file(os.path.join(dir_path, "package.json"))
+    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '.0"', package)
+    write_text_file(os.path.join(dir_path, "package.json"), package)
+
+
+def do_agora_release(dir_path, version):
+    pass
+
 def apply_base_branch(dir_path, base_branch):
     print("applying base_branch..")
     call_process(f"git stash", shell=True, cwd=dir_path)
@@ -445,8 +455,8 @@ def main():
             "authapi",
             "agora-tools",
             "vfork",
-            # TODO: admin-manual
-            # TODO: agora-release
+            "admin-manual",
+            "agora-release"
         ]
 
     for project_type in projects:
@@ -489,6 +499,10 @@ def main():
                 do_agora_tools(project_path, version)
             elif 'vfork' == project_type:
                 do_vfork(project_path, version)
+            elif 'admin-manual' == project_type:
+                do_admin_manual(project_path, version)
+            elif 'agora-release' == project_type:
+                do_agora_release(project_path, version)
         
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
