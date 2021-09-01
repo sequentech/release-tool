@@ -163,7 +163,7 @@ def do_election_orchestra(dir_path, version):
     setup_py = read_text_file(os.path.join(dir_path, "setup.py"))
     setup_py = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", setup_py)
     setup_py = re.sub('git\+https://github.com/agoravoting/frestq\.git@.*', 'git+https://github.com/agoravoting/frestq.git@'+ version, setup_py)
-    write_text_file(os.path.join(dir_path, "requirements.txt"), setup_py)
+    write_text_file(os.path.join(dir_path, "setup.py"), setup_py)
 
 def do_agora_dev_box(dir_path, version):
     print("repos.yml...")
@@ -262,8 +262,10 @@ def do_vfork(dir_path, version):
 def apply_base_branch(dir_path, base_branch):
     print("applying base_branch..")
     call_process(f"git stash", shell=True, cwd=dir_path)
+    call_process(f"git fetch origin {base_branch}", shell=True, cwd=dir_path)
+    call_process(f"git clean -f -d", shell=True, cwd=dir_path)
     call_process(f"git checkout {base_branch}", shell=True, cwd=dir_path)
-    call_process(f"git pull", shell=True, cwd=dir_path)
+    call_process(f"git reset --hard origin/{base_branch}", shell=True, cwd=dir_path)
 
 def do_create_branch(dir_path, create_branch, version):
     print("creating branch..")
@@ -433,16 +435,18 @@ def main():
             "agora-gui-admin",
             "agora-gui-elections",
             "agora-gui-booth",
-            "election-orchestra",
             "agora-verifier",
             "agora_elections",
             "agora-dev-box",
             "agora-results",
             "agora-tally",
             "frestq",
+            "election-orchestra",
             "authapi",
             "agora-tools",
-            "vfork"
+            "vfork",
+            # TODO: admin-manual
+            # TODO: agora-release
         ]
 
     for project_type in projects:
