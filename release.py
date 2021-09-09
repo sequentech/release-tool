@@ -180,37 +180,37 @@ def do_election_orchestra(dir_path, version):
 def do_agora_dev_box(dir_path, version):
     print("repos.yml...")
     repos = read_text_file(os.path.join(dir_path, "repos.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "repos.yml"), repos)
 
     print("config.yml...")
     repos = read_text_file(os.path.join(dir_path, "config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "config.yml"), repos)
 
     print("doc/devel/agora.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"), repos)
 
     print("doc/devel/auth1.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth1.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/auth1.config.yml"), repos)
 
     print("doc/devel/auth2.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth2.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/auth2.config.yml"), repos)
 
     print("doc/production/config.auth.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.auth.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "doc/production/config.auth.yml"), repos)
 
     print("doc/production/config.master.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.master.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: '+ version + '\n', repos)
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "doc/production/config.master.yml"), repos)
 
     print("helper-tools/config_prod_env.py...")
@@ -277,6 +277,15 @@ def do_admin_manual(dir_path, version):
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
+    print("docs/deployment/assets/config.auth.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"))
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"), repos)
+
+    print("docs/deployment/assets/config.master.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"))
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"), repos)
 
 def do_agora_release(dir_path, version):
     pass
