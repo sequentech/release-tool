@@ -79,6 +79,18 @@ def do_gui_other(dir_path, version):
     index = re.sub("libCommon-v.*\.js", "libCommon-v" + version + ".js", index)
     write_text_file(os.path.join(dir_path, "index.html"), index)
 
+    print("avConfig.js...")
+    avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
+    avConfig = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", avConfig)
+    write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
+
+    av_plugins_config_path = os.path.join(dir_path, "avPluginsConfig.js")
+    if os.path.isfile(av_plugins_config_path):
+        print("avPluginsConfig.js...")
+        avPluginsConfig = read_text_file(av_plugins_config_path)
+        avPluginsConfig = re.sub("var\s+AV_PLUGINS_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_PLUGINS_CONFIG_VERSION = '" + version + "';", avPluginsConfig)
+        write_text_file(av_plugins_config_path, avPluginsConfig)
+
     print("Gruntfile.js...")
     Gruntfile = read_text_file(os.path.join(dir_path, "Gruntfile.js"))
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
