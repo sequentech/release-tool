@@ -235,6 +235,18 @@ def do_agora_results(dir_path, version):
     repos = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version, repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
+    print("requirements.txt...")
+    requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
+    requirements = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version + "#egg=agora-tally", requirements)
+    write_text_file(os.path.join(dir_path, "requirements.txt"), requirements)
+
+    print("agora_results/main.py...")
+    main_path = os.path.join(dir_path, "agora_results/main.py")
+    if os.path.isfile(main_path):
+        main_file = read_text_file(main_path)
+        main_file = re.sub("VERSION\s*=\s*\"[^\"]+\"", "VERSION = \"" + version + "\"", main_file)
+        write_text_file(main_path, main_file)
+
 def do_agora_payment_api(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
