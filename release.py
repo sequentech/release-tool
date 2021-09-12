@@ -376,6 +376,11 @@ def main():
         metavar="v1.x"
     )
     parser.add_argument(
+        "--push-current-branch",
+        action="store_true",
+        help="push and commit changes to the current branch"
+    )
+    parser.add_argument(
         "--create-tag",
         action="store_true",
         help="create the tag for this release"
@@ -412,6 +417,7 @@ def main():
     version = args.version
     base_branch = args.base_branch
     create_branch = args.create_branch
+    push_current_branch = args.push_current_branch
     create_tag = args.create_tag
     create_release = args.create_release
     release_draft = args.release_draft
@@ -443,6 +449,7 @@ def main():
  - parent_path: {parent_path}
  - base_branch: {base_branch}
  - create_branch: {create_branch}
+ - push_current_branch: {push_current_branch}
  - create_tag: {create_tag}
  - create_release: {create_release}
  - release_draft: {release_draft}
@@ -520,7 +527,7 @@ def main():
         
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
-        else:
+        elif push_current_branch:
             do_commit_push_branch(project_path, base_branch, version)
         if create_tag:
             do_create_tag(project_path, version)
