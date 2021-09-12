@@ -108,6 +108,11 @@ def do_gui_other(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
+    package = re.sub(
+        '"agora-gui-common": "https://github.com/agoravoting/agora-gui-common\.git.*\"',
+        f'"agora-gui-common": "https://github.com/agoravoting/agora-gui-common.git#{version}\"',
+        package
+    )
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
 def do_agora_elections(dir_path, version):
