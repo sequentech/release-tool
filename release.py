@@ -277,6 +277,20 @@ def apply_base_branch(dir_path, base_branch):
     call_process(f"git checkout {base_branch}", shell=True, cwd=dir_path)
     call_process(f"git reset --hard origin/{base_branch}", shell=True, cwd=dir_path)
 
+def do_commit_push_branch(dir_path, base_branch, version):
+    print(f"commit and push to base branch='{base_branch}'..")
+    call_process(f"git add -u && git add *", shell=True, cwd=dir_path)
+    call_process(
+        f"git status && git commit -m \"Release for version {version}\"",
+        shell=True,
+        cwd=dir_path
+    )
+    call_process(
+        f"git push origin {base_branch} --force",
+        shell=True,
+        cwd=dir_path
+    )
+
 def do_create_branch(dir_path, create_branch, version):
     print("creating branch..")
     call_process(f"git branch -D {create_branch}", shell=True, cwd=dir_path)
@@ -506,6 +520,8 @@ def main():
         
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
+        else:
+            do_commit_push_branch(project_path, base_branch, version)
         if create_tag:
             do_create_tag(project_path, version)
         if create_release:
