@@ -112,6 +112,11 @@ def do_gui_other(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
+    package = re.sub(
+        '"agora-gui-common": "https://github.com/agoravoting/agora-gui-common\.git.*\"',
+        f'"agora-gui-common": "https://github.com/agoravoting/agora-gui-common.git#{version}\"',
+        package
+    )
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
 def do_agora_elections(dir_path, version):
@@ -325,6 +330,20 @@ def apply_base_branch(dir_path, base_branch):
     call_process(f"git checkout {base_branch}", shell=True, cwd=dir_path)
     call_process(f"git reset --hard origin/{base_branch}", shell=True, cwd=dir_path)
 
+def do_commit_push_branch(dir_path, base_branch, version):
+    print(f"commit and push to base branch='{base_branch}'..")
+    call_process(f"git add -u && git add *", shell=True, cwd=dir_path)
+    call_process(
+        f"git status && git commit -m \"Release for version {version}\"",
+        shell=True,
+        cwd=dir_path
+    )
+    call_process(
+        f"git push origin {base_branch} --force",
+        shell=True,
+        cwd=dir_path
+    )
+
 def do_create_branch(dir_path, create_branch, version):
     print("creating branch..")
     call_process(f"git branch -D {create_branch}", shell=True, cwd=dir_path)
@@ -410,6 +429,11 @@ def main():
         metavar="v1.x"
     )
     parser.add_argument(
+        "--push-current-branch",
+        action="store_true",
+        help="push and commit changes to the current branch"
+    )
+    parser.add_argument(
         "--create-tag",
         action="store_true",
         help="create the tag for this release"
@@ -446,6 +470,7 @@ def main():
     version = args.version
     base_branch = args.base_branch
     create_branch = args.create_branch
+    push_current_branch = args.push_current_branch
     create_tag = args.create_tag
     create_release = args.create_release
     release_draft = args.release_draft
@@ -477,6 +502,7 @@ def main():
  - parent_path: {parent_path}
  - base_branch: {base_branch}
  - create_branch: {create_branch}
+ - push_current_branch: {push_current_branch}
  - create_tag: {create_tag}
  - create_release: {create_release}
  - release_draft: {release_draft}
@@ -554,6 +580,8 @@ def main():
         
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
+        elif push_current_branch:
+            do_commit_push_branch(project_path, base_branch, version)
         if create_tag:
             do_create_tag(project_path, version)
         if create_release:
