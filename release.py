@@ -175,6 +175,17 @@ def do_agora_verifier(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
+def do_frestq(dir_path, version):
+    invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
+
+    print("setup.py...")
+    if not invalid_version:
+        repos = read_text_file(os.path.join(dir_path, "setup.py"))
+        repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
+        write_text_file(os.path.join(dir_path, "setup.py"), repos)
+    else:
+        print("leaving setup.py as is because of invalid version name")
+
 def do_election_orchestra(dir_path, version):
     print("requirements.txt...")
     requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
@@ -578,7 +589,7 @@ def main():
             elif 'agora-tally' == project_type:
                 do_agora_tally(project_path, version)
             elif 'frestq' == project_type:
-                do_agora_results(project_path, version)
+                do_frestq(project_path, version)
             elif 'authapi' == project_type:
                 do_authapi(project_path, version)
             elif 'agora-tools' == project_type:
