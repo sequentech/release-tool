@@ -79,6 +79,18 @@ def do_gui_other(dir_path, version):
     index = re.sub("libCommon-v.*\.js", "libCommon-v" + version + ".js", index)
     write_text_file(os.path.join(dir_path, "index.html"), index)
 
+    print("avConfig.js...")
+    avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
+    avConfig = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", avConfig)
+    write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
+
+    av_plugins_config_path = os.path.join(dir_path, "avPluginsConfig.js")
+    if os.path.isfile(av_plugins_config_path):
+        print("avPluginsConfig.js...")
+        avPluginsConfig = read_text_file(av_plugins_config_path)
+        avPluginsConfig = re.sub("var\s+AV_PLUGINS_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_PLUGINS_CONFIG_VERSION = '" + version + "';", avPluginsConfig)
+        write_text_file(av_plugins_config_path, avPluginsConfig)
+
     print("Gruntfile.js...")
     Gruntfile = read_text_file(os.path.join(dir_path, "Gruntfile.js"))
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
@@ -96,6 +108,11 @@ def do_gui_other(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
+    package = re.sub(
+        '"agora-gui-common": "https://github.com/agoravoting/agora-gui-common\.git.*\"',
+        f'"agora-gui-common": "https://github.com/agoravoting/agora-gui-common.git#{version}\"',
+        package
+    )
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
 def do_agora_elections(dir_path, version):
@@ -223,6 +240,18 @@ def do_agora_results(dir_path, version):
     repos = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version, repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
+    print("requirements.txt...")
+    requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
+    requirements = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version + "#egg=agora-tally", requirements)
+    write_text_file(os.path.join(dir_path, "requirements.txt"), requirements)
+
+    print("agora_results/main.py...")
+    main_path = os.path.join(dir_path, "agora_results/main.py")
+    if os.path.isfile(main_path):
+        main_file = read_text_file(main_path)
+        main_file = re.sub("VERSION\s*=\s*\"[^\"]+\"", "VERSION = \"" + version + "\"", main_file)
+        write_text_file(main_path, main_file)
+
 def do_agora_payment_api(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
@@ -265,6 +294,15 @@ def do_admin_manual(dir_path, version):
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
+    print("docs/deployment/assets/config.auth.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"))
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"), repos)
+
+    print("docs/deployment/assets/config.master.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"))
+    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"), repos)
 
 def do_agora_release(dir_path, version):
     pass
