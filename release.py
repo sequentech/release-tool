@@ -43,6 +43,7 @@ def get_project_type(dir_path):
     return my_match.group('proj_name')
 
 def do_gui_common(dir_path, version):
+    invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
 
     print("avConfig.js...")
     avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
@@ -50,9 +51,12 @@ def do_gui_common(dir_path, version):
     write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
 
     print("package.json...")
-    package = read_text_file(os.path.join(dir_path, "package.json"))
-    package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
-    write_text_file(os.path.join(dir_path, "package.json"), package)
+    if not invalid_version:
+        package = read_text_file(os.path.join(dir_path, "package.json"))
+        package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
+        write_text_file(os.path.join(dir_path, "package.json"), package)
+    else:
+        print("leaving package.json as is because of invalid version name")
 
     print("Gruntfile.js...")
     Gruntfile = read_text_file(os.path.join(dir_path, "Gruntfile.js"))
@@ -227,6 +231,17 @@ def do_agora_dev_box(dir_path, version):
     Gruntfile = read_text_file(os.path.join(dir_path, "agora-gui/templates/avConfig.js"))
     Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
     write_text_file(os.path.join(dir_path, "agora-gui/templates/avConfig.js"), Gruntfile)
+
+def do_agora_tally(dir_path, version):
+    invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
+
+    print("setup.py...")
+    if not invalid_version:
+        repos = read_text_file(os.path.join(dir_path, "setup.py"))
+        repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
+        write_text_file(os.path.join(dir_path, "setup.py"), repos)
+    else:
+        print("leaving setup.py as is because of invalid version name")
 
 def do_agora_results(dir_path, version):
     print("setup.py...")
@@ -523,7 +538,7 @@ def main():
             elif 'agora-results' == project_type:
                 do_agora_results(project_path, version)
             elif 'agora-tally' == project_type:
-                do_agora_results(project_path, version)
+                do_agora_tally(project_path, version)
             elif 'frestq' == project_type:
                 do_agora_results(project_path, version)
             elif 'authapi' == project_type:
