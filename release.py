@@ -178,12 +178,24 @@ def do_agora_verifier(dir_path, version):
 def do_election_orchestra(dir_path, version):
     print("requirements.txt...")
     requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
-    requirements = re.sub('git\+https://github.com/agoravoting/frestq\.git@.*', 'git+https://github.com/agoravoting/frestq.git@'+ version, requirements)
+    requirements = re.sub(
+        'git\+https://github.com/agoravoting/frestq\.git@.*', 
+        'git+https://github.com/agoravoting/frestq.git@'+ version, 
+        requirements
+    )
     write_text_file(os.path.join(dir_path, "requirements.txt"), requirements)
 
     setup_py = read_text_file(os.path.join(dir_path, "setup.py"))
-    setup_py = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", setup_py)
-    setup_py = re.sub('git\+https://github.com/agoravoting/frestq\.git@.*', 'git+https://github.com/agoravoting/frestq.git@'+ version, setup_py)
+    setup_py = re.sub(
+        "version\s*=\s*'[^']+'\s*,",
+        "version='" + version +"',",
+        setup_py
+    )
+    setup_py = re.sub(
+        'git\+https://github.com/agoravoting/frestq\.git@[^\'"]+', 
+        'git+https://github.com/agoravoting/frestq.git@'+ version,
+        setup_py
+    )
     write_text_file(os.path.join(dir_path, "setup.py"), setup_py)
 
 def do_agora_dev_box(dir_path, version):
