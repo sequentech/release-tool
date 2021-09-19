@@ -136,23 +136,29 @@ def do_agora_verifier(dir_path, version):
 
     print("package.sh...")
     package = read_text_file(os.path.join(dir_path, "package.sh"))
-    package = re.sub('cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-[0-9.]+jar dist',
-                     'cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-' + version + '.jar dist',
-                     package)
+    package = re.sub(
+        'cp target/scala-.*/proguard/agora-verifier_.*\.jar dist',
+        'cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-' + version + '.jar dist',
+        package
+    )
     write_text_file(os.path.join(dir_path, "package.sh"), package)
 
     print('pverify.sh..')
     pverify = read_text_file(os.path.join(dir_path, "pverify.sh"))
-    pverify = re.sub('java -Djava\.security\.egd=file:/dev/\./urandom -classpath agora-verifier_' + scalaVersion + '-[0-9.]+jar org\.agoravoting\.agora\.Verifier \$1 \$2',
-                     'java -Djava.security.egd=file:/dev/./urandom -classpath agora-verifier_' + scalaVersion + '-'  + version + '.jar org.agoravoting.agora.Verifier $1 $2',
-                     pverify)
+    pverify = re.sub(
+        'java -Djava\.security\.egd=file:/dev/\./urandom -classpath agora-verifier_.*\.jar org\.agoravoting\.agora\.Verifier \$1 \$2',
+        'java -Djava.security.egd=file:/dev/./urandom -classpath agora-verifier_' + scalaVersion + '-'  + version + '.jar org.agoravoting.agora.Verifier $1 $2',
+        pverify
+    )
     write_text_file(os.path.join(dir_path, "pverify.sh"), pverify)
 
     print('vmnc.sh..')
     vmnc = read_text_file(os.path.join(dir_path, "vmnc.sh"))
-    vmnc = re.sub('java -Djava.security\.egd=file:/dev/\./urandom -classpath \$DIR/agora-verifier_' + scalaVersion + '-[0-9.]+jar org\.agoravoting\.agora\.Vmnc "\$@"',
-                  'java -Djava.security.egd=file:/dev/./urandom -classpath $DIR/agora-verifier_' + scalaVersion + '-' + version + '.jar org.agoravoting.agora.Vmnc "$@"',
-                  vmnc)
+    vmnc = re.sub(
+        'java -Djava.security\.egd=file:/dev/\./urandom -classpath \$DIR/agora-verifier_.*\.jar org\.agoravoting\.agora\.Vmnc "\$@"',
+        'java -Djava.security.egd=file:/dev/./urandom -classpath $DIR/agora-verifier_' + scalaVersion + '-' + version + '.jar org.agoravoting.agora.Vmnc "$@"',
+        vmnc
+    )
     write_text_file(os.path.join(dir_path, "vmnc.sh"), vmnc)
 
     print("project.spdx.yml..")
@@ -212,37 +218,73 @@ def do_election_orchestra(dir_path, version):
 def do_agora_dev_box(dir_path, version):
     print("repos.yml...")
     repos = read_text_file(os.path.join(dir_path, "repos.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*\n', 'version: \''+ version + '\'\n', repos)
     write_text_file(os.path.join(dir_path, "repos.yml"), repos)
 
     print("config.yml...")
     repos = read_text_file(os.path.join(dir_path, "config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "config.yml"), repos)
 
     print("doc/devel/agora.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"), repos)
 
     print("doc/devel/auth1.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth1.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/auth1.config.yml"), repos)
 
     print("doc/devel/auth2.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth2.config.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "doc/devel/auth2.config.yml"), repos)
 
     print("doc/production/config.auth.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.auth.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "doc/production/config.auth.yml"), repos)
 
     print("doc/production/config.master.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.master.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "doc/production/config.master.yml"), repos)
 
     print("helper-tools/config_prod_env.py...")
@@ -334,12 +376,24 @@ def do_admin_manual(dir_path, version):
 
     print("docs/deployment/assets/config.auth.yml...")
     repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"), repos)
 
     print("docs/deployment/assets/config.master.yml...")
     repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"))
-    repos = re.sub('version:\s*.*\s*\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
+    repos = re.sub(
+        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"), repos)
 
 def do_agora_release(dir_path, version):
