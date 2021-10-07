@@ -181,6 +181,18 @@ def do_agora_verifier(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
+    print(".github/workflows/unittests.yml...")
+    unittests_yml_path = os.path.join(
+        dir_path, ".github", "workflows", "unittests.yml"
+    )
+    unittests_yml = read_text_file(unittests_yml_path)
+    unittests_yml = re.sub(
+        'export INTERNAL_GIT_VERSION=.*',
+        f'export INTERNAL_GIT_VERSION="{version}"',
+        unittests_yml
+    )
+    write_text_file(unittests_yml_path, unittests_yml)
+
 def do_frestq(dir_path, version):
     invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
 
