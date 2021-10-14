@@ -17,6 +17,7 @@
 
 import argparse
 import requests
+import tempfile
 import subprocess
 import os
 import re
@@ -469,53 +470,64 @@ def do_create_release(
     previous_tag_name,
     prerelease
 ):
-    generated_release_body = ''
-    generated_release_title = ''
-    if generate_release_notes:
-        dir_name = os.path.dirname(dir_path)
-        data = {
-            'tag_name': version,
-        }
-        if previous_tag_name is not None:
-            data['previous_tag_name'] = previous_tag_name
-        req = requests.post(
-            f'https://api.github.com/repos/agoravoting/{dir_name}/releases/generate-notes',
-            headers={
-                "Accept": "application/vnd.github.v3+json"
-            },
-            data=data,
-            auth=(
-                os.getenv('GITHUB_USER'),
-                os.getenv('GITHUB_TOKEN'),
+    with tempfile.NamedTemporaryFile() as temp_release_file:
+        generated_release_title = ''
+        if generate_release_notes:
+            dir_name = os.path.basename(dir_path)
+            data = {
+                'tag_name': version,
+            }
+            if previous_tag_name is not None:
+                data['previous_tag_name'] = previous_tag_name
+            req = requests.post(
+                f'https://api.github.com/repos/agoravoting/{dir_name}/releases/generate-notes',
+                headers={
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                json=data,
+                auth=(
+                    os.getenv('GITHUB_USER'),
+                    os.getenv('GITHUB_TOKEN'),
+                )
             )
+            if req.status_code != 200:
+                print(f"Error generating release notes, status ${req.status_code}")
+                exit(1)
+            
+            generated_release_notes = req.json()['body']
+            temp_release_file.write(generated_release_notes.encode('utf-8'))
+            temp_release_file.flush()
+            generated_release_title = req.json()['name']
+            print(f"- github-generated release notes:\n\n{generated_release_notes}\n\n")
+            
+        print("creating release..")
+        release_file_path = (
+            release_notes_file
+            if release_notes_file is not None 
+            else temp_release_file.name
         )
-        if req.status_code != 200:
-            print(f"Error generating release notes, status ${req.status_code}")
-            exit(1)
-        
-        generated_release_body = req.json()['body']
-        generated_release_title = req.json()['name']
-        
-    print("creating release..")
-    release_notes_opt = (
-        f"--notes-file {release_notes_file}"
-        if release_notes_file is not None 
-        else f'--notes {generated_release_body}'
-    )
-    release_title_opt = (
-        f"--title \"{release_title}\"" 
-        if release_title is not None
-        else generated_release_title
-    )
-    release_draft_opt = "--draft" if release_draft else ""
-    prerelease_opt = "--prerelease" if prerelease else ""
-    
-    call_process(f"git fetch --tags origin", shell=True, cwd=dir_path)
-    call_process(
-        f"gh release create {version} {release_notes_opt} {release_draft_opt} {release_title_opt} {prerelease_opt}",
-        shell=True, 
-        cwd=dir_path
-    )
+        release_notes_opt = f"--notes-file \"{release_file_path}\"\\\n"
+        release_title_opt = (
+            f"--title \"{release_title}\"\\\n" 
+            if release_title is not None
+            else generated_release_title
+        )
+        release_draft_opt = "--draft\\\n" if release_draft else ""
+        prerelease_opt = "--prerelease\\\n" if prerelease else ""
+
+        call_process(f"git fetch --tags origin", shell=True, cwd=dir_path)
+        release_opts_str = " ".join([
+            version, 
+            release_title_opt,
+            release_notes_opt,
+            release_draft_opt,
+            prerelease_opt
+        ])
+        call_process(
+            f"gh release create {release_opts_str}",
+            shell=True, 
+            cwd=dir_path
+        )
 
 
 def main():
@@ -595,6 +607,7 @@ def main():
     )
     parser.add_argument(
         "--generate-release-notes",
+        action="store_true",
         help="use github automatic release generation"
     )
     parser.add_argument(
