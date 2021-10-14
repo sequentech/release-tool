@@ -16,6 +16,7 @@
 # along with agora-release.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import requests
 import subprocess
 import os
 import re
@@ -463,13 +464,50 @@ def do_create_release(
     version, 
     release_draft,
     release_title,
-    release_notes_file, 
+    release_notes_file,
+    generate_release_notes,
+    previous_tag_name,
     prerelease
 ):
+    generated_release_body = ''
+    generated_release_title = ''
+    if generate_release_notes:
+        dir_name = os.path.dirname(dir_path)
+        data = {
+            'tag_name': version,
+        }
+        if previous_tag_name is not None:
+            data['previous_tag_name'] = previous_tag_name
+        req = requests.post(
+            f'https://api.github.com/repos/agoravoting/{dir_name}/releases/generate-notes',
+            headers={
+                "Accept": "application/vnd.github.v3+json"
+            },
+            data=data,
+            auth=(
+                os.getenv('GITHUB_USER'),
+                os.getenv('GITHUB_TOKEN'),
+            )
+        )
+        if req.status_code != 200:
+            print(f"Error generating release notes, status ${req.status_code}")
+            exit(1)
+        
+        generated_release_body = req.json()['body']
+        generated_release_title = req.json()['name']
+        
     print("creating release..")
-    release_notes_opt = f"--notes-file {release_notes_file}" if release_notes_file is not None else ""
+    release_notes_opt = (
+        f"--notes-file {release_notes_file}"
+        if release_notes_file is not None 
+        else f'--notes {generated_release_body}'
+    )
+    release_title_opt = (
+        f"--title \"{release_title}\"" 
+        if release_title is not None
+        else generated_release_title
+    )
     release_draft_opt = "--draft" if release_draft else ""
-    release_title_opt = f"--title \"{release_title}\"" if release_title is not None else ""
     prerelease_opt = "--prerelease" if prerelease else ""
     
     call_process(f"git fetch --tags origin", shell=True, cwd=dir_path)
@@ -544,10 +582,20 @@ def main():
         metavar="\"v1.3.2 (beta 1)\""
     )
     parser.add_argument(
+        "--previous-tag-name",
+        type=str,
+        help="previous release tag name",
+        metavar="\"5.3.4\""
+    )
+    parser.add_argument(
         "--release-notes-file",
         type=str,
         help="github release notes file",
         metavar="path/to/notes-file"
+    )
+    parser.add_argument(
+        "--generate-release-notes",
+        help="use github automatic release generation"
     )
     parser.add_argument(
         "--prerelease",
@@ -565,6 +613,8 @@ def main():
     release_draft = args.release_draft
     release_title = args.release_title
     prerelease = args.prerelease
+    generate_release_notes = args.generate_release_notes
+    previous_tag_name = args.previous_tag_name
     
     path = args.path
     parent_path = args.parent_path
@@ -597,6 +647,8 @@ def main():
  - release_draft: {release_draft}
  - release_title: {release_title}
  - release_notes_file: {release_notes_file}
+ - generate_release_notes: {generate_release_notes}
+ - previous_tag_name: {previous_tag_name}
  - prerelease: {prerelease}
  """)
 
@@ -679,7 +731,9 @@ def main():
                 version,
                 release_draft,
                 release_title,
-                release_notes_file, 
+                release_notes_file,
+                generate_release_notes,
+                previous_tag_name,
                 prerelease
             )
 
