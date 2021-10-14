@@ -195,6 +195,39 @@ def do_agora_verifier(dir_path, version):
     )
     write_text_file(unittests_yml_path, unittests_yml)
 
+    print("config.json in unit tests tarfdiles")
+    testdata_path = os.path.join(dir_path, "testdata")
+    tar_files = [
+        filename
+        for filename in os.listdir(testdata_path)
+        if (
+            os.path.isfile(os.path.join(testdata_path, filename)) and
+            filename.endswith(".tar")
+        )
+    ]
+    # untar the tarfiles, edit them and recreate them
+    for tarfile_name in tar_files:
+        tarfile_path = os.path.join(testdata_path, tarfile_name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            call_process(
+                f"tar xf {tarfile_path} -C {temp_dir}",
+                shell=True,
+                cwd=dir_path
+            )
+            config_json_path = os.path.join(temp_dir, "config.json")
+            config_json = read_text_file(config_json_path)
+            config_json = re.sub(
+                "{\"version\"\s*:\s*\"[^\"]+\"\s*,", 
+                "{\"version\": \"" + version +"\",",
+                config_json
+            )
+            write_text_file(config_json_path, config_json)
+            call_process(
+                f"tar cf {tarfile_path} -C {temp_dir} .",
+                shell=True,
+                cwd=dir_path
+            )
+
 def do_frestq(dir_path, version):
     invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
 
