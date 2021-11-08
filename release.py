@@ -415,6 +415,15 @@ def do_vfork(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
+def do_agora_airgap(dir_path, version):
+    print("README.md...")
+    readme = read_text_file(os.path.join(dir_path, "README.md"))
+    readme = re.sub(
+        'https://github\.com/agoravoting/agora-airgap/releases/download/[^/]+/',
+        f'https://github.com/agoravoting/agora-airgap/releases/download/{version}/',
+        readme)
+    write_text_file(os.path.join(dir_path, "README.md"), readme)
+
 def do_admin_manual(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
@@ -762,6 +771,8 @@ def main():
                 do_vfork(project_path, version)
             elif 'admin-manual' == project_type:
                 do_admin_manual(project_path, version)
+            elif 'agora-airgap' == project_type:
+                do_agora_airgap(project_path, version)
             elif 'agora-release' == project_type:
                 do_agora_release(project_path, version)
         
