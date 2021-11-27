@@ -18,6 +18,7 @@
 import argparse
 import requests
 import tempfile
+from datetime import datetime
 import subprocess
 import os
 import re
@@ -397,9 +398,15 @@ def do_agora_tools(dir_path, version):
 def do_vfork(dir_path, version):
     print("project.spdx.yml..")
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
+    str_datetime = datetime.now().isoformat(timespec="seconds")
+    spdx = re.sub(
+        "created:\s*\"[^\"]+\"\s*", 
+        "created: \"" + str_datetime + "Z\"\n", 
+        spdx
+    )
     spdx = re.sub(
         "^name:\s*\"vfork-[^\"]+\"\s*", 
-        "name: \"vfork-" + version +"\"\n", 
+        "name: \"vfork-" + version + "\"\n", 
         spdx
     )
     spdx = re.sub(
@@ -417,6 +424,32 @@ def do_vfork(dir_path, version):
 
 def do_agora_airgap(dir_path, version):
     print("README.md...")
+    print("project.spdx.yml..")
+    spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
+    str_datetime = datetime.now().isoformat(timespec="seconds")
+    spdx = re.sub(
+        "created:\s*\"[^\"]+\"\s*", 
+        "created: \"" + str_datetime + "Z\"\n", 
+        spdx
+    )
+    spdx = re.sub(
+        "^name:\s*\"agora-airgap-[^\"]+\"\s*", 
+        "name: \"agora-airgap-" + version + "\"\n", 
+        spdx
+    )
+    spdx = re.sub(
+        "  name:\s*\"agora-airgap\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
+        f"  name: \"agora-airgap\"\n  versionInfo: \"{version}\"", 
+        spdx,
+        flags=re.MULTILINE
+    )
+    spdx = re.sub(
+        'downloadLocation: "git\+https://github.com/agoravoting/agora-airgap\.git@.*\"',
+        f'downloadLocation: "git+https://github.com/agoravoting/agora-airgap.git@{version}\"',
+        spdx
+    )
+    write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
+
     readme = read_text_file(os.path.join(dir_path, "README.md"))
     readme = re.sub(
         'https://github\.com/agoravoting/agora-airgap/releases/download/[^/]+/',
