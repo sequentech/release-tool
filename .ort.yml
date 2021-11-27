@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2014-2021 Agora Voting SL <contact@nvotes.com>
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+---
+resolutions:
+  rule_violations:
+  - message: "The package PyPI::certifi:2021.10.8 has the declared ScanCode copyleft-limited categorized license MPL-2.0."
+    reason: "DYNAMIC_LINKAGE_EXCEPTION"
+    comment: "We are not modifying certifi and we dynamically link to it, so acording to MPL-2.0 this allows us to keep our code with a completely different license. In this kind of case, MPL-2.0 is not viral. https://www.mozilla.org/en-US/MPL/2.0/FAQ/"
