@@ -400,7 +400,7 @@ def do_vfork(dir_path, version):
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
     str_datetime = datetime.now().isoformat(timespec="seconds")
     spdx = re.sub(
-        "created:\s*\"[^\"]+\"\s*", 
+        "created:\s*\"[^\"]+\"\s*\n", 
         "created: \"" + str_datetime + "Z\"\n", 
         spdx
     )
@@ -428,7 +428,7 @@ def do_agora_airgap(dir_path, version):
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
     str_datetime = datetime.now().isoformat(timespec="seconds")
     spdx = re.sub(
-        "created:\s*\"[^\"]+\"\s*", 
+        "created:\s*\"[^\"]+\"\s*\n", 
         "created: \"" + str_datetime + "Z\"\n", 
         spdx
     )
