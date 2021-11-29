@@ -365,7 +365,7 @@ def do_agora_results(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
     repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
-    repos = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version, repos)
+    repos = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version + '\'', repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
     print("requirements.txt...")
