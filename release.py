@@ -164,6 +164,20 @@ def do_agora_verifier(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "vmnc.sh"), vmnc)
 
+    print('README.md..')
+    readme = read_text_file(os.path.join(dir_path, "README.md"))
+    readme = re.sub(
+        'using version `[^`]+`',
+        'using version `' + version + '`',
+        readme
+    )
+    readme = re.sub(
+        'export INTERNAL_GIT_VERSION=.*',
+        'export INTERNAL_GIT_VERSION="' + version + '"',
+        readme
+    )
+    write_text_file(os.path.join(dir_path, "README.md"), readme)
+
     print("project.spdx.yml..")
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
     spdx = re.sub(
