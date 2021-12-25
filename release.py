@@ -50,7 +50,16 @@ def do_gui_common(dir_path, version):
 
     print("avConfig.js...")
     avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
-    avConfig = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", avConfig)
+    avConfig = re.sub(
+        "var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';",
+        "var AV_CONFIG_VERSION = '" + version + "';",
+        avConfig
+    )
+    avConfig = re.sub(
+        "mainVersion\s*",
+        "mainVersion: '" + version + "',",
+        avConfig
+    )
     write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
 
     print("package.json...")
@@ -88,7 +97,16 @@ def do_gui_other(dir_path, version):
 
     print("avConfig.js...")
     avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
-    avConfig = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", avConfig)
+    avConfig = re.sub(
+        "var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';",
+        "var AV_CONFIG_VERSION = '" + version + "';",
+        avConfig
+    )
+    avConfig = re.sub(
+        "mainVersion\s*",
+        "mainVersion: '" + version + "',",
+        avConfig
+    )
     write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
 
     av_plugins_config_path = os.path.join(dir_path, "avPluginsConfig.js")
