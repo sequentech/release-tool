@@ -56,8 +56,8 @@ def do_gui_common(dir_path, version):
         avConfig
     )
     avConfig = re.sub(
-        "mainVersion\s*",
-        "mainVersion: '" + version + "',",
+        "mainVersion\s*[^,]+,\n",
+        "mainVersion: '" + version + "',\n",
         avConfig
     )
     write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
@@ -103,8 +103,8 @@ def do_gui_other(dir_path, version):
         avConfig
     )
     avConfig = re.sub(
-        "mainVersion\s*",
-        "mainVersion: '" + version + "',",
+        "mainVersion\s*[^,]+,\n",
+        "mainVersion: '" + version + "',\n",
         avConfig
     )
     write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
@@ -309,7 +309,16 @@ def do_agora_dev_box(dir_path, version):
         f"resultsConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
-    repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
+    repos = re.sub(
+        '"version":\s*"[^"]+",\n',
+        '"version": "'+ version + '",\n',
+        repos
+    )
+    repos = re.sub(
+        'mainVersion:\s*[^,]+,\n',
+        'mainVersion: \''+ version + '\',\n',
+        repos
+    )
     write_text_file(os.path.join(dir_path, "config.yml"), repos)
 
     print("doc/devel/agora.config.yml...")
