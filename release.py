@@ -574,7 +574,7 @@ def do_create_tag(dir_path, version):
 
 def call_process(command, *args, **kwargs):
     print(f"Executing: {command}")
-    subprocess.call(command, *args, **kwargs)
+    return subprocess.call(command, *args, **kwargs)
 
 def do_create_release(
     dir_path,
@@ -615,7 +615,24 @@ def do_create_release(
             temp_release_file.flush()
             generated_release_title = req.json()['name']
             print(f"- github-generated release notes:\n\n{generated_release_notes}\n\n")
-            
+
+        print("checking if release exists to overwrite it..")
+        ret_code = call_process(
+            f"gh release view {version}",
+            shell=True,
+            cwd=dir_path
+        )
+        if ret_code == 0:
+            # release exists, so remove it first
+            ret_code = call_process(
+                f"gh release delete {version}",
+                shell=True,
+                cwd=dir_path
+            )
+            if ret_code != 0:
+                print("Error: couldn't remove existing release")
+                exit(1)
+
         print("creating release..")
         release_file_path = (
             release_notes_file
@@ -639,11 +656,15 @@ def do_create_release(
             release_draft_opt,
             prerelease_opt
         ])
-        call_process(
+        ret_code = call_process(
             f"gh release create {release_opts_str}",
             shell=True, 
             cwd=dir_path
         )
+        if ret_code != 0:
+            print("Error: couldn't create the release")
+            exit(1)
+
 
 
 def main():
