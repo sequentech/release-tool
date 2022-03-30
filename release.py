@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-# This file is part of agora-release.
-# Copyright (C) 2016-2021 Agora Voting SL <agora@agoravoting.com>
+# This file is part of release-tool.
+# Copyright (C) 2016-2021 Sequent Tech Inc <legal@sequentech.io>
 
-# agora-release is free software: you can redistribute it and/or modify
+# release-tool is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
 # the Free Software Foundation, either version 3 of the License.
 
-# agora-release  is distributed in the hope that it will be useful,
+# release-tool  is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
 
 # You should have received a copy of the GNU Lesser General Public License
-# along with agora-release.  If not, see <http://www.gnu.org/licenses/>.
+# along with release-tool.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
 import requests
@@ -36,31 +36,31 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(os.path.join(dir_path, ".git/config"))
-    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(agoravoting|nvotes)/(?P<proj_name>.+)\.git', config_file)
+    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(sequentech)/(?P<proj_name>.+)\.git', config_file)
 
     try:
         my_match.group('proj_name')
     except:
-        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(agoravoting|nvotes)/(?P<proj_name>.+)\.git', config_file)
+        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(sequentech)/(?P<proj_name>.+)\.git', config_file)
 
     return my_match.group('proj_name')
 
 def do_gui_common(dir_path, version):
     invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
 
-    print("avConfig.js...")
-    avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
-    avConfig = re.sub(
-        "var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';",
-        "var AV_CONFIG_VERSION = '" + version + "';",
-        avConfig
+    print("SequentConfig.js...")
+    SequentConfig = read_text_file(os.path.join(dir_path, "SequentConfig.js"))
+    SequentConfig = re.sub(
+        "var\s+SEQUENT_CONFIG_VERSION\s*=\s*'[^']+';",
+        "var SEQUENT_CONFIG_VERSION = '" + version + "';",
+        SequentConfig
     )
-    avConfig = re.sub(
+    SequentConfig = re.sub(
         "mainVersion\s*[^,]+,\n",
         "mainVersion: '" + version + "',\n",
-        avConfig
+        SequentConfig
     )
-    write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
+    write_text_file(os.path.join(dir_path, "SequentConfig.js"), SequentConfig)
 
     print("package.json...")
     if not invalid_version:
@@ -72,14 +72,14 @@ def do_gui_common(dir_path, version):
 
     print("Gruntfile.js...")
     Gruntfile = read_text_file(os.path.join(dir_path, "Gruntfile.js"))
-    Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
+    Gruntfile = re.sub("var\s+SEQUENT_CONFIG_VERSION\s*=\s*'[^']+';", "var SEQUENT_CONFIG_VERSION = '" + version + "';", Gruntfile)
     Gruntfile = re.sub("appCommon-v[0-9a-zA-Z.\-+]+\.js", "appCommon-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("libCommon-v[0-9a-zA-Z.\-+]+\.js", "libCommon-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("libnocompat-v[0-9a-zA-Z.\-+]+\.js", "libnocompat-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("libcompat-v[0-9a-zA-Z.\-+]+\.js", "libcompat-v" + version + ".js", Gruntfile)
-    Gruntfile = re.sub("avConfig-v[0-9a-zA-Z.\-+]+\.js", "avConfig-v" + version + ".js", Gruntfile)
-    Gruntfile = re.sub("avThemes-v[0-9a-zA-Z.\-+]+\.js", "avThemes-v" + version + ".js", Gruntfile)
-    Gruntfile = re.sub("avPlugins-v[0-9a-zA-Z.\-+]+\.js", "avPlugins-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentConfig-v[0-9a-zA-Z.\-+]+\.js", "SequentConfig-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentThemes-v[0-9a-zA-Z.\-+]+\.js", "SequentThemes-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentPlugins-v[0-9a-zA-Z.\-+]+\.js", "SequentPlugins-v" + version + ".js", Gruntfile)
     write_text_file(os.path.join(dir_path, "Gruntfile.js"), Gruntfile)
 
     print("running grunt build..")
@@ -90,42 +90,42 @@ def do_gui_other(dir_path, version):
     index = read_text_file(os.path.join(dir_path, "index.html"))
     index = re.sub("libnocompat-v.*\.js", "libnocompat-v" + version + ".js", index)
     index = re.sub("libcompat-v.*\.js", "libcompat-v" + version + ".js", index)
-    index = re.sub("avTheme-v.*\.js", "avTheme-v" + version + ".js", index)
+    index = re.sub("SequentTheme-v.*\.js", "SequentTheme-v" + version + ".js", index)
     index = re.sub("appCommon-v.*\.js", "appCommon-v" + version + ".js", index)
     index = re.sub("libCommon-v.*\.js", "libCommon-v" + version + ".js", index)
     write_text_file(os.path.join(dir_path, "index.html"), index)
 
-    print("avConfig.js...")
-    avConfig = read_text_file(os.path.join(dir_path, "avConfig.js"))
-    avConfig = re.sub(
-        "var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';",
-        "var AV_CONFIG_VERSION = '" + version + "';",
-        avConfig
+    print("SequentConfig.js...")
+    SequentConfig = read_text_file(os.path.join(dir_path, "SequentConfig.js"))
+    SequentConfig = re.sub(
+        "var\s+SEQUENT_CONFIG_VERSION\s*=\s*'[^']+';",
+        "var SEQUENT_CONFIG_VERSION = '" + version + "';",
+        SequentConfig
     )
-    avConfig = re.sub(
+    SequentConfig = re.sub(
         "mainVersion\s*[^,]+,\n",
         "mainVersion: '" + version + "',\n",
-        avConfig
+        SequentConfig
     )
-    write_text_file(os.path.join(dir_path, "avConfig.js"), avConfig)
+    write_text_file(os.path.join(dir_path, "SequentConfig.js"), SequentConfig)
 
-    av_plugins_config_path = os.path.join(dir_path, "avPluginsConfig.js")
+    av_plugins_config_path = os.path.join(dir_path, "SequentPluginsConfig.js")
     if os.path.isfile(av_plugins_config_path):
-        print("avPluginsConfig.js...")
-        avPluginsConfig = read_text_file(av_plugins_config_path)
-        avPluginsConfig = re.sub("var\s+AV_PLUGINS_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_PLUGINS_CONFIG_VERSION = '" + version + "';", avPluginsConfig)
-        write_text_file(av_plugins_config_path, avPluginsConfig)
+        print("SequentPluginsConfig.js...")
+        SequentPluginsConfig = read_text_file(av_plugins_config_path)
+        SequentPluginsConfig = re.sub("var\s+SEQUENT_PLUGINS_CONFIG_VERSION\s*=\s*'[^']+';", "var SEQUENT_PLUGINS_CONFIG_VERSION = '" + version + "';", SequentPluginsConfig)
+        write_text_file(av_plugins_config_path, SequentPluginsConfig)
 
     print("Gruntfile.js...")
     Gruntfile = read_text_file(os.path.join(dir_path, "Gruntfile.js"))
-    Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
+    Gruntfile = re.sub("var\s+SEQUENT_CONFIG_VERSION\s*=\s*'[^']+';", "var SEQUENT_CONFIG_VERSION = '" + version + "';", Gruntfile)
     Gruntfile = re.sub("appCommon-v[0-9a-zA-Z.\-+]+\.js", "appCommon-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("libCommon-v[0-9a-zA-Z.\-+]+\.js", "libCommon-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("libnocompat-v[0-9a-zA-Z.\-+]+\.min\.js", "libnocompat-v" + version + ".min.js", Gruntfile)
     Gruntfile = re.sub("libcompat-v[0-9a-zA-Z.\-+]+\.min\.js", "libcompat-v" + version + ".min.js", Gruntfile)
-    Gruntfile = re.sub("avConfig-v[0-9a-zA-Z.\-+]+\.js", "avConfig-v" + version + ".js", Gruntfile)
-    Gruntfile = re.sub("avThemes-v[0-9a-zA-Z.\-+]+\.js", "avThemes-v" + version + ".js", Gruntfile)
-    Gruntfile = re.sub("avPlugins-v[0-9a-zA-Z.\-+]+\.js", "avPlugins-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentConfig-v[0-9a-zA-Z.\-+]+\.js", "SequentConfig-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentThemes-v[0-9a-zA-Z.\-+]+\.js", "SequentThemes-v" + version + ".js", Gruntfile)
+    Gruntfile = re.sub("SequentPlugins-v[0-9a-zA-Z.\-+]+\.js", "SequentPlugins-v" + version + ".js", Gruntfile)
     Gruntfile = re.sub("app-v[0-9a-zA-Z.\-+]+\.min\.js", "app-v" + version + ".min.js", Gruntfile)
     Gruntfile = re.sub("lib-v[0-9a-zA-Z.\-+]+\.min\.js", "lib-v" + version + ".min.js", Gruntfile)
     write_text_file(os.path.join(dir_path, "Gruntfile.js"), Gruntfile)
@@ -134,19 +134,19 @@ def do_gui_other(dir_path, version):
     package = read_text_file(os.path.join(dir_path, "package.json"))
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     package = re.sub(
-        '"agora-gui-common": "https://github.com/agoravoting/agora-gui-common\.git.*\"',
-        f'"agora-gui-common": "https://github.com/agoravoting/agora-gui-common.git#{version}\"',
+        '"common-ui": "https://github.com/sequentech/common-ui\.git.*\"',
+        f'"common-ui": "https://github.com/sequentech/common-ui.git#{version}\"',
         package
     )
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
-def do_agora_elections(dir_path, version):
+def do_ballot_box(dir_path, version):
     print("build.sbt...")
     build = read_text_file(os.path.join(dir_path, "build.sbt"))
     build = re.sub('version\s*:=\s*"[^"]+"', 'version := "'+ version + '"', build)
     write_text_file(os.path.join(dir_path, "build.sbt"), build)
 
-def do_agora_verifier(dir_path, version):
+def do_election_verifier(dir_path, version):
     print("build.sbt...")
     build = read_text_file(os.path.join(dir_path, "build.sbt"))
     build = re.sub('version\s*:=\s*"[^"]+"', 'version := "'+ version + '"', build)
@@ -158,8 +158,8 @@ def do_agora_verifier(dir_path, version):
     print("package.sh...")
     package = read_text_file(os.path.join(dir_path, "package.sh"))
     package = re.sub(
-        'cp target/scala-.*/proguard/agora-verifier_.*\.jar dist',
-        'cp target/scala-' + scalaVersion + '/proguard/agora-verifier_' + scalaVersion +  '-' + version + '.jar dist',
+        'cp target/scala-.*/proguard/election-verifier_.*\.jar dist',
+        'cp target/scala-' + scalaVersion + '/proguard/election-verifier_' + scalaVersion +  '-' + version + '.jar dist',
         package
     )
     write_text_file(os.path.join(dir_path, "package.sh"), package)
@@ -167,8 +167,8 @@ def do_agora_verifier(dir_path, version):
     print('pverify.sh..')
     pverify = read_text_file(os.path.join(dir_path, "pverify.sh"))
     pverify = re.sub(
-        'java -Djava\.security\.egd=file:/dev/\./urandom -classpath agora-verifier_.*\.jar org\.agoravoting\.agora\.Verifier \$1 \$2',
-        'java -Djava.security.egd=file:/dev/./urandom -classpath agora-verifier_' + scalaVersion + '-'  + version + '.jar org.agoravoting.agora.Verifier $1 $2',
+        'java -Djava\.security\.egd=file:/dev/\./urandom -classpath election-verifier_.*\.jar org\.sequent\.sequent\.Verifier \$1 \$2',
+        'java -Djava.security.egd=file:/dev/./urandom -classpath election-verifier_' + scalaVersion + '-'  + version + '.jar org.sequent.sequent.Verifier $1 $2',
         pverify
     )
     write_text_file(os.path.join(dir_path, "pverify.sh"), pverify)
@@ -176,8 +176,8 @@ def do_agora_verifier(dir_path, version):
     print('vmnc.sh..')
     vmnc = read_text_file(os.path.join(dir_path, "vmnc.sh"))
     vmnc = re.sub(
-        'java -Djava.security\.egd=file:/dev/\./urandom -classpath \$DIR/agora-verifier_.*\.jar org\.agoravoting\.agora\.Vmnc "\$@"',
-        'java -Djava.security.egd=file:/dev/./urandom -classpath $DIR/agora-verifier_' + scalaVersion + '-' + version + '.jar org.agoravoting.agora.Vmnc "$@"',
+        'java -Djava.security\.egd=file:/dev/\./urandom -classpath \$DIR/election-verifier_.*\.jar org\.sequent\.sequent\.Vmnc "\$@"',
+        'java -Djava.security.egd=file:/dev/./urandom -classpath $DIR/election-verifier_' + scalaVersion + '-' + version + '.jar org.sequent.sequent.Vmnc "$@"',
         vmnc
     )
     write_text_file(os.path.join(dir_path, "vmnc.sh"), vmnc)
@@ -199,19 +199,19 @@ def do_agora_verifier(dir_path, version):
     print("project.spdx.yml..")
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
     spdx = re.sub(
-        "name:\s*\"agora-verifier-[^\"]+\"\s*", 
-        "name: \"agora-verifier-" + version +"\"\n", 
+        "name:\s*\"election-verifier-[^\"]+\"\s*", 
+        "name: \"election-verifier-" + version +"\"\n", 
         spdx
     )
     spdx = re.sub(
-        "  name:\s*\"agora-verifier\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
-        f"  name: \"agora-verifier\"\n  versionInfo: \"{version}\"", 
+        "  name:\s*\"election-verifier\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
+        f"  name: \"election-verifier\"\n  versionInfo: \"{version}\"", 
         spdx,
         flags=re.MULTILINE
     )
     spdx = re.sub(
-        'downloadLocation: "git\+https://github.com/agoravoting/agora-verifier\.git@.*\"',
-        f'downloadLocation: "git+https://github.com/agoravoting/agora-verifier.git@{version}\"',
+        'downloadLocation: "git\+https://github.com/sequentech/election-verifier\.git@.*\"',
+        f'downloadLocation: "git+https://github.com/sequentech/election-verifier.git@{version}\"',
         spdx
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
@@ -276,8 +276,8 @@ def do_election_orchestra(dir_path, version):
     print("requirements.txt...")
     requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
     requirements = re.sub(
-        'git\+https://github.com/agoravoting/frestq\.git@.*', 
-        'git+https://github.com/agoravoting/frestq.git@'+ version, 
+        'git\+https://github.com/sequentech/frestq\.git@.*', 
+        'git+https://github.com/sequentech/frestq.git@'+ version, 
         requirements
     )
     write_text_file(os.path.join(dir_path, "requirements.txt"), requirements)
@@ -289,13 +289,13 @@ def do_election_orchestra(dir_path, version):
         setup_py
     )
     setup_py = re.sub(
-        'git\+https://github.com/agoravoting/frestq\.git@[^\'"]+', 
-        'git+https://github.com/agoravoting/frestq.git@'+ version,
+        'git\+https://github.com/sequentech/frestq\.git@[^\'"]+', 
+        'git+https://github.com/sequentech/frestq.git@'+ version,
         setup_py
     )
     write_text_file(os.path.join(dir_path, "setup.py"), setup_py)
 
-def do_agora_dev_box(dir_path, version):
+def do_deployment_tool(dir_path, version):
     print("repos.yml...")
     repos = read_text_file(os.path.join(dir_path, "repos.yml"))
     repos = re.sub('version:\s*.*\n', 'version: \''+ version + '\'\n', repos)
@@ -305,8 +305,8 @@ def do_agora_dev_box(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "config.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub(
@@ -321,23 +321,23 @@ def do_agora_dev_box(dir_path, version):
     )
     write_text_file(os.path.join(dir_path, "config.yml"), repos)
 
-    print("doc/devel/agora.config.yml...")
-    repos = read_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"))
+    print("doc/devel/sequent.config.yml...")
+    repos = read_text_file(os.path.join(dir_path, "doc/devel/sequent.config.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
-    write_text_file(os.path.join(dir_path, "doc/devel/agora.config.yml"), repos)
+    write_text_file(os.path.join(dir_path, "doc/devel/sequent.config.yml"), repos)
 
     print("doc/devel/auth1.config.yml...")
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth1.config.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
@@ -347,8 +347,8 @@ def do_agora_dev_box(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "doc/devel/auth2.config.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
@@ -358,8 +358,8 @@ def do_agora_dev_box(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.auth.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
@@ -369,8 +369,8 @@ def do_agora_dev_box(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "doc/production/config.master.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
@@ -386,12 +386,12 @@ def do_agora_dev_box(dir_path, version):
     helper_script = re.sub("OUTPUT_PROD_VERSION\s*=\s*['|\"]?[0-9a-zA-Z.\-+]*['|\"]?\s*\n", "OUTPUT_PROD_VERSION=\""+ version + "\"\n", helper_script)
     write_text_file(os.path.join(dir_path, "helper-tools/config_prod_env.py"), helper_script)
 
-    print("agora-gui/templates/avConfig.js...")
-    Gruntfile = read_text_file(os.path.join(dir_path, "agora-gui/templates/avConfig.js"))
-    Gruntfile = re.sub("var\s+AV_CONFIG_VERSION\s*=\s*'[^']+';", "var AV_CONFIG_VERSION = '" + version + "';", Gruntfile)
-    write_text_file(os.path.join(dir_path, "agora-gui/templates/avConfig.js"), Gruntfile)
+    print("sequent-ui/templates/SequentConfig.js...")
+    Gruntfile = read_text_file(os.path.join(dir_path, "sequent-ui/templates/SequentConfig.js"))
+    Gruntfile = re.sub("var\s+SEQUENT_CONFIG_VERSION\s*=\s*'[^']+';", "var SEQUENT_CONFIG_VERSION = '" + version + "';", Gruntfile)
+    write_text_file(os.path.join(dir_path, "sequent-ui/templates/SequentConfig.js"), Gruntfile)
 
-def do_agora_tally(dir_path, version):
+def do_tally_methods(dir_path, version):
     invalid_version = re.match(r"^[a-zA-Z]+", version) is not None
 
     print("setup.py...")
@@ -402,41 +402,41 @@ def do_agora_tally(dir_path, version):
     else:
         print("leaving setup.py as is because of invalid version name")
 
-def do_agora_results(dir_path, version):
+def do_tally_pipes(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
     repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
-    repos = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version + '\'', repos)
+    repos = re.sub('git\+https://github.com/sequentech/tally-methods\.git@.*', 'git+https://github.com/sequentech/tally-methods.git@'+ version + '\'', repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
     print("requirements.txt...")
     requirements = read_text_file(os.path.join(dir_path, "requirements.txt"))
-    requirements = re.sub('git\+https://github.com/agoravoting/agora-tally\.git@.*', 'git+https://github.com/agoravoting/agora-tally.git@'+ version + "#egg=agora-tally", requirements)
+    requirements = re.sub('git\+https://github.com/sequentech/tally-methods\.git@.*', 'git+https://github.com/sequentech/tally-methods.git@'+ version + "#egg=tally-methods", requirements)
     write_text_file(os.path.join(dir_path, "requirements.txt"), requirements)
 
-    print("agora_results/main.py...")
-    main_path = os.path.join(dir_path, "agora_results/main.py")
+    print("tally_pipes/main.py...")
+    main_path = os.path.join(dir_path, "tally_pipes/main.py")
     if os.path.isfile(main_path):
         main_file = read_text_file(main_path)
         main_file = re.sub("VERSION\s*=\s*\"[^\"]+\"", "VERSION = \"" + version + "\"", main_file)
         write_text_file(main_path, main_file)
 
-def do_agora_payment_api(dir_path, version):
+def do_sequent_payment_api(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
     repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
-def do_authapi(dir_path, version):
+def do_iam(dir_path, version):
     pass
 
-def do_agora_tools(dir_path, version):
+def do_misc_tools(dir_path, version):
     print("setup.py...")
     repos = read_text_file(os.path.join(dir_path, "setup.py"))
     repos = re.sub("version\s*=\s*'[^']+'\s*,", "version='" + version +"',", repos)
     write_text_file(os.path.join(dir_path, "setup.py"), repos)
 
-def do_vfork(dir_path, version):
+def do_mixnet(dir_path, version):
     print("project.spdx.yml..")
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
     str_datetime = datetime.now().isoformat(timespec="seconds")
@@ -446,24 +446,24 @@ def do_vfork(dir_path, version):
         spdx
     )
     spdx = re.sub(
-        "^name:\s*\"vfork-[^\"]+\"\s*", 
-        "name: \"vfork-" + version + "\"\n", 
+        "^name:\s*\"mixnet-[^\"]+\"\s*", 
+        "name: \"mixnet-" + version + "\"\n", 
         spdx
     )
     spdx = re.sub(
-        "  name:\s*\"vfork\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
-        f"  name: \"vfork\"\n  versionInfo: \"{version}\"", 
+        "  name:\s*\"mixnet\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
+        f"  name: \"mixnet\"\n  versionInfo: \"{version}\"", 
         spdx,
         flags=re.MULTILINE
     )
     spdx = re.sub(
-        'downloadLocation: "git\+https://github.com/agoravoting/vfork\.git@.*\"',
-        f'downloadLocation: "git+https://github.com/agoravoting/vfork.git@{version}\"',
+        'downloadLocation: "git\+https://github.com/sequentech/mixnet\.git@.*\"',
+        f'downloadLocation: "git+https://github.com/sequentech/mixnet.git@{version}\"',
         spdx
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
-def do_agora_airgap(dir_path, version):
+def do_ballot_verifier(dir_path, version):
     print("README.md...")
     print("project.spdx.yml..")
     spdx = read_text_file(os.path.join(dir_path, "project.spdx.yml"))
@@ -474,31 +474,31 @@ def do_agora_airgap(dir_path, version):
         spdx
     )
     spdx = re.sub(
-        "^name:\s*\"agora-airgap-[^\"]+\"\s*", 
-        "name: \"agora-airgap-" + version + "\"\n", 
+        "^name:\s*\"ballot-verifier-[^\"]+\"\s*", 
+        "name: \"ballot-verifier-" + version + "\"\n", 
         spdx
     )
     spdx = re.sub(
-        "  name:\s*\"agora-airgap\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
-        f"  name: \"agora-airgap\"\n  versionInfo: \"{version}\"", 
+        "  name:\s*\"ballot-verifier\"\s*\n  versionInfo:\s*\"[^\"]+\"", 
+        f"  name: \"ballot-verifier\"\n  versionInfo: \"{version}\"", 
         spdx,
         flags=re.MULTILINE
     )
     spdx = re.sub(
-        'downloadLocation: "git\+https://github.com/agoravoting/agora-airgap\.git@.*\"',
-        f'downloadLocation: "git+https://github.com/agoravoting/agora-airgap.git@{version}\"',
+        'downloadLocation: "git\+https://github.com/sequentech/ballot-verifier\.git@.*\"',
+        f'downloadLocation: "git+https://github.com/sequentech/ballot-verifier.git@{version}\"',
         spdx
     )
     write_text_file(os.path.join(dir_path, "project.spdx.yml"), spdx)
 
     readme = read_text_file(os.path.join(dir_path, "README.md"))
     readme = re.sub(
-        'https://github\.com/agoravoting/agora-airgap/releases/download/[^/]+/',
-        f'https://github.com/agoravoting/agora-airgap/releases/download/{version}/',
+        'https://github\.com/sequentech/ballot-verifier/releases/download/[^/]+/',
+        f'https://github.com/sequentech/ballot-verifier/releases/download/{version}/',
         readme)
     write_text_file(os.path.join(dir_path, "README.md"), readme)
 
-def do_admin_manual(dir_path, version):
+def do_documentation(dir_path, version):
     print("package.json...")
     package = read_text_file(os.path.join(dir_path, "package.json"))
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
@@ -508,8 +508,8 @@ def do_admin_manual(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
@@ -519,14 +519,14 @@ def do_admin_manual(dir_path, version):
     repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
-        "resultsConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
-        f"resultsConfig: {{\n\\1version: \'{version}\',\n",
+        "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
+        f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"), repos)
 
-def do_agora_release(dir_path, version):
+def do_release_tool(dir_path, version):
     pass
 
 def apply_base_branch(dir_path, base_branch):
@@ -596,7 +596,7 @@ def do_create_release(
             if previous_tag_name is not None:
                 data['previous_tag_name'] = previous_tag_name
             req = requests.post(
-                f'https://api.github.com/repos/agoravoting/{dir_name}/releases/generate-notes',
+                f'https://api.github.com/repos/sequentech/{dir_name}/releases/generate-notes',
                 headers={
                     "Accept": "application/vnd.github.v3+json"
                 },
@@ -684,7 +684,7 @@ def main():
         "--path",
         type=str,
         help="project directory path",
-        metavar="../agora-gui-booth"
+        metavar="../voting-booth"
     )
     parser.add_argument(
         "--parent-path",
@@ -806,22 +806,22 @@ def main():
         projects = [ get_project_type(path) ]
     else:
         projects = [
-            "agora-gui-common",
-            "agora-gui-admin",
-            "agora-gui-elections",
-            "agora-gui-booth",
-            "agora-verifier",
-            "agora_elections",
-            "agora-dev-box",
-            "agora-results",
-            "agora-tally",
+            "common-ui",
+            "admin-console",
+            "election-portal",
+            "voting-booth",
+            "election-verifier",
+            "ballot_box",
+            "deployment-tool",
+            "tally-pipes",
+            "tally-methods",
             "frestq",
             "election-orchestra",
-            "authapi",
-            "agora-tools",
-            "vfork",
-            "admin-manual",
-            "agora-release"
+            "iam",
+            "misc-tools",
+            "mixnet",
+            "documentation",
+            "release-tool"
         ]
 
     for project_type in projects:
@@ -836,40 +836,40 @@ def main():
            apply_base_branch(project_path, base_branch)
         
         if change_version:
-            if 'agora-gui-common' == project_type:
+            if 'common-ui' == project_type:
                 do_gui_common(project_path, version)
-            elif 'agora-gui-admin' == project_type:
+            elif 'admin-console' == project_type:
                 do_gui_other(project_path, version)
-            elif 'agora-gui-elections' == project_type:
+            elif 'election-portal' == project_type:
                 do_gui_other(project_path, version)
-            elif 'agora-gui-booth' == project_type:
+            elif 'voting-booth' == project_type:
                 do_gui_other(project_path, version)
             elif 'election-orchestra' == project_type:
                 do_election_orchestra(project_path, version)
-            elif 'agora-verifier' == project_type:
-                do_agora_verifier(project_path, version)
-            elif 'agora_elections' == project_type:
-                do_agora_elections(project_path, version)
-            elif 'agora-dev-box' == project_type:
-                do_agora_dev_box(project_path, version)
-            elif 'agora-results' == project_type:
-                do_agora_results(project_path, version)
-            elif 'agora-tally' == project_type:
-                do_agora_tally(project_path, version)
+            elif 'election-verifier' == project_type:
+                do_election_verifier(project_path, version)
+            elif 'ballot_box' == project_type:
+                do_ballot_box(project_path, version)
+            elif 'deployment-tool' == project_type:
+                do_deployment_tool(project_path, version)
+            elif 'tally-pipes' == project_type:
+                do_tally_pipes(project_path, version)
+            elif 'tally-methods' == project_type:
+                do_tally_methods(project_path, version)
             elif 'frestq' == project_type:
                 do_frestq(project_path, version)
-            elif 'authapi' == project_type:
-                do_authapi(project_path, version)
-            elif 'agora-tools' == project_type:
-                do_agora_tools(project_path, version)
-            elif 'vfork' == project_type:
-                do_vfork(project_path, version)
-            elif 'admin-manual' == project_type:
-                do_admin_manual(project_path, version)
-            elif 'agora-airgap' == project_type:
-                do_agora_airgap(project_path, version)
-            elif 'agora-release' == project_type:
-                do_agora_release(project_path, version)
+            elif 'iam' == project_type:
+                do_iam(project_path, version)
+            elif 'misc-tools' == project_type:
+                do_misc_tools(project_path, version)
+            elif 'mixnet' == project_type:
+                do_mixnet(project_path, version)
+            elif 'documentation' == project_type:
+                do_documentation(project_path, version)
+            elif 'ballot-verifier' == project_type:
+                do_ballot_verifier(project_path, version)
+            elif 'release-tool' == project_type:
+                do_release_tool(project_path, version)
         
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
