@@ -1,28 +1,28 @@
-# agora-release
+# release-tool
 
 scripts used for creating a new release
 
 This repo contains the release.py script, which is used to update the version
-number for all other Agora Voting projects. In order to use the script, please
-read the documentation in [https://agoravoting.github.io/admin-manual/docs/contribute/release-howto].
+number for all other Sequent Tech projects. In order to use the script, please
+read the documentation in [https://sequent.github.io/documentation/docs/contribute/release-howto].
 
 # Setup
 
-First, download `agora-release` repository and install the dependencies. It
+First, download `release-tool` repository and install the dependencies. It
 uses Python 3 so you need it installed:
 
 ```bash
-git clone https://github.com/agoravoting/agora-release.git
+git clone https://github.com/sequentech/release-tool.git
 pip install -r requirements.txt
 ```
 
 Some other setup steps:
 - To execute the `release.py` command, please always do it within the directory 
-containing `agora-release`. Meaning, CWD needs to be that directory when 
+containing `release-tool`. Meaning, CWD needs to be that directory when 
 executing the command.
 - You need to have your git's username and email configured, as this command
 will create release commits.
-- If you are releasing for example the `agora-gui-elections` repository, it
+- If you are releasing for example the `election-portal` repository, it
 needs to be in the parent directory and with the origin remote having write 
 permissions and the ssh-agent active to be able to push automatically.
 - You need to have the github cli [gh](https://github.com/cli/cli) installed, 
