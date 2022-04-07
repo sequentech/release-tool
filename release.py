@@ -36,12 +36,12 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(os.path.join(dir_path, ".git/config"))
-    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(sequentech)/(?P<proj_name>.+)\.git', config_file)
+    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(sequentech)/(?P<proj_name>.+)(\.git|)', config_file)
 
     try:
         my_match.group('proj_name')
     except:
-        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(sequentech)/(?P<proj_name>.+)\.git', config_file)
+        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(sequentech)/(?P<proj_name>.+)(\.git|)', config_file)
 
     return my_match.group('proj_name')
 
