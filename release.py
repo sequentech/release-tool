@@ -512,6 +512,11 @@ def do_documentation(dir_path, version):
         f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
         repos
     )
+    repos = re.sub(
+        'mainVersion:\s*\'[^\']+\'\n',
+        f'mainVersion: \'{version}\'\n',
+        repos
+    )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
     write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"), repos)
 
@@ -521,6 +526,11 @@ def do_documentation(dir_path, version):
     repos = re.sub(
         "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
         f"tallyPipesConfig: {{\n\\1version: \'{version}\',\n",
+        repos
+    )
+    repos = re.sub(
+        'mainVersion:\s*\'[^\']+\'\n',
+        f'mainVersion: \'{version}\'\n',
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
