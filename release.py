@@ -315,8 +315,8 @@ def do_deployment_tool(dir_path, version):
         repos
     )
     repos = re.sub(
-        'mainVersion:\s*[^,]+,\n',
-        'mainVersion: \''+ version + '\',\n',
+        'mainVersion:\s*[^,]+\n',
+        'mainVersion: \''+ version + '\'\n',
         repos
     )
     write_text_file(os.path.join(dir_path, "config.yml"), repos)
