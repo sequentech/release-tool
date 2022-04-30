@@ -36,13 +36,12 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(os.path.join(dir_path, ".git/config"))
-    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(agoravoting|nvotes)/(?P<proj_name>.+)\.git', config_file)
+    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(agoravoting|nvotes|sequentech)/(?P<proj_name>.+)', config_file)
 
     try:
         my_match.group('proj_name')
     except:
-        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(agoravoting|nvotes)/(?P<proj_name>.+)\.git', config_file)
-
+        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(agoravoting|nvotes|sequentech)/(?P<proj_name>.+)', config_file)
     return my_match.group('proj_name')
 
 def do_gui_common(dir_path, version):
@@ -555,7 +554,7 @@ def do_create_release(
             if previous_tag_name is not None:
                 data['previous_tag_name'] = previous_tag_name
             req = requests.post(
-                f'https://api.github.com/repos/agoravoting/{dir_name}/releases/generate-notes',
+                f'https://api.github.com/repos/sequentech/{dir_name}/releases/generate-notes',
                 headers={
                     "Accept": "application/vnd.github.v3+json"
                 },
@@ -567,6 +566,7 @@ def do_create_release(
             )
             if req.status_code != 200:
                 print(f"Error generating release notes, status ${req.status_code}")
+                print(data)
                 exit(1)
             
             generated_release_notes = req.json()['body']
@@ -744,22 +744,22 @@ def main():
         projects = [ get_project_type(path) ]
     else:
         projects = [
-            "agora-gui-common",
-            "agora-gui-admin",
-            "agora-gui-elections",
-            "agora-gui-booth",
-            "agora-verifier",
-            "agora_elections",
-            "agora-dev-box",
-            "agora-results",
-            "agora-tally",
+            "common-ui",
+            "admin-console",
+            "election-portal",
+            "voting-booth",
+            "election-verifier",
+            "ballot_box",
+            "deployment-tool",
+            "tally-pipes",
+            "tally-methods",
             "frestq",
             "election-orchestra",
-            "authapi",
-            "agora-tools",
-            "vfork",
-            "admin-manual",
-            "agora-release"
+            "iam",
+            "misc-tools",
+            "mixnet",
+            "documentation",
+            "release-tool"
         ]
 
     for project_type in projects:
@@ -774,39 +774,39 @@ def main():
            apply_base_branch(project_path, base_branch)
         
         if change_version:
-            if 'agora-gui-common' == project_type:
+            if 'common-ui' == project_type:
                 do_gui_common(project_path, version)
-            elif 'agora-gui-admin' == project_type:
+            elif 'admin-console' == project_type:
                 do_gui_other(project_path, version)
-            elif 'agora-gui-elections' == project_type:
+            elif 'election-portal' == project_type:
                 do_gui_other(project_path, version)
-            elif 'agora-gui-booth' == project_type:
+            elif 'voting-booth' == project_type:
                 do_gui_other(project_path, version)
             elif 'election-orchestra' == project_type:
                 do_election_orchestra(project_path, version)
-            elif 'agora-verifier' == project_type:
+            elif 'election-verifier' == project_type:
                 do_agora_verifier(project_path, version)
-            elif 'agora_elections' == project_type:
+            elif 'ballot_box' == project_type:
                 do_agora_elections(project_path, version)
-            elif 'agora-dev-box' == project_type:
+            elif 'deployment-tool' == project_type:
                 do_agora_dev_box(project_path, version)
-            elif 'agora-results' == project_type:
+            elif 'tally-pipes' == project_type:
                 do_agora_results(project_path, version)
-            elif 'agora-tally' == project_type:
+            elif 'tally-methods' == project_type:
                 do_agora_tally(project_path, version)
             elif 'frestq' == project_type:
                 do_frestq(project_path, version)
-            elif 'authapi' == project_type:
+            elif 'iam' == project_type:
                 do_authapi(project_path, version)
-            elif 'agora-tools' == project_type:
+            elif 'misc-tools' == project_type:
                 do_agora_tools(project_path, version)
-            elif 'vfork' == project_type:
+            elif 'mixnet' == project_type:
                 do_vfork(project_path, version)
-            elif 'admin-manual' == project_type:
+            elif 'documentation' == project_type:
                 do_admin_manual(project_path, version)
-            elif 'agora-airgap' == project_type:
+            elif 'ballot-verifier' == project_type:
                 do_agora_airgap(project_path, version)
-            elif 'agora-release' == project_type:
+            elif 'release-tool' == project_type:
                 do_agora_release(project_path, version)
         
         if create_branch is not None:
