@@ -22,6 +22,7 @@ from datetime import datetime
 import subprocess
 import os
 import re
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 def read_text_file(file_path):
     textfile = open(file_path, "r")
@@ -675,6 +676,60 @@ def do_create_release(
             print("Error: couldn't create the release")
             exit(1)
 
+def do_set_dependabot_branches(project_path, branches):
+    '''
+    Configures the repository branches that will get dependabot security alerts.
+    '''
+    # change to pristine master branch
+    call_process(f"git stash", shell=True, cwd=project_path)
+    call_process(f"git fetch origin master", shell=True, cwd=project_path)
+    call_process(f"git clean -f -d", shell=True, cwd=project_path)
+    call_process(f"git checkout master", shell=True, cwd=project_path)
+    call_process(f"git reset --hard origin/master", shell=True, cwd=project_path)
+
+    # load the .github/dependabot.yml.tpl template and render it
+    env = Environment(
+        loader=FileSystemLoader(project_path),
+        autoescape=select_autoescape(),
+        lstrip_blocks=True,
+        trim_blocks=True
+    )
+    template = None
+    try:
+        template = env.get_template(".github/dependabot.yml.tpl")
+    except:
+        print("Error: couldn't load .github/dependabot.yml.tpl")
+        exit(1)
+    dependabot_yml_rendered = template.render(
+        branches=branches
+    )
+
+    # check if we don't have to update the dependabot.yml file and finish if
+    # that is the case
+    dependabot_file_path = os.path.join(project_path, ".github", "dependabot.yml")
+    current_dependabot_yml = read_text_file(dependabot_file_path)
+    if dependabot_yml_rendered == current_dependabot_yml:
+        print("Nothing to do, the dependabot.yml file is already correct")
+        return
+
+    # update the dependabot.yml file, commit and push to master
+    print("Updating .github/dependabot.yml..")
+    write_text_file(dependabot_file_path, dependabot_yml_rendered)
+    print(f"commit and push to master branch..")
+
+    call_process(f"git add .github/dependabot.yml", shell=True, cwd=project_path)
+    call_process(f"git diff --cached", shell=True, cwd=project_path)
+
+    call_process(
+        f"git status && git commit -m \"Updating branches in .github/dependabot.yml\"",
+        shell=True,
+        cwd=project_path
+    )
+    call_process(
+        f"git push origin master --force",
+        shell=True,
+        cwd=project_path
+    )
 
 
 def main():
@@ -762,6 +817,13 @@ def main():
         action="store_true",
         help="github release notes"
     )
+    parser.add_argument(
+        "--set-dependabot-branches",
+        metavar="BRANCH-NAME",
+        type=str,
+        nargs="+",
+        help="Set the dependabot alerts only for the given repository branches"
+    )
     args = parser.parse_args()
     change_version = args.change_version
     version = args.version
@@ -775,6 +837,7 @@ def main():
     prerelease = args.prerelease
     generate_release_notes = args.generate_release_notes
     previous_tag_name = args.previous_tag_name
+    set_dependabot_branches = args.set_dependabot_branches
     
     path = args.path
     parent_path = args.parent_path
@@ -810,6 +873,7 @@ def main():
  - generate_release_notes: {generate_release_notes}
  - previous_tag_name: {previous_tag_name}
  - prerelease: {prerelease}
+ - set_dependabot_branches: {set_dependabot_branches}
  """)
 
     if path is not None:
@@ -897,6 +961,11 @@ def main():
                 generate_release_notes,
                 previous_tag_name,
                 prerelease
+            )
+        if set_dependabot_branches is not None:
+            do_set_dependabot_branches(
+                project_path=project_path,
+                branches=set_dependabot_branches
             )
 
     print("done")
