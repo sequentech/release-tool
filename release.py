@@ -540,13 +540,39 @@ def do_documentation(dir_path, version):
 def do_release_tool(dir_path, version):
     pass
 
-def apply_base_branch(dir_path, base_branch):
+def apply_base_branch(dir_path, base_branches):
     print("applying base_branch..")
     call_process(f"git stash", shell=True, cwd=dir_path)
-    call_process(f"git fetch origin {base_branch}", shell=True, cwd=dir_path)
-    call_process(f"git clean -f -d", shell=True, cwd=dir_path)
-    call_process(f"git checkout {base_branch}", shell=True, cwd=dir_path)
-    call_process(f"git reset --hard origin/{base_branch}", shell=True, cwd=dir_path)
+    call_process(f"git fetch origin", shell=True, cwd=dir_path)
+
+    final_branch_name = base_branches[0]
+    branch_to_fork = None
+    for base_branch in base_branches:
+        ret_code = call_process(
+            f"git show-ref refs/heads/{base_branch}",
+            shell=True,
+            cwd=dir_path
+        )
+        if ret_code == 0:
+            branch_to_fork = base_branch
+            break
+
+    if branch_to_fork is None:
+        print(f"Error: branches {base_branches} do not exist")
+        exit(1)
+
+    call_process("git clean -f -d", shell=True, cwd=dir_path)
+    call_process("git checkout", shell=True, cwd=dir_path)
+    call_process("git reset --hard origin", shell=True, cwd=dir_path)
+
+    if final_branch_name != branch_to_fork:
+        print(f"creating '{final_branch_name}' branch from '{branch_to_fork}' branch")
+        call_process(f"git checkout {branch_to_fork}", shell=True, cwd=dir_path)
+        call_process(f"git checkout -b {final_branch_name}", shell=True, cwd=dir_path)
+    else:
+        print(f"Checking out '{branch_to_fork}' branch")
+        call_process(f"git checkout {branch_to_fork}", shell=True, cwd=dir_path)
+        call_process(f"git reset --hard origin/{branch_to_fork}", shell=True, cwd=dir_path)
 
 def do_commit_push_branch(dir_path, base_branch, version):
     print(f"commit and push to base branch='{base_branch}'..")
@@ -760,8 +786,9 @@ def main():
     parser.add_argument(
         "--base-branch",
         type=str,
-        help="use a specific base branch instead of the current one",
-        metavar="v2.x"
+        help="use a specific base branch (if it doesn't exist, try the next one in the list) instead of the current one",
+        metavar="v2.x",
+        nargs='+'
     )
     parser.add_argument(
         "--create-branch",
@@ -948,7 +975,7 @@ def main():
         if create_branch is not None:
             do_create_branch(project_path, create_branch, version)
         elif push_current_branch:
-            do_commit_push_branch(project_path, base_branch, version)
+            do_commit_push_branch(project_path, base_branch[0], version)
         if create_tag:
             do_create_tag(project_path, version)
         if create_release:
