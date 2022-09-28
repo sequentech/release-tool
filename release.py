@@ -37,12 +37,12 @@ def write_text_file(file_path, text):
 
 def get_project_type(dir_path):
     config_file = read_text_file(os.path.join(dir_path, ".git/config"))
-    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(sequentech)/(?P<proj_name>.+)(\.git|)', config_file)
+    my_match = re.search('url\s*=\s*git@(github|gitlab).com:(sequentech)/(?P<proj_name>.+?)(\.git)?\\n', config_file)
 
     try:
         my_match.group('proj_name')
     except:
-        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(sequentech)/(?P<proj_name>.+)(\.git|)', config_file)
+        my_match = re.search('url\s*=\s*https://(github|gitlab).com/(sequentech)/(?P<proj_name>.+?)(\.git)?\\n', config_file)
 
     return my_match.group('proj_name')
 
@@ -505,8 +505,8 @@ def do_documentation(dir_path, version):
     package = re.sub('"version"\s*:\s*"[^"]+"', '"version" : "'+ version + '"', package)
     write_text_file(os.path.join(dir_path, "package.json"), package)
 
-    print("docs/deployment/assets/config.auth.yml...")
-    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"))
+    print("docs/general/guides/deployment/assets/config.auth.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/general/guides/deployment/assets/config.auth.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
         "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
@@ -519,10 +519,10 @@ def do_documentation(dir_path, version):
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
-    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.auth.yml"), repos)
+    write_text_file(os.path.join(dir_path, "docs/general/guides/deployment/assets/config.auth.yml"), repos)
 
-    print("docs/deployment/assets/config.master.yml...")
-    repos = read_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"))
+    print("docs/general/guides/deployment/assets/config.master.yml...")
+    repos = read_text_file(os.path.join(dir_path, "docs/general/guides/deployment/assets/config.master.yml"))
     repos = re.sub('version:\s*.*[^,]\n', 'version: \''+ version + '\'\n', repos)
     repos = re.sub(
         "tallyPipesConfig: {\n(\s*)version:\s*\'[^\']+\',?\n",
@@ -535,7 +535,7 @@ def do_documentation(dir_path, version):
         repos
     )
     repos = re.sub('"version":\s*"[^"]+",\n', '"version": "'+ version + '",\n', repos)
-    write_text_file(os.path.join(dir_path, "docs/deployment/assets/config.master.yml"), repos)
+    write_text_file(os.path.join(dir_path, "docs/general/guides/deployment/assets/config.master.yml"), repos)
 
 def do_release_tool(dir_path, version):
     pass
