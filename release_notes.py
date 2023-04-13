@@ -6,6 +6,7 @@
 import os
 import yaml
 import argparse
+from datetime import datetime
 from github import Github
 
 def get_label_category(labels, categories):
@@ -40,7 +41,6 @@ def get_release_notes(repo, previous_release_head, new_release_head, config):
     release_notes = {}
     parent_issues = []
 
-    #import pdb; pdb.set_trace()
     for commit in compare_branches.commits:
         prs = commit.get_pulls()
 
@@ -56,7 +56,7 @@ def get_release_notes(repo, previous_release_head, new_release_head, config):
         if category is None:
             continue
 
-        parent_issue_text = "Parent Issue: "
+        parent_issue_text = "Parent issue: "
         parent_issue = None
         for line in pr.body.split("\n"):
             if line.startswith(parent_issue_text):
@@ -106,12 +106,47 @@ def parse_arguments():
     Returns:
         argparse.Namespace: An object containing parsed arguments.
     """
-    parser = argparse.ArgumentParser(description='Generate release notes and create a new release.')
-    parser.add_argument('repo_path', help='Github Repository path, i.e. `sequentech/ballot-box`')
-    parser.add_argument('previous_release', help='Previous release version in format `<major>.<minor>`, i.e. `7.2`')
-    parser.add_argument('new_release', help='New release version in format `<major>.<minor>`, i.e. `7.2` or full semver release if it already exists i.e. `7.3.0`')
-    parser.add_argument('--dry-run', dest='dry_run', action='store_true', help='Output the release notes but do not create any tag, release or new branch.')
-
+    parser = argparse.ArgumentParser(
+        description='Generate release notes and create a new release.'
+    )
+    parser.add_argument(
+        'repo_path',
+        help='Github Repository path, i.e. `sequentech/ballot-box`'
+    )
+    parser.add_argument(
+        'previous_release',
+        help='Previous release version in format `<major>.<minor>`, i.e. `7.2`'
+    )
+    parser.add_argument(
+        'new_release',
+        help=(
+            'New release version in format `<major>.<minor>`, i.e. `7.2` '
+            'or full semver release if it already exists i.e. `7.3.0`'
+        )
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help=(
+            'Output the release notes but do not create any tag, release or '
+            'new branch.'
+        )
+    )
+    parser.add_argument(
+        '--silent',
+        action='store_true',
+        help='Disables verbose output'
+    )
+    parser.add_argument(
+        '--draft',
+        action='store_true',
+        help='Mark the new release be as draft'
+    )
+    parser.add_argument(
+        '--prerelease',
+        action='store_true',
+        help='Mark the new release be as a prerelease'
+    )
     return parser.parse_args()
 
 def create_new_branch(repo, new_branch):
@@ -171,6 +206,11 @@ def get_release_head(major, minor, patch):
     else:
         return f"{major}.{minor}.{patch}"
 
+def verbose_print(args, message):
+    if not args.silent:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] {message}")
+
 def main():
     args = parse_arguments()
 
@@ -188,16 +228,19 @@ def main():
 
     prev_major, prev_minor, prev_patch = get_sem_release(previous_release)
     new_major, new_minor, new_patch = get_sem_release(new_release)
-    
+
     prev_release_head = get_release_head(prev_major, prev_minor, prev_patch)
     if new_patch or prev_major == new_major:
         new_release_head = get_release_head(new_major, new_minor, new_patch)
     else:
         new_release_head = repo.default_branch
 
+    verbose_print(args, f"Input Parameters: {args}")
+    verbose_print(args, f"Previous Release Head: {prev_release_head}")
+    verbose_print(args, f"New Release Head: {new_release_head}")
+
     release_notes = get_release_notes(repo, prev_release_head, new_release_head, config)
 
-    # determine patch version
     if not new_patch:
         latest_release = repo.get_releases()[0]
         latest_tag = latest_release.tag_name
@@ -208,19 +251,30 @@ def main():
             new_patch = 0
 
     new_tag = f"{new_major}.{new_minor}.{new_patch}"
+    verbose_print(args, f"New Release Name and Title: {new_tag}")
 
     release_notes_md = create_release_notes_md(release_notes, new_tag)
 
+    verbose_print(args, f"Generated Release Notes: {release_notes_md}")
+
     if not dry_run:
         if prev_major < new_major:
+            verbose_print(args, "Creating new branch")
             create_new_branch(repo, new_release_head)
-        repo.create_git_release(
-            tag=new_release,
-            name=f"{new_release} release",
-            body=release_notes_md
+        verbose_print(args, "Creating new release")
+        repo.create_git_tag_and_release(
+            tag=new_tag,
+            tag_message=f"{new_tag} release",
+            type='commit',
+            object=repo.get_branch(new_release_head).commit.sha,
+            release_name=f"{new_tag} release",
+            release_message=release_notes_md,
+            prerelease=args.prerelease,
+            draft=args.draft
         )
+        verbose_print(args, f"Executed Actions: Branch created and new release created")
     else:
-        print(release_notes_md)
+        verbose_print(args, "Dry Run: No actions executed")
 
 if __name__ == "__main__":
     main()

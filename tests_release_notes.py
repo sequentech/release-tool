@@ -75,7 +75,7 @@ class TestGetReleaseNotes(unittest.TestCase):
         pr.title = "Fix a bug"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
-        pr.body = "Parent Issue: https://github.com/username/repo/issues/1"
+        pr.body = "Parent issue: https://github.com/username/repo/issues/1"
         commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
         self.repo.compare.return_value.commits = [commit]
 
@@ -94,7 +94,7 @@ class TestGetReleaseNotes(unittest.TestCase):
         pr.title = "Fix a bug"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
-        pr.body = "Parent Issue: https://github.com/username/repo/issues/1"
+        pr.body = "Parent issue: https://github.com/username/repo/issues/1"
         commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
         self.repo.compare.return_value.commits = [commit, commit]
 
