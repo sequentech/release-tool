@@ -251,7 +251,9 @@ def main():
             new_patch = 0
 
     new_tag = f"{new_major}.{new_minor}.{new_patch}"
-    verbose_print(args, f"New Release Name and Title: {new_tag}")
+    new_title = f"{new_tag} release"
+    verbose_print(args, f"New Release Tag: {new_tag}")
+    verbose_print(args, f"New Release Title: {new_title}")
 
     release_notes_md = create_release_notes_md(release_notes, new_tag)
 
@@ -264,10 +266,10 @@ def main():
         verbose_print(args, "Creating new release")
         repo.create_git_tag_and_release(
             tag=new_tag,
-            tag_message=f"{new_tag} release",
+            tag_message=new_title,
             type='commit',
             object=repo.get_branch(new_release_head).commit.sha,
-            release_name=f"{new_tag} release",
+            release_name=new_title,
             release_message=release_notes_md,
             prerelease=args.prerelease,
             draft=args.draft
