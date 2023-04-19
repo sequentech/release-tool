@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from github import Github, Project, Issue
 from datetime import datetime, timedelta
-from update_parent_issue import (get_closed_issues_in_last_n_days, get_project_by_url)
+from update_parent_issue import (get_closed_issues_in_last_n_days, get_project_id)
 
 
 class TestGetClosedIssuesInLastNDays(unittest.TestCase):
@@ -137,7 +137,7 @@ class TestGetProjectByUrl(unittest.TestCase):
             MagicMock(id=124, name="Project 2")
         ])
 
-        project = get_project_by_url(self.github_instance, self.project_board_url, self.silent)
+        project = get_project_id(self.github_instance, self.project_board_url, self.silent)
         self.assertEqual(project.id, 123)
 
     @patch("update_parent_issue.re")
@@ -152,7 +152,7 @@ class TestGetProjectByUrl(unittest.TestCase):
             MagicMock(id=124, name="Project 2")
         ])
 
-        project = get_project_by_url(self.github_instance, self.project_board_url, self.silent)
+        project = get_project_id(self.github_instance, self.project_board_url, self.silent)
         self.assertIsNone(project)
 
     @patch("update_parent_issue.re")
@@ -160,7 +160,7 @@ class TestGetProjectByUrl(unittest.TestCase):
         mock_re.search.return_value = None
 
         with self.assertRaises(AttributeError):
-            get_project_by_url(self.github_instance, "https://invalid_url.com", self.silent)
+            get_project_id(self.github_instance, "https://invalid_url.com", self.silent)
 
 
 if __name__ == "__main__":

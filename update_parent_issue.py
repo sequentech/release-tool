@@ -5,6 +5,7 @@
 
 import os
 import re
+import requests
 import argparse
 from github import Github
 from datetime import datetime, timedelta
@@ -20,51 +21,213 @@ def verbose_print(message, silent):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")
 
-def get_project_by_url(github_instance, project_board_url, silent):
+
+def send_graphql_query(query, access_token, silent):
+    """
+    Send a GraphQL query to the GitHub API.
+
+    :param query: str, the GraphQL query
+    :param access_token: str, the access token for GitHub API
+    :param silent: bool, flag for silent mode
+    :return: dict, the JSON response from the API
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    request_data = {"query": query}
+    response = requests.post(
+        "https://api.github.com/graphql",
+        json=request_data,
+        headers=headers
+    )
+
+    if response.status_code != 200:
+        verbose_print(f"ERROR GraphQL request failed with status {response.status_code}: {response.text}", silent)
+        return None
+
+    return response.json()
+
+def get_project_id(access_token, project_board_url, silent):
     """
     Find and return a Github project given its URL.
     
-    :param github_instance: github.Github instance
+    :param access_token: str, the access token for GitHub API
     :param project_board_url: str, URL of the project board
     :param silent: bool, flag for silent mode
     :return: github.Project.Project instance or None
     """
-    org_name = re.search(r"https://github.com/orgs/([\w-]+)/", project_board_url).group(1)
-    org = github_instance.get_organization(org_name)
-    
-    # Extract project ID from the URL
-    project_id = int(re.search(r"/projects/(\d+)", project_board_url).group(1))
-    verbose_print(f"- Github org_name = `{org_name}`", silent)
-    verbose_print(f"- Github project_id = int({project_id})`", silent)
-    
-    for project in org.get_projects():
-        verbose_print(f"... Github project_id = int({id})`", silent)
-        if project.id == project_id:
-            return project
-    return None
 
-def get_closed_issues_in_last_n_days(project, days):
+    # Extract project number and organization name from the URL
+    org_name = re.search(r"https://github.com/orgs/([\w-]+)/", project_board_url).group(1)
+    project_num = int(re.search(r"/projects/(\d+)", project_board_url).group(1))
+
+    verbose_print(f"- Github org_name = `{org_name}`", silent)
+    verbose_print(f"- Github project_num = int({project_num})`", silent)
+    verbose_print(f"Obtaining project_id ...", silent)
+
+    query = f"""
+    query {{
+        organization(login: "{org_name}") {{
+            projectV2(number: {project_num}) {{
+                id
+            }}
+        }}
+    }}
+    """
+    response = send_graphql_query(query, access_token, silent)
+    if response is None or "errors" in response:
+        return None
+
+    project_id = response["data"]["organization"]["projectV2"]["id"]
+    verbose_print(f"... Done! Github project_id = `{project_id}`", silent)
+    return project_id
+
+def get_closed_issues_in_last_n_days(project_id, days, access_token, silent):
     """
     Get all closed issues in the last N days for a given project.
     
-    :param project: github.Project.Project instance
+    :param project_id: str, the ID of the project
     :param days: int, number of days to look back for closed issues
+    :param access_token: str, the access token for GitHub API
+    :param silent: bool, flag for silent mode
     :return: list of github.Issue.Issue instances
     """
     now = datetime.now()
     n_days_ago = now - timedelta(days=days)
     closed_issues = []
 
-    for column in project.get_columns():
-        for card in column.get_cards():
-            if card.get_content() is not None and "/issues/" in card.content_url:
-                issue = card.get_content()
-                if issue.state == "closed" and issue.closed_at > n_days_ago:
-                    closed_issues.append(issue)
+    has_next_page = True
+    end_cursor = None
+    total_count = 0
+
+    verbose_print(f"Obtaining project_id=`{project_id}` issues ..", silent)
+    while has_next_page:
+        verbose_print("...", silent)
+        query = f"""
+        query {{
+            node(id: "{project_id}") {{
+                ... on ProjectV2 {{
+                    items(first: 100{f', after: "{end_cursor}"' if end_cursor else ''}) {{
+                        nodes {{
+                            id
+                            updatedAt
+                            content {{
+                                __typename
+                                ... on Issue {{
+                                    title
+                                    closedAt
+                                    state
+                                    body
+                                    url
+                                    repository {{ name }}
+                                    assignees(first: 1) {{
+                                        nodes {{
+                                        login
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                        totalCount
+                        pageInfo {{
+                            hasNextPage
+                            endCursor
+                        }}
+                    }}
+                }}
+            }}
+        }}
+        """
+
+        response = send_graphql_query(query, access_token, silent)
+        if response is None or "errors" in response:
+            break
+
+        nodes = response["data"]["node"]["items"]["nodes"]
+        page_info = response["data"]["node"]["items"]["pageInfo"]
+        total_count = response["data"]["node"]["items"]['totalCount']
+        has_next_page = page_info["hasNextPage"]
+        end_cursor = page_info["endCursor"]
+
+        for node in nodes:
+            if (
+                node["content"]["__typename"] == "Issue"
+                and node["content"]["state"] == "CLOSED"
+            ):
+                issue_closed_at = datetime.strptime(
+                    node["content"]["closedAt"], "%Y-%m-%dT%H:%M:%SZ"
+                )
+                if issue_closed_at > n_days_ago:
+                    closed_issues.append(node)
+
+    verbose_print(f"...done! read {total_count} issues, filtered to {len(closed_issues)} issues", silent)
 
     return closed_issues
 
-def update_prs_with_parent_issue(issue, dry_run, silent):
+
+def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
+    verbose_print(f"\t- PR {pr_url}:", silent)
+    # Extract the repository name, owner and pull request number from the URL
+    split_url = pr_url.split("/")
+    owner, repo, pr_number = split_url[3], split_url[4], split_url[-1]
+
+    # Prepare the GraphQL query to get the pull request's ID and body
+    query = f"""
+    query {{
+        repository(owner: "{owner}", name: "{repo}") {{
+            pullRequest(number: {pr_number}) {{
+                id
+                body
+            }}
+        }}
+    }}
+    """
+
+    # Execute the query
+    response_data = send_graphql_query(query, access_token, silent)
+
+    # Parse the response
+    pr_data = response_data["data"]["repository"]["pullRequest"]
+    pr_id, current_body = pr_data["id"], pr_data["body"]
+
+    # Check if the desired text is at the start of the body
+    verbose_print(f"\t\t - Body starts with ```{current_body[:200]}```", silent)
+    if current_body.startswith(start_text):
+        verbose_print(f"\t\t - Not updating, it's ok", silent)
+        return
+
+    # If not, update the body to include the desired text at the beginning
+    new_body = start_text + "\n" + current_body
+
+    # Prepare the GraphQL mutation to update the pull request body
+    mutation_query = f"""
+    mutation {{
+        updatePullRequest(input: {{
+            pullRequestId: "{pr_id}",
+            body: "{new_body}"
+        }}) {{
+            pullRequest {{
+                number
+                body
+            }}
+        }}
+    }}
+    """
+
+    if dry_run:
+        verbose_print(f"\t\t - [dry-run] Would be updating PR to be ```{new_body[:300]}```", silent)
+        return
+    else:
+        verbose_print(f"\t\t - Updating PR..", silent)
+    
+    # Execute the mutation
+    response_data = send_graphql_query(mutation_query, access_token, silent)
+    verbose_print(f"\t\t   ... done!", silent)
+    import sys
+    sys.exit(0)
+
+def update_prs_with_parent_issue(issue, access_token, dry_run, silent):
     """
     Update PRs associated with a closed issue by adding a "Parent issue" link to their body.
     
@@ -72,21 +235,17 @@ def update_prs_with_parent_issue(issue, dry_run, silent):
     :param dry_run: bool, indicating whether the code should perform changes or not
     :param silent: bool, flag for silent mode
     """
-    pr_links = re.findall(r"https://github.com/\S+/pull/\d+", issue.body)
-    verbose_print(f"- Issue: {issue.html_url} ({issue.title})", silent)
+    issue_title = issue["content"]["title"]
+    issue_url = issue["content"]["url"]
+    issue_body = issue["content"]["body"]
+    pr_links = re.findall(r"https://github.com/\S+/pull/\d+", issue_body)
+    verbose_print(f"- Issue: {issue_url} ({issue_title})", silent)
 
     for pr_link in pr_links:
-        pr = issue.repository.get_pull(int(pr_link.split("/")[-1]))
-
-        if not pr.body.startswith(issue.html_url):
-            pr_body = f"Parent issue: {issue.html_url}\n\n{pr.body}"
-            if not dry_run:
-                verbose_print(f"\t- FIXING Linked PR: {pr.html_url} ({pr.title})", silent)
-                pr.edit(body=pr_body)
-            else:
-                verbose_print(f"\t- (dry-run) FIXING Linked PR: {pr.html_url} ({pr.title}). Current body starts with:\n{pr.body[300:]}\n[...]", silent)
-        else:
-            verbose_print(f"\t- PASS Linked PR: {pr.html_url} ({pr.title})", silent)
+        start_text = f"Parent issue: {issue_url}\n"
+        update_pull_request_body(
+            pr_link, access_token, start_text, silent, dry_run
+        )
 
 def main():
     """
@@ -107,18 +266,21 @@ def main():
         verbose_print("ERROR Environment variable 'GITHUB_TOKEN' not set.", args.silent)
         exit(1)
 
-    github_instance = Github(access_token)
-    project = get_project_by_url(github_instance, args.project_board_url, args.silent)
+    project = get_project_id(access_token, args.project_board_url, args.silent)
 
     if project is None:
         verbose_print("ERROR Project not found", args.silent)
         exit(1)
 
 
-    closed_issues = get_closed_issues_in_last_n_days(project, args.days)
+    closed_issues = get_closed_issues_in_last_n_days(
+        project, args.days, access_token, args.silent
+    )
 
     for issue in closed_issues:
-        update_prs_with_parent_issue(issue, args.dry_run, args.silent)
+        update_prs_with_parent_issue(
+            issue, access_token, args.dry_run, args.silent
+        )
 
 if __name__ == "__main__":
     main()
