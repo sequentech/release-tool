@@ -224,8 +224,6 @@ def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
     # Execute the mutation
     response_data = send_graphql_query(mutation_query, access_token, silent)
     verbose_print(f"\t\t   ... done!", silent)
-    import sys
-    sys.exit(0)
 
 def update_prs_with_parent_issue(issue, access_token, dry_run, silent):
     """
