@@ -113,6 +113,16 @@ def parse_arguments():
         action='store_true',
         help='Disables verbose output'
     )
+    parser.add_argument(
+        '--draft',
+        action='store_true',
+        help='Mark the new release be as draft'
+    )
+    parser.add_argument(
+        '--prerelease',
+        action='store_true',
+        help='Mark the new release be as a prerelease'
+    )
     return parser.parse_args()
 
 
@@ -169,12 +179,21 @@ def main():
         if prev_major < new_major:
             verbose_print(args, "Creating new branch")
             create_new_branch(meta_repo, new_release_head)
+        else:
+            branch = None
+            try:
+                branch = meta_repo.get_branch(new_release_head)
+            except:
+                verbose_print(args, "Creating new branch")
+                create_new_branch(meta_repo, new_release_head)
+                branch = meta_repo.get_branch(new_release_head)
+
         verbose_print(args, "Creating new release")
         meta_repo.create_git_tag_and_release(
             tag=new_tag,
             tag_message=new_title,
             type='commit',
-            object=meta_repo.get_branch(new_release_head).commit.sha,
+            object=branch.commit.sha,
             release_name=new_title,
             release_message=release_notes_md,
             prerelease=args.prerelease,

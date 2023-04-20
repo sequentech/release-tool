@@ -222,7 +222,7 @@ def parse_arguments():
 
 def create_new_branch(repo, new_branch):
     """
-    Create a new branch for the release if necessary.
+    Create a new branch for the release.
 
     Args:
         repo (github.Repository.Repository): The repository object.
