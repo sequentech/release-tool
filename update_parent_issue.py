@@ -5,6 +5,7 @@
 
 import os
 import re
+import sys
 import requests
 import argparse
 from github import Github
@@ -46,7 +47,12 @@ def send_graphql_query(query, access_token, silent):
         verbose_print(f"ERROR GraphQL request failed with status {response.status_code}: {response.text}", silent)
         return None
 
-    return response.json()
+    json_data = response.json()
+    if 'errors' in json_data:
+        verbose_print(f"ERROR GraphQL request failed with status {response.status_code}: {response.text}", silent)
+        return None
+
+    return json_data
 
 def get_project_id(access_token, project_board_url, silent):
     """
@@ -76,7 +82,7 @@ def get_project_id(access_token, project_board_url, silent):
     }}
     """
     response = send_graphql_query(query, access_token, silent)
-    if response is None or "errors" in response:
+    if response is None:
         return None
 
     project_id = response["data"]["organization"]["projectV2"]["id"]
@@ -141,7 +147,7 @@ def get_closed_issues_in_last_n_days(project_id, days, access_token, silent):
         """
 
         response = send_graphql_query(query, access_token, silent)
-        if response is None or "errors" in response:
+        if response is None:
             break
 
         nodes = response["data"]["node"]["items"]["nodes"]
@@ -152,19 +158,24 @@ def get_closed_issues_in_last_n_days(project_id, days, access_token, silent):
 
         for node in nodes:
             if (
-                node["content"]["__typename"] == "Issue"
-                and node["content"]["state"] == "CLOSED"
+                node["content"]["__typename"] == "Issue" and
+                node["content"]["state"] == 'CLOSED'
             ):
                 issue_closed_at = datetime.strptime(
                     node["content"]["closedAt"], "%Y-%m-%dT%H:%M:%SZ"
                 )
                 if issue_closed_at > n_days_ago:
+                    issue_title = node["content"]["title"]
+                    issue_url = node["content"]["url"]
+                    verbose_print(f"- Adding issue: {issue_url} ({issue_title})", silent)
                     closed_issues.append(node)
 
     verbose_print(f"...done! read {total_count} issues, filtered to {len(closed_issues)} issues", silent)
 
     return closed_issues
 
+def quote_text(text):
+    return text.replace("\"", "\\\"")
 
 def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
     verbose_print(f"\t- PR {pr_url}:", silent)
@@ -186,13 +197,14 @@ def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
 
     # Execute the query
     response_data = send_graphql_query(query, access_token, silent)
+    if response_data is None:
+        sys.exit(1)
 
     # Parse the response
     pr_data = response_data["data"]["repository"]["pullRequest"]
     pr_id, current_body = pr_data["id"], pr_data["body"]
 
     # Check if the desired text is at the start of the body
-    verbose_print(f"\t\t - Body starts with ```{current_body[:200]}```", silent)
     if current_body.startswith(start_text):
         verbose_print(f"\t\t - Not updating, it's ok", silent)
         return
@@ -205,7 +217,7 @@ def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
     mutation {{
         updatePullRequest(input: {{
             pullRequestId: "{pr_id}",
-            body: "{new_body}"
+            body: "{quote_text(new_body)}"
         }}) {{
             pullRequest {{
                 number
@@ -223,6 +235,9 @@ def update_pull_request_body(pr_url, access_token, start_text, silent, dry_run):
     
     # Execute the mutation
     response_data = send_graphql_query(mutation_query, access_token, silent)
+    if response_data is None:
+        sys.exit(1)
+
     verbose_print(f"\t\t   ... done!", silent)
 
 def update_prs_with_parent_issue(issue, access_token, dry_run, silent):

@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import os
+import re
 import yaml
 import argparse
 from datetime import datetime
@@ -26,10 +27,71 @@ def get_label_category(labels, categories):
                 return category
     return None
 
-def get_release_notes(repo, previous_release_head, new_release_head, config):
+def get_commit_pull(commit):
+    """
+    Get the pull request (PR) object associated with a commit.
+
+    This function uses the PyGithub library to find the PR associated with a given commit.
+    It first checks if the commit message's first line contains one or more PR numbers (e.g. "#33").
+    If so, it chooses the largest PR number and returns the corresponding PR object.
+    Otherwise, it returns the PR object with the lowest PR number from commit.get_pulls().
+
+    :param commit: A PyGithub Commit object representing a commit.
+    :return: A PyGithub PullRequest object corresponding to the associated PR, or None if no PR is found.
+    """
+    # Extract PR numbers from the commit message's first line
+    first_line = commit.commit.message.split("\n")[0]
+    pr_numbers = [int(x[1:]) for x in re.findall(r"#\d+", first_line)]
+
+    if pr_numbers:
+        # Find the PR with the largest number mentioned in the commit message
+        max_pr_number = max(pr_numbers)
+        associated_pr = None
+
+        # Iterate over the available pull requests and find the one with the max_pr_number
+        for pr in commit.get_pulls():
+            if pr.number == max_pr_number:
+                associated_pr = pr
+                break
+
+        return associated_pr
+    else:
+        # If no PR numbers are mentioned in the commit message, find the PR with the lowest number
+        min_pr = None
+
+        for pr in commit.get_pulls():
+            if min_pr is None or pr.number < min_pr.number:
+                min_pr = pr
+
+        return min_pr
+
+def get_github_issue_from_link(link_text, github):
+    """
+    Retrieve the Github issue object from the provided link.
+
+    Args:
+        link_text (str): The link to the Github issue, in the format 'https://github.com/owner/repo/issues/123'.
+        github (Github): A PyGithub object that represents a connection to a Github account.
+
+    Returns:
+        object: A PyGithub object that represents the retrieved Github issue.
+    """
+    # Extracting the owner, repository name, and issue number from the link
+    owner, repo, _, issue_number = link_text.split("/")[-4:]
+
+    # Getting the repository object
+    repo = github.get_repo(f"{owner}/{repo}")
+
+    # Getting the issue object
+    issue = repo.get_issue(int(issue_number))
+
+    return issue
+
+def get_release_notes(github, repo, previous_release_head, new_release_head, config):
     """
     Retrieve release notes from a GitHub repository based on the given configuration.
 
+    :param github: A PyGithub object that represents a connection to a Github account.
     :param repo: A Repository object representing the GitHub repository.
     :param previous_release_head: str, the previous release's head commit.
     :param new_release_head: str, the new release's head commit.
@@ -40,14 +102,12 @@ def get_release_notes(repo, previous_release_head, new_release_head, config):
 
     release_notes = {}
     parent_issues = []
+    links = []
 
     for commit in compare_branches.commits:
-        prs = commit.get_pulls()
-
-        if prs.totalCount == 0:
+        pr = get_commit_pull(commit)
+        if pr == None:
             continue
-
-        pr = prs[0]
 
         if any(label.name in config["changelog"]["exclude"]["labels"] for label in pr.labels):
             continue
@@ -56,12 +116,14 @@ def get_release_notes(repo, previous_release_head, new_release_head, config):
         if category is None:
             continue
 
+        title = pr.title.strip()
         parent_issue_text = "Parent issue: "
         parent_issue = None
-        for line in pr.body.split("\n"):
-            if line.startswith(parent_issue_text):
-                parent_issue = line[len(parent_issue_text):]
-                break
+        if isinstance(pr.body, str):
+            for line in pr.body.split("\n"):
+                if line.startswith(parent_issue_text):
+                    parent_issue = line[len(parent_issue_text):]
+                    break
 
         if parent_issue:
             if parent_issue in parent_issues:
@@ -69,15 +131,24 @@ def get_release_notes(repo, previous_release_head, new_release_head, config):
             else:
                 parent_issues.append(parent_issue)
             link = parent_issue
+            issue = get_github_issue_from_link(link, github)
+            title = issue.title.strip()
         else:
             link = pr.html_url
+        
+        if link in links:
+            continue
+        else:
+            links.append(link)
 
         if category['title'] not in release_notes:
             release_notes[category['title']] = []
 
-        development = f"* {pr.title} by @{pr.user.login} in {link}"
+        development = f"* {title} by @{pr.user.login} in {link}"
         release_notes[category['title']].append(development)
 
+    release_notes_yaml = yaml.dump(release_notes, default_flow_style=False)
+    print(f"release notes:\n{release_notes_yaml}")
     return release_notes
 
 def create_release_notes_md(release_notes, new_release):
@@ -220,8 +291,8 @@ def main():
     dry_run = args.dry_run
     github_token = os.getenv("GITHUB_TOKEN")
 
-    g = Github(github_token)
-    repo = g.get_repo(repo_path)
+    gh = Github(github_token)
+    repo = gh.get_repo(repo_path)
 
     with open(".github/release.yml") as f:
         config = yaml.safe_load(f)
@@ -239,7 +310,7 @@ def main():
     verbose_print(args, f"Previous Release Head: {prev_release_head}")
     verbose_print(args, f"New Release Head: {new_release_head}")
 
-    release_notes = get_release_notes(repo, prev_release_head, new_release_head, config)
+    release_notes = get_release_notes(gh, repo, prev_release_head, new_release_head, config)
 
     if not new_patch:
         latest_release = repo.get_releases()[0]

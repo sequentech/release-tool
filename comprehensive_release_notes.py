@@ -26,19 +26,19 @@ REPOSITORIES = [
     "sequentech/admin-console",
     "sequentech/election-portal",
     "sequentech/voting-booth",
-   # "sequentech/ballot-box",
-   # "sequentech/deployment-tool",
-   # "sequentech/tally-methods",
-   # "sequentech/tally-pipes",
-   # "sequentech/election-verifier",
-   # "sequentech/frestq",
-   # "sequentech/election-orchestra",
-   # "sequentech/iam",
-   # "sequentech/misc-tools",
-   # "sequentech/mixnet",
-   # "sequentech/documentation",
-   # "sequentech/ballot-verifier",
-   # "sequentech/release-tool",
+    "sequentech/ballot-box",
+    "sequentech/deployment-tool",
+    "sequentech/tally-methods",
+    "sequentech/tally-pipes",
+    "sequentech/election-verifier",
+    "sequentech/frestq",
+    "sequentech/election-orchestra",
+    "sequentech/iam",
+    "sequentech/misc-tools",
+    "sequentech/mixnet",
+    "sequentech/documentation",
+    "sequentech/ballot-verifier",
+    "sequentech/release-tool",
 ]
 
 def get_comprehensive_release_notes(args, token, repos, prev_release, new_release, config):
@@ -60,7 +60,7 @@ def get_comprehensive_release_notes(args, token, repos, prev_release, new_releas
     for repo_path in repos:
         verbose_print(args, f"Generating release notes for repo {repo_path}..")
         repo = gh.get_repo(repo_path)
-        repo_notes = get_release_notes(repo, prev_release, new_release, config)
+        repo_notes = get_release_notes(gh, repo, prev_release, new_release, config)
         verbose_print(args, f"..generated")
         for category, notes in repo_notes.items():
             release_notes[category].extend(notes)
