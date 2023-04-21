@@ -4,7 +4,7 @@
 
 import unittest
 from unittest.mock import MagicMock, Mock
-from github import Repository
+from github import Repository, Github
 from release_notes import (
     get_label_category, get_release_notes, create_release_notes_md
 )
@@ -19,7 +19,10 @@ class TestGetReleaseNotes(unittest.TestCase):
         return ret
 
     def setUp(self):
+        self.args = commit = Mock(silent=True)
+        self.github = MagicMock(spec=Github)
         self.repo = MagicMock(spec=Repository.Repository)
+        self.github.get_repo.return_value = self.repo
         self.repo.compare.return_value.commits = []
         self.config = {
             "changelog": {
@@ -32,18 +35,20 @@ class TestGetReleaseNotes(unittest.TestCase):
         }
 
     def test_get_release_notes_empty(self):
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config)
         self.assertEqual(release_notes, {})
 
     def test_get_release_notes_with_data(self):
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
+        pr.number = 1
         pr.labels = self.generate_labels(["bug"])
         pr.title = "Fix a bug"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = ""
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit]
 
         expected_release_notes = {
@@ -51,73 +56,87 @@ class TestGetReleaseNotes(unittest.TestCase):
                 "* Fix a bug by @user in https://github.com/username/repo/pull/1"
             ]
         }
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config, self.args)
         self.assertEqual(release_notes, expected_release_notes)
 
     def test_get_release_notes_with_excluded_label(self):
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
         pr.labels = self.generate_labels(["skip-changelog"])
         pr.title = "Fix a bug"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = ""
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit]
 
-        release_notes = get_release_notes(self.repo, "1.0.0", "master", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "master", self.config, self.args)
         self.assertEqual(release_notes, {})
 
     def test_get_release_notes_with_parent_issue(self):
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
         pr.labels = self.generate_labels(["bug"])
-        pr.title = "Fix a bug"
+        pr.title = "Fix a bug PR"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = "Parent issue: https://github.com/username/repo/issues/1"
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit]
+
+        issue = Mock()
+        issue.title = "Fix a bug"
+        issue.html_url = "https://github.com/username/repo/issues/1"
+        self.repo.get_issue = Mock(return_value=issue)
 
         expected_release_notes = {
             "Bug Fixes": [
                 "* Fix a bug by @user in https://github.com/username/repo/issues/1"
             ]
         }
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config, self.args)
         self.assertEqual(release_notes, expected_release_notes)
 
     def test_get_release_notes_with_parent_issue_already_included(self):
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
         pr.labels = self.generate_labels(["bug"])
         pr.title = "Fix a bug"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = "Parent issue: https://github.com/username/repo/issues/1"
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit, commit]
+
+        issue = Mock()
+        issue.title = "Fix a bug"
+        issue.html_url = "https://github.com/username/repo/issues/1"
+        self.repo.get_issue = Mock(return_value=issue)
 
         expected_release_notes = {
             "Bug Fixes": [
                 "* Fix a bug by @user in https://github.com/username/repo/issues/1"
             ]
         }
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config, self.args)
         self.assertEqual(release_notes, expected_release_notes)
 
     def test_get_release_notes_with_no_matching_category(self):
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
         pr.labels = self.generate_labels(["other"])
         pr.title = "Other change"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = ""
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit]
 
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config, self.args)
         self.assertEqual(release_notes, {})
 
     def test_get_release_notes_with_wildcard_category(self):
@@ -125,13 +144,14 @@ class TestGetReleaseNotes(unittest.TestCase):
             {"title": "Other Changes", "labels": ["*"]}
         )
         commit = Mock()
+        commit.commit.message = "A commit message"
         pr = Mock()
         pr.labels = self.generate_labels(["other"])
         pr.title = "Other change"
         pr.user.login = "user"
         pr.html_url = "https://github.com/username/repo/pull/1"
         pr.body = ""
-        commit.get_pulls.return_value = Mock(totalCount=1, __getitem__=lambda s, i: pr)
+        commit.get_pulls.return_value = [pr]
         self.repo.compare.return_value.commits = [commit]
 
         expected_release_notes = {
@@ -139,7 +159,7 @@ class TestGetReleaseNotes(unittest.TestCase):
                 "* Other change by @user in https://github.com/username/repo/pull/1"
             ]
         }
-        release_notes = get_release_notes(self.repo, "1.0.0", "1.1.0", self.config)
+        release_notes = get_release_notes(self.github, self.repo, "1.0.0", "1.1.0", self.config, self.args)
         self.assertEqual(release_notes, expected_release_notes)
 
 

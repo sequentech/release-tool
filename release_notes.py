@@ -87,7 +87,7 @@ def get_github_issue_from_link(link_text, github):
 
     return issue
 
-def get_release_notes(github, repo, previous_release_head, new_release_head, config):
+def get_release_notes(github, repo, previous_release_head, new_release_head, config, args=type('', (), {'silent': False})()):
     """
     Retrieve release notes from a GitHub repository based on the given configuration.
 
@@ -148,7 +148,7 @@ def get_release_notes(github, repo, previous_release_head, new_release_head, con
         release_notes[category['title']].append(development)
 
     release_notes_yaml = yaml.dump(release_notes, default_flow_style=False)
-    print(f"release notes:\n{release_notes_yaml}")
+    verbose_print(args, f"release notes:\n{release_notes_yaml}")
     return release_notes
 
 def create_release_notes_md(release_notes, new_release):
@@ -310,7 +310,7 @@ def main():
     verbose_print(args, f"Previous Release Head: {prev_release_head}")
     verbose_print(args, f"New Release Head: {new_release_head}")
 
-    release_notes = get_release_notes(gh, repo, prev_release_head, new_release_head, config)
+    release_notes = get_release_notes(gh, repo, prev_release_head, new_release_head, config, args)
 
     if not new_patch:
         latest_release = repo.get_releases()[0]
