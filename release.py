@@ -562,17 +562,12 @@ def apply_base_branch(dir_path, base_branches):
         exit(1)
 
     call_process("git clean -f -d", shell=True, cwd=dir_path)
-    call_process("git checkout", shell=True, cwd=dir_path)
-    call_process("git reset --hard origin", shell=True, cwd=dir_path)
+    call_process(f"git checkout {branch_to_fork}", shell=True, cwd=dir_path)
+    call_process(f"git reset --hard origin/{branch_to_fork}", shell=True, cwd=dir_path)
 
     if final_branch_name != branch_to_fork:
         print(f"creating '{final_branch_name}' branch from '{branch_to_fork}' branch")
-        call_process(f"git checkout {branch_to_fork}", shell=True, cwd=dir_path)
         call_process(f"git checkout -b {final_branch_name}", shell=True, cwd=dir_path)
-    else:
-        print(f"Checking out '{branch_to_fork}' branch")
-        call_process(f"git checkout {branch_to_fork}", shell=True, cwd=dir_path)
-        call_process(f"git reset --hard origin/{branch_to_fork}", shell=True, cwd=dir_path)
 
 def do_commit_push_branch(dir_path, base_branch, version):
     print(f"commit and push to base branch='{base_branch}'..")
