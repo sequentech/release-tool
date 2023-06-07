@@ -10,6 +10,14 @@ import argparse
 from datetime import datetime
 from github import Github
 
+# Text to detect in PR descriptions which is followed by the link to the parent
+# issue
+PARENT_ISSUE_TEXT = 'Parent issue: '
+
+# If a commit is older than this, we will ignore it in the release notes because
+# we were not following the same github procedures at that time
+CUTOFF_DATE = 'Sun, 01 Jan 2023 00:00:00 GMT'
+
 def get_label_category(labels, categories):
     """
     Get the category that matches the given labels.
@@ -87,7 +95,15 @@ def get_github_issue_from_link(link_text, github):
 
     return issue
 
-def get_release_notes(github, repo, previous_release_head, new_release_head, config, args=type('', (), {'silent': False})()):
+def get_release_notes(
+        github,
+        repo,
+        previous_release_head,
+        new_release_head,
+        config,
+        hidden_links=[],
+        args=type('', (), {'silent': False})()
+    ):
     """
     Retrieve release notes from a GitHub repository based on the given configuration.
 
@@ -96,13 +112,20 @@ def get_release_notes(github, repo, previous_release_head, new_release_head, con
     :param previous_release_head: str, the previous release's head commit.
     :param new_release_head: str, the new release's head commit.
     :param config: dict, the configuration for generating release notes.
-    :return: dict, the release notes categorized by their labels.
+    :return: tuple with (
+        dict: the release notes categorized by their labels,
+        list: list of links to the PRs included
+    )
     """
     compare_branches = repo.compare(previous_release_head, new_release_head)
 
     release_notes = {}
     parent_issues = []
     links = []
+    cutoff_date = datetime.strptime(
+        CUTOFF_DATE,
+        '%a, %d %b %Y %H:%M:%S %Z'
+    )
 
     for commit in compare_branches.commits:
         pr = get_commit_pull(commit)
@@ -117,12 +140,16 @@ def get_release_notes(github, repo, previous_release_head, new_release_head, con
             continue
 
         title = pr.title.strip()
-        parent_issue_text = "Parent issue: "
+
+        if pr.closed_at < cutoff_date:
+            verbose_print(args, f"[before cut-off date]ignoring PR: {title}: {pr.html_url}\n")
+            continue
+
         parent_issue = None
         if isinstance(pr.body, str):
             for line in pr.body.split("\n"):
-                if line.startswith(parent_issue_text):
-                    parent_issue = line[len(parent_issue_text):]
+                if line.startswith(PARENT_ISSUE_TEXT):
+                    parent_issue = line[len(PARENT_ISSUE_TEXT):]
                     break
 
         if parent_issue:
@@ -135,8 +162,8 @@ def get_release_notes(github, repo, previous_release_head, new_release_head, con
             title = issue.title.strip()
         else:
             link = pr.html_url
-        
-        if link in links:
+
+        if link in links or link in hidden_links:
             continue
         else:
             links.append(link)
@@ -149,7 +176,7 @@ def get_release_notes(github, repo, previous_release_head, new_release_head, con
 
     release_notes_yaml = yaml.dump(release_notes, default_flow_style=False)
     verbose_print(args, f"release notes:\n{release_notes_yaml}")
-    return release_notes
+    return (release_notes, links)
 
 def create_release_notes_md(release_notes, new_release):
     """
@@ -310,7 +337,9 @@ def main():
     verbose_print(args, f"Previous Release Head: {prev_release_head}")
     verbose_print(args, f"New Release Head: {new_release_head}")
 
-    release_notes = get_release_notes(gh, repo, prev_release_head, new_release_head, config, args)
+    (release_notes, _) = get_release_notes(
+        gh, repo, prev_release_head, new_release_head, config, args
+    )
 
     if not new_patch:
         latest_release = repo.get_releases()[0]

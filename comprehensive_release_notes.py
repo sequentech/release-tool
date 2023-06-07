@@ -41,13 +41,16 @@ REPOSITORIES = [
     "sequentech/release-tool",
 ]
 
-def get_comprehensive_release_notes(args, token, repos, prev_release, new_release, config):
+def get_comprehensive_release_notes(
+    args, token, repos, prev_major_release, prev_release, new_release, config
+):
     """
     Generate comprehensive release notes for a list of repositories.
 
     Args:
         token (str): GitHub access token.
         repos (list): A list of repository paths, e.g., ["org/repo1", "org/repo2"].
+        prev_major_release (str|None): The previous major release version (e.g. "1.0.0") or None if prev_release and new_release share their major version.
         prev_release (str): The previous release version (e.g. "1.1.0").
         new_release (str): The new release version (e.g. "1.2.0").
         config (dict): the configuration for generating release notes.
@@ -60,7 +63,22 @@ def get_comprehensive_release_notes(args, token, repos, prev_release, new_releas
     for repo_path in repos:
         verbose_print(args, f"Generating release notes for repo {repo_path}..")
         repo = gh.get_repo(repo_path)
-        repo_notes = get_release_notes(gh, repo, prev_release, new_release, config)
+
+        hidden_links = []
+        # if we are going to do a new major release for example
+        # new_release="8.0.0", we need to obtain a list of all the changes made
+        # in the previous major release cycle (from 7.0.0 to
+        # previous_release="7.4.0") and mark them as hidden.
+        if prev_major_release:
+            verbose_print(args, f"Generating release notes for hidden links:")
+            (_, hidden_links) = get_release_notes(
+                gh, repo, prev_major_release, prev_release, config, hidden_links=[]
+            )
+        
+        verbose_print(args, f"Generating release notes:")
+        (repo_notes, _) = get_release_notes(
+            gh, repo, prev_release, new_release, config, hidden_links=hidden_links
+        )
         verbose_print(args, f"..generated")
         for category, notes in repo_notes.items():
             release_notes[category].extend(notes)
@@ -153,8 +171,26 @@ def main():
     verbose_print(args, f"Previous Release Head: {prev_release_head}")
     verbose_print(args, f"New Release Head: {new_release_head}")
 
+    if prev_major != new_major:
+        # if we are going to do a new major release for example
+        # new_release="8.0.0", we need to obtain a list of all the changes made
+        # in the previous major release cycle (from 7.0.0 to
+        # previous_release="7.4.0") and mark them as hidden.
+        prev_major_release_head = get_release_head(prev_major, 0, "0")
+    else:
+        prev_major_release_head = None
+    verbose_print(
+        args,
+        f"Previous Major Release Head: {prev_major_release_head}"
+    )
+
     release_notes = get_comprehensive_release_notes(
-        args, github_token, REPOSITORIES, prev_release_head, new_release_head,
+        args,
+        github_token,
+        REPOSITORIES,
+        prev_major_release_head,
+        prev_release_head,
+        new_release_head,
         config
     )
 

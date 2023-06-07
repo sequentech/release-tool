@@ -16,6 +16,7 @@
 # along with release-tool.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import yaml
 import requests
 import tempfile
 from datetime import datetime
@@ -23,6 +24,14 @@ import subprocess
 import os
 import re
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from github import Github
+from collections import defaultdict
+from release_notes import (
+    get_sem_release,
+    get_release_head,
+    get_release_notes,
+    create_release_notes_md,
+)
 
 def read_text_file(file_path):
     textfile = open(file_path, "r")
@@ -618,35 +627,69 @@ def do_create_release(
     previous_tag_name,
     prerelease
 ):
-    with tempfile.NamedTemporaryFile() as temp_release_file:
-        generated_release_title = ''
-        if generate_release_notes:
-            dir_name = os.path.basename(dir_path)
-            data = {
-                'tag_name': version,
-            }
-            if previous_tag_name is not None:
-                data['previous_tag_name'] = previous_tag_name
-            req = requests.post(
-                f'https://api.github.com/repos/sequentech/{dir_name}/releases/generate-notes',
-                headers={
-                    "Accept": "application/vnd.github.v3+json"
-                },
-                json=data,
-                auth=(
-                    os.getenv('GITHUB_USER'),
-                    os.getenv('GITHUB_TOKEN'),
-                )
+    if not generate_release_notes:
+        release_notes_md = ""
+    else:
+        github_token = os.getenv("GITHUB_TOKEN")
+
+        gh = Github(github_token)
+        release_notes = defaultdict(list)
+        project_name = os.path.basename(dir_path)
+        repo_path = f"sequentech/{project_name}"
+        print(f"Generating release notes for repo {repo_path}..")
+        repo = gh.get_repo(repo_path)
+
+        with open(".github/release.yml") as release_template_yaml:
+            config = yaml.safe_load(release_template_yaml)
+
+        prev_major, prev_minor, prev_patch = get_sem_release(previous_tag_name)
+        new_major, new_minor, new_patch = get_sem_release(version)
+
+        prev_release_head = get_release_head(prev_major, prev_minor, prev_patch)
+        if new_patch or prev_major == new_major:
+            new_release_head = get_release_head(new_major, new_minor, new_patch)
+        else:
+            new_release_head = repo.default_branch
+
+        print(f"Previous Release Head: {prev_release_head}")
+        print(f"New Release Head: {new_release_head}")
+        if prev_major != new_major:
+            # if we are going to do a new major release for example
+            # new_release="8.0.0", we need to obtain a list of all the changes made
+            # in the previous major release cycle (from 7.0.0 to
+            # previous_release="7.4.0") and mark them as hidden.
+            prev_major_release_head = get_release_head(prev_major, 0, "0")
+        else:
+            prev_major_release_head = None
+        print(f"Previous Major Release Head: {prev_major_release_head}")
+        
+        hidden_links = []
+        # if we are going to do a new major release for example
+        # new_release="8.0.0", we need to obtain a list of all the changes made
+        # in the previous major release cycle (from 7.0.0 to
+        # previous_release="7.4.0") and mark them as hidden.
+        if prev_major_release_head:
+            print(f"Generating release notes for hidden links:")
+            (_, hidden_links) = get_release_notes(
+                gh, repo, prev_major_release_head, prev_release_head, config, 
+                hidden_links=[]
             )
-            if req.status_code != 200:
-                print(f"Error generating release notes, status ${req.status_code}")
-                exit(1)
-            
-            generated_release_notes = req.json()['body']
-            temp_release_file.write(generated_release_notes.encode('utf-8'))
-            temp_release_file.flush()
-            generated_release_title = req.json()['name']
-            print(f"- github-generated release notes:\n\n{generated_release_notes}\n\n")
+
+        print(f"Generating release notes:")
+        (repo_notes, _) = get_release_notes(
+            gh, repo, prev_release_head, new_release_head, config,
+            hidden_links=hidden_links
+        )
+        print(f"..generated")
+        for category, notes in repo_notes.items():
+            release_notes[category].extend(notes)
+        release_notes_md = create_release_notes_md(release_notes, new_release_head)
+        print(f"Generated Release Notes markdown: {release_notes_md}")
+    generated_release_title = f"{new_release_head} release"
+
+    with tempfile.NamedTemporaryFile() as temp_release_file:
+        temp_release_file.write(release_notes_md.encode('utf-8'))
+        temp_release_file.flush()
 
         print("checking if release exists to overwrite it..")
         ret_code = call_process(
@@ -845,6 +888,14 @@ def main():
         type=str,
         nargs="+",
         help="Set the dependabot alerts only for the given repository branches"
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help=(
+            'Output the release notes but do not create any tag, release or '
+            'new branch.'
+        )
     )
     args = parser.parse_args()
     change_version = args.change_version
