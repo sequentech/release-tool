@@ -212,17 +212,13 @@ def main():
     verbose_print(args, f"Generated Release Notes: {release_notes_md}")
 
     if not dry_run:
-        if prev_major < new_major:
+        branch = None
+        try:
+            branch = meta_repo.get_branch(new_release_head)
+        except:
             verbose_print(args, "Creating new branch")
             create_new_branch(meta_repo, new_release_head)
-        else:
-            branch = None
-            try:
-                branch = meta_repo.get_branch(new_release_head)
-            except:
-                verbose_print(args, "Creating new branch")
-                create_new_branch(meta_repo, new_release_head)
-                branch = meta_repo.get_branch(new_release_head)
+            branch = meta_repo.get_branch(new_release_head)
 
         verbose_print(args, "Creating new release")
         meta_repo.create_git_tag_and_release(
