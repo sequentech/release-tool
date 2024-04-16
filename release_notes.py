@@ -85,7 +85,11 @@ def get_github_issue_from_link(link_text, github):
         object: A PyGithub object that represents the retrieved Github issue.
     """
     # Extracting the owner, repository name, and issue number from the link
-    owner, repo, _, issue_number = link_text.split("/")[-4:]
+    if '#' in link_text and not link_text.startswith('https://'):
+        owner, repo_issue_number = link_text.split("/")
+        repo, issue_number = repo_issue_number.split("#")
+    else:
+        owner, repo, _, issue_number = link_text.split("/")[-4:]
 
     # Getting the repository object
     repo = github.get_repo(f"{owner}/{repo}")
@@ -130,19 +134,26 @@ def get_release_notes(
     for commit in compare_branches.commits:
         pr = get_commit_pull(commit)
         if pr == None:
-            continue
-
-        if any(label.name in config["changelog"]["exclude"]["labels"] for label in pr.labels):
-            continue
-
-        category = get_label_category(pr.labels, config["changelog"]["categories"])
-        if category is None:
+            verbose_print(args, f"[has no PR associated] ignoring commit:\n\tcommit={commit}\n")
             continue
 
         title = pr.title.strip()
 
+        if any(label.name in config["changelog"]["exclude"]["labels"] for label in pr.labels):
+            verbose_print(args, f"[has excluded label] ignoring PR:\n\tcommit={commit}\n\tpr.title={title}\n\tpr.url={pr.html_url}\n")
+            continue
+
+        category = get_label_category(pr.labels, config["changelog"]["categories"])
+        if category is None:
+            verbose_print(args, f"[has no category] ignoring PR:\n\tcommit={commit}\n\tpr.title={title}\n\tpr.url={pr.html_url}\n")
+            continue
+
+        if pr.closed_at is None:
+            verbose_print(args, f"[PR not closed] ignoring PR:\n\tcommit={commit}\n\tpr.title={title}\n\tpr.url={pr.html_url}\n\n")
+            continue
+
         if pr.closed_at < cutoff_date:
-            verbose_print(args, f"[before cut-off date]ignoring PR: {title}: {pr.html_url}\n")
+            verbose_print(args, f"[before cut-off date] ignoring PR:\n\tcommit={commit}\n\tpr.title={title}\n\tpr.url={pr.html_url}\n")
             continue
 
         parent_issue = None
