@@ -38,7 +38,7 @@ REPOSITORIES = [
     "sequentech/mixnet",
     "sequentech/documentation",
     "sequentech/ballot-verifier",
-    "sequentech/release-tool",
+    #"sequentech/release-tool",
 ]
 
 def get_comprehensive_release_notes(
