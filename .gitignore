@@ -1,3 +1,6 @@
 notes.*
 
+*.db
+release_tool.toml
+
 __pycache__/

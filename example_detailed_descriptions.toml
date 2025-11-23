@@ -1,0 +1,71 @@
+# Example configuration showcasing detailed descriptions and full ticket information
+# This layout displays each ticket as a full section with description and metadata
+
+[repository]
+code_repo = "owner/repo"
+
+[github]
+# token will be read from GITHUB_TOKEN environment variable
+
+[release_notes]
+title_template = "Release {{ version }}"
+
+# Simple entry template - not used in this layout since we render manually
+entry_template = "- {{ title }}"
+
+# Detailed output template - each ticket gets its own section
+output_template = '''# {{ title }}
+
+{% for note in all_notes %}
+## {{ note.title }}
+
+{% if note.description %}
+{{ note.description }}
+{% endif %}
+
+**Details:**
+- Category: {{ note.category }}
+{% if note.url %}- Pull Request: [#{{ note.pr_numbers[0] }}]({{ note.url }}){% endif %}
+{% if note.labels %}- Labels: `{{ note.labels|join('`, `') }}`{% endif %}
+{% if note.authors %}- Authors: {% for author in note.authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+
+{% if note.migration_notes %}
+**Migration Notes:**
+
+{{ note.migration_notes }}
+{% endif %}
+
+---
+{% endfor %}
+
+## Summary
+
+This release includes {{ all_notes|length }} changes across the following categories:
+{% for category in categories %}
+- **{{ category.name }}**: {{ category.notes|length }} change(s)
+{% endfor %}'''
+
+[[release_notes.categories]]
+name = "Features"
+labels = ["feature", "enhancement"]
+order = 1
+
+[[release_notes.categories]]
+name = "Bug Fixes"
+labels = ["bug", "fix"]
+order = 2
+
+[[release_notes.categories]]
+name = "Documentation"
+labels = ["docs"]
+order = 3
+
+[[release_notes.categories]]
+name = "Other"
+labels = []
+order = 99
+
+[output]
+output_path = "docs/releases/{version}.md"
+download_media = true
+assets_path = "docs/releases/assets/{version}"

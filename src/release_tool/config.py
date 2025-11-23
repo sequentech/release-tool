@@ -1,0 +1,446 @@
+"""Configuration management for the release tool."""
+
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from enum import Enum
+from pydantic import BaseModel, Field
+import tomli
+
+
+class PolicyAction(str, Enum):
+    """Policy action types."""
+    IGNORE = "ignore"
+    WARN = "warn"
+    ERROR = "error"
+
+
+class TicketExtractionStrategy(str, Enum):
+    """Ticket extraction strategies."""
+    BRANCH_NAME = "branch_name"
+    COMMIT_MESSAGE = "commit_message"
+    PR_BODY = "pr_body"
+    PR_TITLE = "pr_title"
+
+
+class TicketPattern(BaseModel):
+    """A ticket extraction pattern with its associated strategy."""
+    order: int
+    strategy: TicketExtractionStrategy
+    pattern: str
+    description: Optional[str] = None
+
+
+class CategoryConfig(BaseModel):
+    """Category configuration."""
+    name: str
+    labels: List[str]
+    order: int = 0
+    alias: Optional[str] = None  # Short alias for template references
+
+    def matches_label(self, label: str, source: str) -> bool:
+        """
+        Check if a label matches this category.
+
+        Args:
+            label: The label name to check
+            source: Either "pr" or "ticket" indicating where the label comes from
+
+        Returns:
+            True if the label matches this category
+        """
+        for pattern in self.labels:
+            # Check for prefix (pr:, ticket:, or no prefix for any)
+            if pattern.startswith("pr:"):
+                # Only match PR labels
+                if source == "pr" and pattern[3:] == label:
+                    return True
+            elif pattern.startswith("ticket:"):
+                # Only match ticket labels
+                if source == "ticket" and pattern[7:] == label:
+                    return True
+            else:
+                # No prefix = match from any source
+                if pattern == label:
+                    return True
+        return False
+
+
+class PRTemplateConfig(BaseModel):
+    """Pull request template configuration for release notes."""
+    branch_template: str = Field(
+        default="release-notes-{version}",
+        description="Branch name template for release notes PR"
+    )
+    title_template: str = Field(
+        default="Release notes for {version}",
+        description="PR title template"
+    )
+    body_template: str = Field(
+        default="Automated release notes for version {version}.\n\n"
+                "## Summary\n"
+                "This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.",
+        description="PR body template"
+    )
+
+
+class TicketPolicyConfig(BaseModel):
+    """Ticket extraction and consolidation policy configuration."""
+    patterns: List[TicketPattern] = Field(
+        default_factory=lambda: [
+            TicketPattern(
+                order=1,
+                strategy=TicketExtractionStrategy.BRANCH_NAME,
+                pattern=r'/(?P<repo>\w+)-(?P<ticket>\d+)',
+                description="Branch names like feat/meta-123/main"
+            ),
+            TicketPattern(
+                order=2,
+                strategy=TicketExtractionStrategy.PR_BODY,
+                pattern=r'Parent issue:.*?/issues/(?P<ticket>\d+)',
+                description="Parent issue URL in PR body"
+            ),
+            TicketPattern(
+                order=3,
+                strategy=TicketExtractionStrategy.PR_TITLE,
+                pattern=r'#(?P<ticket>\d+)',
+                description="GitHub issue reference in PR title"
+            ),
+            TicketPattern(
+                order=4,
+                strategy=TicketExtractionStrategy.COMMIT_MESSAGE,
+                pattern=r'#(?P<ticket>\d+)',
+                description="GitHub issue reference in commit message"
+            ),
+            TicketPattern(
+                order=5,
+                strategy=TicketExtractionStrategy.COMMIT_MESSAGE,
+                pattern=r'(?P<project>[A-Z]+)-(?P<ticket>\d+)',
+                description="JIRA-style tickets in commit message"
+            ),
+        ],
+        description="Ordered list of patterns with their extraction strategies"
+    )
+    no_ticket_action: PolicyAction = Field(
+        default=PolicyAction.WARN,
+        description="What to do when no ticket is found"
+    )
+    unclosed_ticket_action: PolicyAction = Field(
+        default=PolicyAction.WARN,
+        description="What to do with unclosed tickets"
+    )
+    consolidation_enabled: bool = Field(
+        default=True,
+        description="Whether to consolidate commits by parent ticket"
+    )
+    description_section_regex: Optional[str] = Field(
+        default=r'(?:## Description|## Summary)\n(.*?)(?=\n##|\Z)',
+        description="Regex to extract description from ticket body"
+    )
+    migration_section_regex: Optional[str] = Field(
+        default=r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)',
+        description="Regex to extract migration notes from ticket body"
+    )
+
+
+class VersionPolicyConfig(BaseModel):
+    """Version comparison and gap policy configuration."""
+    gap_detection: PolicyAction = Field(
+        default=PolicyAction.WARN,
+        description="What to do when version gaps are detected"
+    )
+    tag_prefix: str = Field(
+        default="v",
+        description="Prefix for version tags"
+    )
+
+
+class ReleaseNoteConfig(BaseModel):
+    """Release note generation configuration."""
+    categories: List[CategoryConfig] = Field(
+        default_factory=lambda: [
+            CategoryConfig(
+                name="💥 Breaking Changes",
+                labels=["breaking-change", "breaking"],
+                order=1,
+                alias="breaking"
+            ),
+            CategoryConfig(
+                name="🚀 Features",
+                labels=["feature", "enhancement", "feat"],
+                order=2,
+                alias="features"
+            ),
+            CategoryConfig(
+                name="🛠 Bug Fixes",
+                labels=["bug", "fix", "bugfix", "hotfix"],
+                order=3,
+                alias="bugfixes"
+            ),
+            CategoryConfig(
+                name="📖 Documentation",
+                labels=["docs", "documentation"],
+                order=4,
+                alias="docs"
+            ),
+            CategoryConfig(
+                name="🛡 Security Updates",
+                labels=["security"],
+                order=5,
+                alias="security"
+            ),
+            CategoryConfig(
+                name="Other Changes",
+                labels=[],
+                order=99,
+                alias="other"
+            )
+        ],
+        description="Categories for grouping release notes"
+    )
+    excluded_labels: List[str] = Field(
+        default_factory=lambda: ["skip-changelog", "internal", "wip", "do-not-merge"],
+        description="Labels that exclude items from release notes"
+    )
+    title_template: str = Field(
+        default="Release {{ version }}",
+        description="Jinja2 template for release title"
+    )
+    description_template: str = Field(
+        default="",
+        description="Jinja2 template for release description (deprecated - use output_template)"
+    )
+    entry_template: str = Field(
+        default=(
+            "- {{ title }}\n"
+            "  {% if url %}{{ url }}{% endif %}\n"
+            "  {% if authors %}\n"
+            "  by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}\n"
+            "  {% endif %}"
+        ),
+        description="Jinja2 template for each release note entry (used as sub-template in output_template)"
+    )
+    output_template: Optional[str] = Field(
+        default=(
+            "# {{ title }}\n"
+            "\n"
+            "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
+            "{% if breaking_with_desc|length > 0 %}\n"
+            "## 💥 Breaking Changes\n"
+            "{% for note in breaking_with_desc %}\n"
+            "### {{ note.title }}\n"
+            "{{ note.description }}\n"
+            "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+            "\n"
+            "{% endfor %}\n"
+            "{% endif %}\n"
+            "{% set migration_notes = all_notes|selectattr('migration_notes')|list %}\n"
+            "{% if migration_notes|length > 0 %}\n"
+            "## 🔄 Migrations\n"
+            "{% for note in migration_notes %}\n"
+            "### {{ note.title }}\n"
+            "{{ note.migration_notes }}\n"
+            "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+            "\n"
+            "{% endfor %}\n"
+            "{% endif %}\n"
+            "{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
+            "{% if non_breaking_with_desc|length > 0 %}\n"
+            "## 📝 Highlights\n"
+            "{% for note in non_breaking_with_desc %}\n"
+            "### {{ note.title }}\n"
+            "{{ note.description }}\n"
+            "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+            "\n"
+            "{% endfor %}\n"
+            "{% endif %}\n"
+            "## 📋 All Changes\n"
+            "{% for category in categories %}\n"
+            "### {{ category.name }}\n"
+            "{% for note in category.notes %}\n"
+            "{{ render_entry(note) }}\n"
+            "{% endfor %}\n"
+            "\n"
+            "{% endfor %}"
+        ),
+        description="Master Jinja2 template for entire release notes output. "
+                    "Available variables: version, title, categories (with 'alias' field), "
+                    "all_notes, render_entry (function to render entry_template)"
+    )
+
+
+class SyncConfig(BaseModel):
+    """Sync configuration for GitHub data fetching."""
+    cutoff_date: Optional[str] = Field(
+        default=None,
+        description="ISO format date (YYYY-MM-DD) to limit historical fetching. Only fetch tickets/PRs from this date onwards."
+    )
+    parallel_workers: int = Field(
+        default=10,
+        description="Number of parallel workers for GitHub API calls"
+    )
+    clone_code_repo: bool = Field(
+        default=True,
+        description="Whether to clone/sync the code repository locally for offline operation"
+    )
+    code_repo_path: Optional[str] = Field(
+        default=None,
+        description="Local path to clone code repository. Defaults to .release_tool_cache/{repo_name}"
+    )
+    show_progress: bool = Field(
+        default=True,
+        description="Show progress updates during sync (e.g., 'syncing 13 / 156 tickets')"
+    )
+
+
+class RepositoryConfig(BaseModel):
+    """Repository configuration."""
+    code_repo: str = Field(
+        description="Full name of code repository (owner/name)"
+    )
+    ticket_repos: List[str] = Field(
+        default_factory=list,
+        description="List of ticket repository names (owner/name). If empty, uses code_repo."
+    )
+    default_branch: str = Field(
+        default="main",
+        description="Default branch name"
+    )
+
+
+class GitHubConfig(BaseModel):
+    """GitHub configuration."""
+    token: Optional[str] = Field(
+        default=None,
+        description="GitHub API token (can also use GITHUB_TOKEN env var)"
+    )
+    api_url: str = Field(
+        default="https://api.github.com",
+        description="GitHub API URL"
+    )
+
+
+class DatabaseConfig(BaseModel):
+    """Database configuration."""
+    path: str = Field(
+        default="release_tool.db",
+        description="Path to SQLite database file"
+    )
+
+
+class OutputConfig(BaseModel):
+    """Output configuration for release notes."""
+    output_path: str = Field(
+        default="docs/releases/{version}.md",
+        description="File path template for release notes (supports {version}, {major}, {minor}, {patch})"
+    )
+    assets_path: str = Field(
+        default="docs/releases/assets/{version}",
+        description="Path template for downloaded media assets (images, videos)"
+    )
+    download_media: bool = Field(
+        default=True,
+        description="Download and include images/videos from ticket descriptions"
+    )
+    create_github_release: bool = Field(
+        default=False,
+        description="Whether to create a GitHub release"
+    )
+    create_pr: bool = Field(
+        default=False,
+        description="Whether to create a PR with release notes"
+    )
+    pr_templates: PRTemplateConfig = Field(
+        default_factory=PRTemplateConfig,
+        description="Templates for PR branch, title, and body"
+    )
+    pr_target_branch: str = Field(
+        default="main",
+        description="Target branch for release notes PR"
+    )
+
+
+class Config(BaseModel):
+    """Main configuration model."""
+    repository: RepositoryConfig
+    github: GitHubConfig = Field(default_factory=GitHubConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    sync: SyncConfig = Field(default_factory=SyncConfig)
+    ticket_policy: TicketPolicyConfig = Field(default_factory=TicketPolicyConfig)
+    version_policy: VersionPolicyConfig = Field(default_factory=VersionPolicyConfig)
+    release_notes: ReleaseNoteConfig = Field(default_factory=ReleaseNoteConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
+
+    @classmethod
+    def from_file(cls, config_path: str) -> "Config":
+        """Load configuration from TOML file."""
+        path = Path(config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+
+        with open(path, 'rb') as f:
+            data = tomli.load(f)
+
+        # Override GitHub token from environment if present
+        if 'github' not in data:
+            data['github'] = {}
+        if not data['github'].get('token'):
+            data['github']['token'] = os.getenv('GITHUB_TOKEN')
+
+        return cls(**data)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Config":
+        """Load configuration from dictionary."""
+        # Override GitHub token from environment if present
+        if 'github' not in data:
+            data['github'] = {}
+        if not data['github'].get('token'):
+            data['github']['token'] = os.getenv('GITHUB_TOKEN')
+
+        return cls(**data)
+
+    def get_ticket_repos(self) -> List[str]:
+        """Get the list of ticket repositories (defaults to code repo if not specified)."""
+        if self.repository.ticket_repos:
+            return self.repository.ticket_repos
+        return [self.repository.code_repo]
+
+    def get_code_repo_path(self) -> str:
+        """Get the local path for the cloned code repository."""
+        if self.sync.code_repo_path:
+            return self.sync.code_repo_path
+        # Default to .release_tool_cache/{repo_name}
+        repo_name = self.repository.code_repo.split('/')[-1]
+        return str(Path.cwd() / '.release_tool_cache' / repo_name)
+
+    def get_category_map(self) -> Dict[str, List[str]]:
+        """Get a mapping of category names to their labels."""
+        return {cat.name: cat.labels for cat in self.release_notes.categories}
+
+    def get_ordered_categories(self) -> List[str]:
+        """Get category names in order."""
+        sorted_cats = sorted(self.release_notes.categories, key=lambda c: c.order)
+        return [cat.name for cat in sorted_cats]
+
+
+def load_config(config_path: Optional[str] = None) -> Config:
+    """Load configuration from file or use defaults."""
+    if config_path and Path(config_path).exists():
+        return Config.from_file(config_path)
+
+    # Look for default config files
+    default_paths = [
+        "release_tool.toml",
+        ".release_tool.toml",
+        "config/release_tool.toml"
+    ]
+
+    for default_path in default_paths:
+        if Path(default_path).exists():
+            return Config.from_file(default_path)
+
+    # Return minimal config if no file found (will fail validation if required fields missing)
+    raise FileNotFoundError(
+        "No configuration file found. Please create release_tool.toml with required settings."
+    )

@@ -1,0 +1,45 @@
+# Example configuration with flat list (no categories)
+# This shows a simple chronological list of all changes
+
+[repository]
+code_repo = "owner/repo"
+
+[github]
+# token will be read from GITHUB_TOKEN environment variable
+
+[release_notes]
+title_template = "Release {{ version }}"
+
+# Entry template with full details
+entry_template = '''- **{{ title }}**
+  {% if description %}{{ description }}{% endif %}
+  {% if url %}[#{{ pr_numbers[0] }}]({{ url }}){% endif %}
+  {% if authors %}by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+  {% if labels %}`{{ labels|join('` `') }}`{% endif %}'''
+
+# Flat list output - no category grouping
+output_template = '''# {{ title }}
+
+All changes in this release:
+
+{% for note in all_notes %}
+{{ render_entry(note) }}
+{% endfor %}'''
+
+[[release_notes.categories]]
+name = "Features"
+labels = ["feature"]
+order = 1
+
+[[release_notes.categories]]
+name = "Bug Fixes"
+labels = ["bug"]
+order = 2
+
+[[release_notes.categories]]
+name = "Other"
+labels = []
+order = 99
+
+[output]
+output_path = "CHANGELOG.md"
