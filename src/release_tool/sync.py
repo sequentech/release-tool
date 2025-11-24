@@ -446,7 +446,11 @@ class SyncManager:
                 )
 
                 # Reset to latest version of default branch
-                default_branch = self.config.repository.default_branch
+                # Use branch_policy.default_branch (fallback to repository.default_branch for backward compatibility)
+                default_branch = self.config.branch_policy.default_branch
+                if self.config.repository.default_branch:
+                    # Legacy config support
+                    default_branch = self.config.repository.default_branch
                 subprocess.run(
                     ['git', 'reset', '--hard', f'origin/{default_branch}'],
                     cwd=repo_path,

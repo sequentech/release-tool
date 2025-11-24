@@ -338,9 +338,9 @@ class RepositoryConfig(BaseModel):
         default_factory=list,
         description="List of ticket repository names (owner/name). If empty, uses code_repo."
     )
-    default_branch: str = Field(
-        default="main",
-        description="Default branch name"
+    default_branch: Optional[str] = Field(
+        default=None,
+        description="Default branch name (deprecated: use branch_policy.default_branch instead)"
     )
 
 

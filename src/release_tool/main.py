@@ -760,7 +760,17 @@ def list_releases(ctx, repository: Optional[str], limit: int, version: Optional[
 @cli.command('init-config')
 def init_config():
     """Create an example configuration file."""
-    example_config = """# =============================================================================
+    # Load template from config_template.toml
+    template_path = Path(__file__).parent / "config_template.toml"
+    try:
+        example_config = template_path.read_text(encoding='utf-8')
+    except Exception as e:
+        console.print(f"[red]Error loading config template: {e}[/red]")
+        console.print("[yellow]Falling back to minimal config...[/yellow]")
+        example_config = """
+config_version = "1.1"
+
+# =============================================================================
 # Release Tool Configuration
 # =============================================================================
 # This file controls how the release tool generates release notes by managing:
@@ -1499,84 +1509,38 @@ def _merge_config_with_template(user_data: dict, template_doc) -> dict:
     Returns:
         Merged tomlkit document with template comments and user values
     """
-    import tomlkit
-
-    def merge_recursive(template_item, user_value):
-        """Recursively merge user values into template structure."""
+    def update_values_in_place(template_item, user_value):
+        """Update template values in-place with user values."""
         if isinstance(template_item, dict) and isinstance(user_value, dict):
-            # For dictionaries, merge each key
-            result = tomlkit.table()
-
-            # First, copy comments and structure from template
-            if hasattr(template_item, 'trivia'):
-                result.trivia.update(template_item.trivia)
-
-            # Add all keys from template with user values if available
+            # Update each key in template with user's value
             for key in template_item:
                 if key in user_value:
-                    # User has this key - use their value but template structure
-                    result[key] = merge_recursive(template_item[key], user_value[key])
-                else:
-                    # User doesn't have this key - use template default
-                    result[key] = template_item[key]
+                    # Check if we need to recurse
+                    if isinstance(template_item[key], dict) and isinstance(user_value[key], dict):
+                        update_values_in_place(template_item[key], user_value[key])
+                    elif isinstance(template_item[key], list) and isinstance(user_value[key], list):
+                        # For lists, just replace (too complex to merge arrays)
+                        template_item[key] = user_value[key]
+                    else:
+                        # Primitive value - replace
+                        template_item[key] = user_value[key]
 
-            # Add any keys user has that aren't in template
+            # Add any keys from user that template doesn't have
             for key in user_value:
                 if key not in template_item:
-                    result[key] = user_value[key]
+                    template_item[key] = user_value[key]
 
-            return result
-
-        elif isinstance(template_item, list) and isinstance(user_value, list):
-            # For arrays, use user's values
-            # Check if it's an array of tables (like categories)
-            if template_item and isinstance(template_item[0], dict):
-                # Array of tables - merge each item
-                result = tomlkit.array()
-                for user_item in user_value:
-                    # Try to find matching template item
-                    # For categories, match by 'name' or 'alias'
-                    template_match = None
-                    if 'name' in user_item:
-                        for t_item in template_item:
-                            if isinstance(t_item, dict) and t_item.get('name') == user_item['name']:
-                                template_match = t_item
-                                break
-
-                    if template_match:
-                        result.append(merge_recursive(template_match, user_item))
-                    else:
-                        # No template match - use user item as-is
-                        result.append(user_item)
-                return result
-            else:
-                # Simple array - use user's values
-                return user_value
-
-        else:
-            # Primitive value - use user's value
-            return user_value
-
-    # Start with template document structure
-    result = tomlkit.document()
-
-    # Copy top-level comments from template
-    if hasattr(template_doc, 'trivia'):
-        result.trivia.update(template_doc.trivia)
-
-    # Merge each top-level key
+    # Modify template in-place to preserve comments
     for key in template_doc:
         if key in user_data:
-            result[key] = merge_recursive(template_doc[key], user_data[key])
-        else:
-            result[key] = template_doc[key]
+            update_values_in_place(template_doc[key], user_data[key])
 
-    # Add any top-level keys user has that aren't in template
+    # Add any top-level keys user has that template doesn't have
     for key in user_data:
         if key not in template_doc:
-            result[key] = user_data[key]
+            template_doc[key] = user_data[key]
 
-    return result
+    return template_doc
 
 
 @cli.command()
