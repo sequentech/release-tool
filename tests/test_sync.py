@@ -203,7 +203,7 @@ def test_sync_config_defaults():
     }
     config = Config.from_dict(config_dict)
 
-    assert config.sync.parallel_workers == 10
+    assert config.sync.parallel_workers == 20
     assert config.sync.show_progress is True
     assert config.sync.clone_code_repo is True
     assert config.sync.cutoff_date is None
@@ -310,7 +310,7 @@ def test_incremental_sync_filters_existing(test_config, test_db, mock_github):
         test_db.upsert_ticket(ticket)
 
     # Mock GitHub to return all tickets (including existing)
-    mock_github.list_ticket_numbers.return_value = [1, 2, 3, 4, 5, 6]
+    mock_github.search_ticket_numbers.return_value = [1, 2, 3, 4, 5, 6]
 
     sync_manager = SyncManager(test_config, test_db, mock_github)
 

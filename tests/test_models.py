@@ -84,6 +84,87 @@ class TestSemanticVersion:
         assert rc < final
         assert final > rc
 
+    def test_bump_major(self):
+        """Test bumping major version resets minor and patch to 0."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3)
+        v2 = v1.bump_major()
+        assert v2.major == 2
+        assert v2.minor == 0
+        assert v2.patch == 0
+        assert v2.prerelease is None
+
+    def test_bump_major_from_prerelease(self):
+        """Test bumping major from prerelease removes prerelease."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3, prerelease="rc.1")
+        v2 = v1.bump_major()
+        assert v2.major == 2
+        assert v2.minor == 0
+        assert v2.patch == 0
+        assert v2.prerelease is None
+
+    def test_bump_minor(self):
+        """Test bumping minor version resets patch to 0."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3)
+        v2 = v1.bump_minor()
+        assert v2.major == 1
+        assert v2.minor == 3
+        assert v2.patch == 0
+        assert v2.prerelease is None
+
+    def test_bump_minor_from_prerelease(self):
+        """Test bumping minor from prerelease removes prerelease."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3, prerelease="beta.2")
+        v2 = v1.bump_minor()
+        assert v2.major == 1
+        assert v2.minor == 3
+        assert v2.patch == 0
+        assert v2.prerelease is None
+
+    def test_bump_patch(self):
+        """Test bumping patch version."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3)
+        v2 = v1.bump_patch()
+        assert v2.major == 1
+        assert v2.minor == 2
+        assert v2.patch == 4
+        assert v2.prerelease is None
+
+    def test_bump_patch_from_prerelease(self):
+        """Test bumping patch from prerelease removes prerelease."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3, prerelease="alpha.1")
+        v2 = v1.bump_patch()
+        assert v2.major == 1
+        assert v2.minor == 2
+        assert v2.patch == 4
+        assert v2.prerelease is None
+
+    def test_bump_rc(self):
+        """Test creating RC version."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3)
+        v2 = v1.bump_rc(0)
+        assert v2.major == 1
+        assert v2.minor == 2
+        assert v2.patch == 3
+        assert v2.prerelease == "rc.0"
+
+    def test_bump_rc_with_number(self):
+        """Test creating RC version with specific number."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3)
+        v2 = v1.bump_rc(5)
+        assert v2.major == 1
+        assert v2.minor == 2
+        assert v2.patch == 3
+        assert v2.prerelease == "rc.5"
+
+    def test_bump_rc_from_existing_prerelease(self):
+        """Test creating RC from existing prerelease."""
+        v1 = SemanticVersion(major=1, minor=2, patch=3, prerelease="beta.1")
+        v2 = v1.bump_rc(0)
+        assert v2.major == 1
+        assert v2.minor == 2
+        assert v2.patch == 3
+        assert v2.prerelease == "rc.0"
+
 
 class TestRepository:
     """Tests for Repository model."""

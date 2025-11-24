@@ -214,8 +214,8 @@ class SyncManager:
         Returns:
             List of ticket numbers to fetch
         """
-        # Get all ticket numbers from GitHub
-        all_ticket_numbers = self.github.list_ticket_numbers(
+        # Get all ticket numbers from GitHub using fast Search API
+        all_ticket_numbers = self.github.search_ticket_numbers(
             repo_full_name,
             since=cutoff_date
         )
@@ -243,8 +243,8 @@ class SyncManager:
         Returns:
             List of PR numbers to fetch
         """
-        # Get all PR numbers from GitHub
-        all_pr_numbers = self.github.list_pr_numbers(
+        # Get all PR numbers from GitHub using fast Search API
+        all_pr_numbers = self.github.search_pr_numbers(
             repo_full_name,
             since=cutoff_date
         )
@@ -517,10 +517,12 @@ class SyncManager:
         try:
             existing_numbers = self.db.get_existing_ticket_numbers(repo_full_name)
 
-            # Use the list method which is now just getting numbers (fast)
-            all_ticket_numbers = self.github.list_ticket_numbers(repo_full_name, since=cutoff_date)
+            # Use fast Search API to get ticket numbers
+            all_ticket_numbers = self.github.search_ticket_numbers(repo_full_name, since=cutoff_date)
 
             # Filter out existing
+            if self.config.sync.show_progress and all_ticket_numbers:
+                console.print(f"  [dim]Filtering {len(all_ticket_numbers)} tickets against existing {len(existing_numbers)} in database...[/dim]")
             ticket_numbers = [num for num in all_ticket_numbers if num not in existing_numbers]
 
             if not ticket_numbers:
@@ -604,10 +606,12 @@ class SyncManager:
         try:
             existing_numbers = self.db.get_existing_pr_numbers(repo_full_name)
 
-            # Use the list method which is now just getting numbers (fast)
-            all_pr_numbers = self.github.list_pr_numbers(repo_full_name, since=cutoff_date)
+            # Use fast Search API to get PR numbers
+            all_pr_numbers = self.github.search_pr_numbers(repo_full_name, since=cutoff_date)
 
             # Filter out existing
+            if self.config.sync.show_progress and all_pr_numbers:
+                console.print(f"  [dim]Filtering {len(all_pr_numbers)} PRs against existing {len(existing_numbers)} in database...[/dim]")
             pr_numbers = [num for num in all_pr_numbers if num not in existing_numbers]
 
             if not pr_numbers:

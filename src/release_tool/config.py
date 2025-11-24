@@ -155,6 +155,26 @@ class VersionPolicyConfig(BaseModel):
     )
 
 
+class BranchPolicyConfig(BaseModel):
+    """Branch management policy for releases."""
+    release_branch_template: str = Field(
+        default="release/{major}.{minor}",
+        description="Template for release branch names. Use {major}, {minor}, {patch} placeholders"
+    )
+    default_branch: str = Field(
+        default="main",
+        description="Default branch for new major versions"
+    )
+    create_branches: bool = Field(
+        default=True,
+        description="Automatically create release branches if they don't exist"
+    )
+    branch_from_previous_release: bool = Field(
+        default=True,
+        description="Branch new minor versions from previous release branch (if it exists)"
+    )
+
+
 class ReleaseNoteConfig(BaseModel):
     """Release note generation configuration."""
     categories: List[CategoryConfig] = Field(
@@ -276,7 +296,7 @@ class SyncConfig(BaseModel):
         description="ISO format date (YYYY-MM-DD) to limit historical fetching. Only fetch tickets/PRs from this date onwards."
     )
     parallel_workers: int = Field(
-        default=10,
+        default=20,
         description="Number of parallel workers for GitHub API calls"
     )
     clone_code_repo: bool = Field(
@@ -334,6 +354,10 @@ class OutputConfig(BaseModel):
         default="docs/releases/{version}.md",
         description="File path template for release notes (supports {version}, {major}, {minor}, {patch})"
     )
+    draft_output_path: str = Field(
+        default=".release_tool_cache/draft-releases/{repo}/{version}.md",
+        description="File path template for draft release notes (supports {repo}, {version}, {major}, {minor}, {patch})"
+    )
     assets_path: str = Field(
         default="docs/releases/assets/{version}",
         description="Path template for downloaded media assets (images, videos)"
@@ -368,6 +392,7 @@ class Config(BaseModel):
     sync: SyncConfig = Field(default_factory=SyncConfig)
     ticket_policy: TicketPolicyConfig = Field(default_factory=TicketPolicyConfig)
     version_policy: VersionPolicyConfig = Field(default_factory=VersionPolicyConfig)
+    branch_policy: BranchPolicyConfig = Field(default_factory=BranchPolicyConfig)
     release_notes: ReleaseNoteConfig = Field(default_factory=ReleaseNoteConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
 

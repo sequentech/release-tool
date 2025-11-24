@@ -108,6 +108,27 @@ class SemanticVersion(BaseModel):
     def __ge__(self, other: "SemanticVersion") -> bool:
         return not self < other
 
+    def bump_major(self) -> "SemanticVersion":
+        """Create a new version with major version bumped."""
+        return SemanticVersion(major=self.major + 1, minor=0, patch=0)
+
+    def bump_minor(self) -> "SemanticVersion":
+        """Create a new version with minor version bumped."""
+        return SemanticVersion(major=self.major, minor=self.minor + 1, patch=0)
+
+    def bump_patch(self) -> "SemanticVersion":
+        """Create a new version with patch version bumped."""
+        return SemanticVersion(major=self.major, minor=self.minor, patch=self.patch + 1)
+
+    def bump_rc(self, rc_number: int = 0) -> "SemanticVersion":
+        """Create a new RC version."""
+        return SemanticVersion(
+            major=self.major,
+            minor=self.minor,
+            patch=self.patch,
+            prerelease=f"rc.{rc_number}"
+        )
+
 
 class Repository(BaseModel):
     """Repository model."""

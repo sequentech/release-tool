@@ -557,12 +557,66 @@ class Database:
             return Release(**data)
         return None
 
-    def get_all_releases(self, repo_id: int) -> List[Release]:
-        """Get all releases for a repository."""
-        self.cursor.execute(
-            "SELECT * FROM releases WHERE repo_id=? ORDER BY published_at DESC",
-            (repo_id,)
-        )
+    def get_all_releases(
+        self,
+        repo_id: int,
+        limit: Optional[int] = None,
+        version_prefix: Optional[str] = None,
+        release_types: Optional[List[str]] = None,
+        after: Optional[datetime] = None,
+        before: Optional[datetime] = None,
+        # Deprecated parameters - kept for backwards compatibility
+        since: Optional[datetime] = None,
+        final_only: bool = False
+    ) -> List[Release]:
+        """
+        Get releases for a repository with optional filtering.
+
+        Args:
+            repo_id: Repository ID
+            limit: Maximum number of releases to return (None for all)
+            version_prefix: Filter by version prefix (e.g., "9" for 9.x.x, "9.3" for 9.3.x)
+            release_types: List of release types to include ('final', 'rc', 'beta', 'alpha')
+            after: Only return releases published after this date
+            before: Only return releases published before this date
+            since: (Deprecated) Use 'after' instead
+            final_only: (Deprecated) Use release_types=['final'] instead
+
+        Returns:
+            List of releases ordered by published_at DESC
+        """
+        from .models import SemanticVersion
+
+        # Handle deprecated parameters
+        if since and not after:
+            after = since
+        if final_only and not release_types:
+            release_types = ['final']
+
+        # Build query with filters
+        query = "SELECT * FROM releases WHERE repo_id=?"
+        params = [repo_id]
+
+        # Date range filters
+        if after:
+            query += " AND published_at >= ?"
+            params.append(after.isoformat())
+
+        if before:
+            query += " AND published_at <= ?"
+            params.append(before.isoformat())
+
+        query += " ORDER BY published_at DESC"
+
+        # Don't apply LIMIT in SQL if we have client-side filters
+        # (version_prefix or release_types) because limit would be applied before filtering
+        apply_limit_in_sql = limit and not version_prefix and not release_types
+
+        if apply_limit_in_sql:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        self.cursor.execute(query, params)
         rows = self.cursor.fetchall()
 
         releases = []
@@ -574,6 +628,42 @@ class Database:
                 data['created_at'] = datetime.fromisoformat(data['created_at'])
             if data.get('published_at'):
                 data['published_at'] = datetime.fromisoformat(data['published_at'])
-            releases.append(Release(**data))
+
+            release = Release(**data)
+
+            # Apply version prefix filter (client-side since version format varies)
+            if version_prefix:
+                # Match exact version or version starting with prefix followed by "."
+                version_matches = (
+                    release.version == version_prefix or
+                    release.version.startswith(version_prefix + ".")
+                )
+                if not version_matches:
+                    continue
+
+            # Apply release type filter (client-side)
+            if release_types:
+                try:
+                    sem_ver = SemanticVersion.parse(release.version)
+                    release_type = sem_ver.get_type()
+
+                    # Map release type to filter values
+                    if release_type == 'final' and 'final' not in release_types:
+                        continue
+                    elif release_type == 'rc' and 'rc' not in release_types:
+                        continue
+                    elif release_type == 'beta' and 'beta' not in release_types:
+                        continue
+                    elif release_type == 'alpha' and 'alpha' not in release_types:
+                        continue
+                except ValueError:
+                    # Skip releases with invalid version format
+                    continue
+
+            releases.append(release)
+
+            # Apply limit after client-side filtering
+            if not apply_limit_in_sql and limit and len(releases) >= limit:
+                break
 
         return releases

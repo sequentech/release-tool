@@ -62,7 +62,7 @@ class GitHubClient:
 
             # Process PRs in batches with parallel fetching
             prs_data = []
-            batch_size = 50
+            batch_size = 100  # Increased for better GitHub API throughput
             processed = 0
 
             with Progress(
@@ -118,7 +118,7 @@ class GitHubClient:
         results = []
 
         # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             # Submit all PRs for processing
             future_to_pr = {
                 executor.submit(self._pr_to_model, pr, 0): pr
@@ -249,6 +249,8 @@ class GitHubClient:
             if since:
                 query += f" created:>={since.strftime('%Y-%m-%d')}"
 
+            console.print(f"  [cyan]Searching for tickets...[/cyan]")
+
             # Use search API (much faster than iterating)
             issues = self.gh.search_issues(query, sort='created', order='desc')
 
@@ -259,6 +261,7 @@ class GitHubClient:
                 if len(ticket_numbers) % 500 == 0:
                     console.print(f"  [dim]Found {len(ticket_numbers)} tickets...[/dim]")
 
+            console.print(f"  [green]✓[/green] Found {len(ticket_numbers)} tickets")
             return ticket_numbers
         except GithubException as e:
             console.print(f"[red]Error searching tickets from {repo_full_name}: {e}[/red]")
@@ -285,6 +288,8 @@ class GitHubClient:
             if since:
                 query += f" merged:>={since.strftime('%Y-%m-%d')}"
 
+            console.print(f"  [cyan]Searching for merged PRs...[/cyan]")
+
             # Use search API (much faster than iterating)
             prs = self.gh.search_issues(query, sort='created', order='desc')
 
@@ -295,6 +300,7 @@ class GitHubClient:
                 if len(pr_numbers) % 500 == 0:
                     console.print(f"  [dim]Found {len(pr_numbers)} merged PRs...[/dim]")
 
+            console.print(f"  [green]✓[/green] Found {len(pr_numbers)} merged PRs")
             return pr_numbers
         except GithubException as e:
             console.print(f"[red]Error searching PRs from {repo_full_name}: {e}[/red]")
@@ -347,25 +353,48 @@ class GitHubClient:
             return None
 
     def fetch_releases(self, repo_full_name: str, repo_id: int) -> List[Release]:
-        """Fetch releases from GitHub."""
+        """Fetch releases from GitHub with parallel processing."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         try:
             repo = self.gh.get_repo(repo_full_name)
             releases = []
 
-            for gh_release in repo.get_releases():
-                release = Release(
-                    repo_id=repo_id,
-                    version=gh_release.tag_name.lstrip('v'),
-                    tag_name=gh_release.tag_name,
-                    name=gh_release.title,
-                    body=gh_release.body,
-                    created_at=gh_release.created_at,
-                    published_at=gh_release.published_at,
-                    is_draft=gh_release.draft,
-                    is_prerelease=gh_release.prerelease,
-                    url=gh_release.html_url
-                )
-                releases.append(release)
+            # Get all release objects first (lightweight)
+            gh_releases = list(repo.get_releases())
+
+            if not gh_releases:
+                return []
+
+            # Process releases in parallel
+            def process_release(gh_release):
+                try:
+                    return Release(
+                        repo_id=repo_id,
+                        version=gh_release.tag_name.lstrip('v'),
+                        tag_name=gh_release.tag_name,
+                        name=gh_release.title,
+                        body=gh_release.body,
+                        created_at=gh_release.created_at,
+                        published_at=gh_release.published_at,
+                        is_draft=gh_release.draft,
+                        is_prerelease=gh_release.prerelease,
+                        url=gh_release.html_url
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Error processing release: {e}[/yellow]")
+                    return None
+
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                future_to_release = {
+                    executor.submit(process_release, gh_release): gh_release
+                    for gh_release in gh_releases
+                }
+
+                for future in as_completed(future_to_release):
+                    release = future.result()
+                    if release:
+                        releases.append(release)
 
             return releases
         except GithubException as e:

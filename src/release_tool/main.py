@@ -10,7 +10,7 @@ from rich.table import Table
 from .config import load_config, Config
 from .db import Database
 from .github_utils import GitHubClient
-from .git_ops import GitOperations, get_release_commit_range
+from .git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy
 from .models import SemanticVersion
 from .policies import (
     TicketExtractor,
@@ -93,29 +93,62 @@ def sync(ctx, repository: Optional[str], repo_path: Optional[str]):
 
 
 @cli.command()
-@click.argument('version')
+@click.argument('version', required=False)
 @click.option('--from-version', help='Compare from this version (auto-detected if not specified)')
-@click.option('--repo-path', type=click.Path(exists=True), required=True, help='Path to local git repository')
+@click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to synced repo)')
 @click.option('--output', '-o', type=click.Path(), help='Output file for release notes')
-@click.option('--upload/--no-upload', default=False, help='Upload release to GitHub')
-@click.option('--create-pr/--no-pr', default=False, help='Create PR with release notes')
+@click.option('--dry-run', is_flag=True, help='Show what would be generated without creating files')
+@click.option('--new-major', is_flag=True, help='Auto-bump major version (X.0.0)')
+@click.option('--new-minor', is_flag=True, help='Auto-bump minor version (x.Y.0)')
+@click.option('--new-patch', is_flag=True, help='Auto-bump patch version (x.y.Z)')
+@click.option('--new-rc', is_flag=True, help='Create new RC version (auto-increments from existing RCs)')
+@click.option('--format', type=click.Choice(['markdown', 'json'], case_sensitive=False), default='markdown', help='Output format (default: markdown)')
 @click.pass_context
-def generate(ctx, version: str, from_version: Optional[str], repo_path: str,
-             output: Optional[str], upload: bool, create_pr: bool):
+def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path: Optional[str],
+             output: Optional[str], dry_run: bool, new_major: bool, new_minor: bool,
+             new_patch: bool, new_rc: bool, format: str):
     """
     Generate release notes for a version.
 
     Analyzes commits between versions, consolidates by ticket, and generates
     formatted release notes.
+
+    VERSION can be specified explicitly (e.g., "9.1.0") or auto-calculated using
+    --new-major, --new-minor, --new-patch, or --new-rc options.
+
+    Examples:
+      release-tool generate 9.1.0
+      release-tool generate --new-minor
+      release-tool generate --new-rc
+      release-tool generate 9.1.0 --dry-run
+      release-tool generate --new-patch --repo-path /custom/path
     """
+    # Validate mutually exclusive version options
+    version_flags = [new_major, new_minor, new_patch, new_rc]
+    if sum(version_flags) > 1:
+        console.print("[red]Error: Only one of --new-major, --new-minor, --new-patch, --new-rc can be specified[/red]")
+        return
+
+    if not version and not any(version_flags):
+        console.print("[red]Error: VERSION argument or one of --new-major/--new-minor/--new-patch/--new-rc is required[/red]")
+        return
+
     config: Config = ctx.obj['config']
 
-    console.print(f"[blue]Generating release notes for version {version}[/blue]")
+    # Determine repo path (use synced repo as default)
+    if not repo_path:
+        repo_path = config.get_code_repo_path()
+        console.print(f"[blue]Using synced repository: {repo_path}[/blue]")
+
+    # Verify repo path exists
+    from pathlib import Path
+    if not Path(repo_path).exists():
+        console.print(f"[red]Error: Repository path does not exist: {repo_path}[/red]")
+        if not config.sync.code_repo_path:
+            console.print("[yellow]Tip: Run 'release-tool sync' first to clone the repository[/yellow]")
+        return
 
     try:
-        # Parse target version
-        target_version = SemanticVersion.parse(version)
-
         # Initialize components
         db = Database(config.database.path)
         db.connect()
@@ -133,6 +166,107 @@ def generate(ctx, version: str, from_version: Optional[str], repo_path: str,
 
             # Initialize Git operations
             git_ops = GitOperations(repo_path)
+
+            # Auto-calculate version if using bump options
+            if any(version_flags):
+                # Get latest tag from git
+                latest_tag = git_ops.get_latest_tag()
+                if not latest_tag:
+                    console.print("[red]Error: No tags found in repository. Cannot auto-bump version.[/red]")
+                    console.print("[yellow]Tip: Specify version explicitly or create an initial tag[/yellow]")
+                    return
+
+                base_version = SemanticVersion.parse(latest_tag)
+                console.print(f"[blue]Latest version: {base_version.to_string()}[/blue]")
+
+                if new_major:
+                    target_version = base_version.bump_major()
+                    console.print(f"[blue]Bumping major version → {target_version.to_string()}[/blue]")
+                elif new_minor:
+                    target_version = base_version.bump_minor()
+                    console.print(f"[blue]Bumping minor version → {target_version.to_string()}[/blue]")
+                elif new_patch:
+                    target_version = base_version.bump_patch()
+                    console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
+                elif new_rc:
+                    # Find the next RC number for this version
+                    import re
+                    rc_number = 0
+
+                    # Check existing versions for RCs of the same base version
+                    all_versions = git_ops.get_version_tags()
+                    matching_rcs = [
+                        v for v in all_versions
+                        if v.major == base_version.major
+                        and v.minor == base_version.minor
+                        and v.patch == base_version.patch
+                        and v.prerelease and v.prerelease.startswith('rc.')
+                    ]
+
+                    if matching_rcs:
+                        # Extract RC numbers and find the highest
+                        rc_numbers = []
+                        for v in matching_rcs:
+                            match = re.match(r'rc\.(\d+)', v.prerelease)
+                            if match:
+                                rc_numbers.append(int(match.group(1)))
+
+                        if rc_numbers:
+                            rc_number = max(rc_numbers) + 1
+
+                    target_version = base_version.bump_rc(rc_number)
+                    console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+
+                version = target_version.to_string()
+            else:
+                # Parse explicitly provided version
+                target_version = SemanticVersion.parse(version)
+
+            if dry_run:
+                console.print(f"[yellow]DRY RUN: Generating release notes for version {version}[/yellow]")
+            else:
+                console.print(f"[blue]Generating release notes for version {version}[/blue]")
+
+            # Determine release branch strategy
+            available_versions = git_ops.get_version_tags()
+            release_branch, source_branch, should_create_branch = determine_release_branch_strategy(
+                target_version,
+                git_ops,
+                available_versions,
+                branch_template=config.branch_policy.release_branch_template,
+                default_branch=config.branch_policy.default_branch,
+                branch_from_previous=config.branch_policy.branch_from_previous_release
+            )
+
+            # Display branch information
+            console.print(f"[blue]Release branch: {release_branch}[/blue]")
+            if should_create_branch:
+                console.print(f"[yellow]→ Branch does not exist, will create from: {source_branch}[/yellow]")
+            else:
+                console.print(f"[blue]→ Using existing branch (source: {source_branch})[/blue]")
+
+            # Create branch if needed (unless dry-run)
+            if should_create_branch and config.branch_policy.create_branches:
+                if dry_run:
+                    console.print(f"[yellow]DRY RUN: Would create branch '{release_branch}' from '{source_branch}'[/yellow]")
+                else:
+                    try:
+                        # Ensure source branch exists locally
+                        current_branch = git_ops.get_current_branch()
+
+                        # Create the new release branch
+                        git_ops.create_branch(release_branch, source_branch)
+                        console.print(f"[green]✓ Created branch '{release_branch}' from '{source_branch}'[/green]")
+
+                        # Optionally checkout the new branch
+                        # git_ops.checkout_branch(release_branch)
+                        # console.print(f"[green]✓ Checked out branch '{release_branch}'[/green]")
+                    except ValueError as e:
+                        console.print(f"[yellow]Warning: {e}[/yellow]")
+                    except Exception as e:
+                        console.print(f"[red]Error creating branch: {e}[/red]")
+            elif should_create_branch:
+                console.print(f"[yellow]→ Branch creation disabled in config[/yellow]")
 
             # Determine comparison version and get commits
             from_ver = SemanticVersion.parse(from_version) if from_version else None
@@ -180,7 +314,8 @@ def generate(ctx, version: str, from_version: Optional[str], repo_path: str,
 
             # Fetch ticket information from GitHub
             github_client = GitHubClient(config)
-            ticket_repo = config.repository.ticket_repo or repo_name
+            ticket_repos = config.get_ticket_repos()
+            ticket_repo = ticket_repos[0] if ticket_repos else repo_name
 
             for change in consolidated_changes:
                 if change.ticket_key and change.ticket_key.startswith('#'):
@@ -206,77 +341,64 @@ def generate(ctx, version: str, from_version: Optional[str], repo_path: str,
             # Group and format
             grouped_notes = note_generator.group_by_category(release_notes)
 
-            # Determine output path (use config default if not specified)
-            final_output_path = output
-            if not final_output_path and (create_pr or config.output.create_pr):
-                # Use config output_path for PR creation
-                version_parts = {
+            # Format output based on format option
+            if format == 'json':
+                import json
+                # Convert to JSON
+                json_output = {
                     'version': version,
-                    'major': str(target_version.major),
-                    'minor': str(target_version.minor),
-                    'patch': str(target_version.patch)
+                    'from_version': comparison_version.to_string() if comparison_version else None,
+                    'num_commits': len(commits),
+                    'num_changes': len(consolidated_changes),
+                    'categories': {}
                 }
-                final_output_path = config.output.output_path.format(**version_parts)
-
-            # Format markdown with media processing if output path is available
-            markdown = note_generator.format_markdown(
-                grouped_notes,
-                version,
-                output_path=final_output_path
-            )
-
-            # Output
-            if final_output_path:
-                output_path_obj = Path(final_output_path)
-                output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                output_path_obj.write_text(markdown)
-                console.print(f"[green]Release notes written to {final_output_path}[/green]")
+                for category, notes in grouped_notes.items():
+                    json_output['categories'][category] = [
+                        {
+                            'title': note.title,
+                            'ticket_key': note.ticket_key,
+                            'description': note.description,
+                            'labels': note.labels
+                        }
+                        for note in notes
+                    ]
+                formatted_output = json.dumps(json_output, indent=2)
             else:
-                console.print("\n" + "="*80)
-                console.print(markdown)
-                console.print("="*80 + "\n")
-
-            # Upload to GitHub if requested
-            if upload or config.output.create_github_release:
-                console.print("[blue]Creating GitHub release...[/blue]")
-                release_name = f"Release {version}"
-                github_client.create_release(
-                    repo_name,
+                # Format markdown with media processing if output path is available
+                formatted_output = note_generator.format_markdown(
+                    grouped_notes,
                     version,
-                    release_name,
-                    markdown,
-                    prerelease=not target_version.is_final()
+                    output_path=output
                 )
 
-            # Create PR if requested
-            if create_pr or config.output.create_pr:
-                if final_output_path:
-                    # Format PR templates
-                    version_parts = {
-                        'version': version,
-                        'major': str(target_version.major),
-                        'minor': str(target_version.minor),
-                        'patch': str(target_version.patch),
-                        'num_changes': sum(len(notes) for notes in grouped_notes.values()),
-                        'num_categories': sum(1 for notes in grouped_notes.values() if notes)
-                    }
-
-                    branch_name = config.output.pr_templates.branch_template.format(**version_parts)
-                    pr_title = config.output.pr_templates.title_template.format(**version_parts)
-                    pr_body = config.output.pr_templates.body_template.format(**version_parts)
-
-                    console.print("[blue]Creating PR with release notes...[/blue]")
-                    github_client.create_pr_for_release_notes(
-                        repo_name,
-                        pr_title,  # Use formatted title instead of version
-                        final_output_path,
-                        markdown,
-                        branch_name,
-                        config.output.pr_target_branch,
-                        pr_body  # Pass body as additional parameter
+            # Output handling
+            if dry_run:
+                console.print(f"\n[yellow]{'='*80}[/yellow]")
+                console.print(f"[yellow]DRY RUN - Release notes for {version}:[/yellow]")
+                console.print(f"[yellow]{'='*80}[/yellow]\n")
+                console.print(formatted_output)
+                console.print(f"\n[yellow]{'='*80}[/yellow]")
+                console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
+                console.print(f"[yellow]{'='*80}[/yellow]\n")
+            else:
+                # Determine output path: use provided path or default to draft cache
+                if not output:
+                    # Build default draft path from config template
+                    draft_template = config.output.draft_output_path
+                    output = draft_template.format(
+                        repo=repo_name.replace('/', '-'),  # Sanitize repo name for filesystem
+                        version=version,
+                        major=target_version.major,
+                        minor=target_version.minor,
+                        patch=target_version.patch
                     )
-                else:
-                    console.print("[yellow]Warning: output.output_path not configured, skipping PR creation[/yellow]")
+
+                output_path_obj = Path(output)
+                output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                output_path_obj.write_text(formatted_output)
+                console.print(f"[green]✓ Release notes written to:[/green]")
+                console.print(f"[green]  {output_path_obj.absolute()}[/green]")
+                console.print(f"[blue]→ Review and edit the file, then use 'release-tool publish {version} -f {output}' to upload to GitHub[/blue]")
 
         finally:
             db.close()
@@ -289,12 +411,148 @@ def generate(ctx, version: str, from_version: Optional[str], repo_path: str,
 
 
 @cli.command()
-@click.argument('repository', required=False)
+@click.argument('version')
+@click.option('--notes-file', '-f', type=click.Path(exists=True), help='Path to release notes file (markdown)')
+@click.option('--release/--no-release', 'create_release', default=True, help='Create GitHub release (default: true)')
+@click.option('--pr/--no-pr', 'create_pr', default=False, help='Create PR with release notes')
+@click.option('--draft', is_flag=True, help='Create as draft release')
+@click.option('--prerelease', is_flag=True, help='Mark as prerelease (auto-detected from version if not specified)')
 @click.pass_context
-def list_releases(ctx, repository: Optional[str]):
-    """List all releases in the database."""
+def publish(ctx, version: str, notes_file: Optional[str], create_release: bool,
+           create_pr: bool, draft: bool, prerelease: bool):
+    """
+    Publish a release to GitHub.
+
+    Creates a GitHub release and/or pull request with release notes.
+    Release notes can be read from a file or will be loaded from the database.
+
+    Examples:
+      release-tool publish 9.1.0 -f docs/releases/9.1.0.md
+      release-tool publish 9.1.0-rc.0 --draft
+      release-tool publish 9.1.0 --pr --no-release
+    """
+    config: Config = ctx.obj['config']
+
+    try:
+        # Parse version
+        target_version = SemanticVersion.parse(version)
+
+        # Auto-detect prerelease if not explicitly set
+        if not prerelease and not target_version.is_final():
+            prerelease = True
+            console.print(f"[blue]Auto-detected as prerelease version[/blue]")
+
+        # Read release notes
+        if notes_file:
+            notes_path = Path(notes_file)
+            release_notes = notes_path.read_text()
+            console.print(f"[blue]Loaded release notes from {notes_file}[/blue]")
+        else:
+            console.print("[yellow]No notes file specified. Using version as release notes.[/yellow]")
+            release_notes = f"# Release {version}\n\nRelease notes for version {version}."
+
+        # Initialize GitHub client
+        github_client = GitHubClient(config)
+        repo_name = config.repository.code_repo
+
+        # Create GitHub release
+        if create_release:
+            status = "draft " if draft else ("prerelease " if prerelease else "")
+            console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
+
+            release_name = f"Release {version}"
+            github_client.create_release(
+                repo_name,
+                version,
+                release_name,
+                release_notes,
+                prerelease=prerelease,
+                draft=draft
+            )
+            console.print(f"[green]✓ GitHub release created successfully[/green]")
+            console.print(f"[blue]→ https://github.com/{repo_name}/releases/tag/v{version}[/blue]")
+
+        # Create PR
+        if create_pr:
+            if not notes_file:
+                console.print("[red]Error: --notes-file required when creating PR[/red]")
+                return
+
+            # Format PR templates
+            version_parts = {
+                'version': version,
+                'major': str(target_version.major),
+                'minor': str(target_version.minor),
+                'patch': str(target_version.patch)
+            }
+
+            branch_name = config.output.pr_templates.branch_template.format(**version_parts)
+            pr_title = config.output.pr_templates.title_template.format(**version_parts)
+            pr_body = config.output.pr_templates.body_template.format(**version_parts)
+
+            console.print(f"[blue]Creating PR with release notes...[/blue]")
+            github_client.create_pr_for_release_notes(
+                repo_name,
+                pr_title,
+                notes_file,
+                release_notes,
+                branch_name,
+                config.output.pr_target_branch,
+                pr_body
+            )
+            console.print(f"[green]✓ Pull request created successfully[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        if '--debug' in sys.argv:
+            raise
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('repository', required=False)
+@click.option('--limit', '-n', type=int, default=10, help='Number of releases to show (default: 10, use 0 for all)')
+@click.option('--version', '-v', type=str, help='Filter by version prefix (e.g., "9" for 9.x.x, "9.3" for 9.3.x)')
+@click.option('--type', '-t', multiple=True, type=click.Choice(['final', 'rc', 'beta', 'alpha'], case_sensitive=False), help='Release types to include (can be specified multiple times)')
+@click.option('--after', type=str, help='Only show releases published after this date (YYYY-MM-DD)')
+@click.option('--before', type=str, help='Only show releases published before this date (YYYY-MM-DD)')
+@click.pass_context
+def list_releases(ctx, repository: Optional[str], limit: int, version: Optional[str], type: tuple, after: Optional[str], before: Optional[str]):
+    """
+    List releases in the database.
+
+    By default shows the last 10 releases. Use --limit 0 to show all releases.
+
+    Examples:
+      release-tool list-releases --version "9"              # All 9.x.x releases
+      release-tool list-releases --version "9.3"            # All 9.3.x releases
+      release-tool list-releases --type final               # Only final releases
+      release-tool list-releases --type final --type rc     # Finals and RCs
+      release-tool list-releases --after 2024-01-01         # Since 2024
+      release-tool list-releases --before 2024-06-01        # Before June 2024
+    """
     config: Config = ctx.obj['config']
     repo_name = repository or config.repository.code_repo
+
+    from datetime import datetime
+
+    # Parse after date if provided
+    after_date = None
+    if after:
+        try:
+            after_date = datetime.fromisoformat(after)
+        except ValueError:
+            console.print(f"[red]Invalid date format for --after. Use YYYY-MM-DD[/red]")
+            return
+
+    # Parse before date if provided
+    before_date = None
+    if before:
+        try:
+            before_date = datetime.fromisoformat(before)
+        except ValueError:
+            console.print(f"[red]Invalid date format for --before. Use YYYY-MM-DD[/red]")
+            return
 
     db = Database(config.database.path)
     db.connect()
@@ -305,28 +563,68 @@ def list_releases(ctx, repository: Optional[str]):
             console.print(f"[red]Repository {repo_name} not found. Run 'sync' first.[/red]")
             return
 
-        releases = db.get_all_releases(repo.id)
+        # Convert type tuple to list, default to all types if not specified
+        release_types = list(type) if type else None
+
+        # First get total count (without limit) to show "X out of Y"
+        total_releases = db.get_all_releases(
+            repo.id,
+            limit=None,  # No limit for count
+            version_prefix=version,
+            release_types=release_types,
+            after=after_date,
+            before=before_date
+        )
+        total_count = len(total_releases)
+
+        # Now get the limited results
+        releases = db.get_all_releases(
+            repo.id,
+            limit=limit if limit > 0 else None,
+            version_prefix=version,
+            release_types=release_types,
+            after=after_date,
+            before=before_date
+        )
 
         if not releases:
             console.print("[yellow]No releases found.[/yellow]")
             return
 
-        table = Table(title=f"Releases for {repo_name}")
+        # Build title with filter info
+        title_parts = [f"Releases for {repo_name}"]
+        if limit and limit > 0 and total_count > len(releases):
+            title_parts.append(f"(showing {len(releases)} out of {total_count})")
+        elif total_count > 0:
+            title_parts.append(f"({total_count} total)")
+        if version:
+            title_parts.append(f"version {version}.x")
+        if release_types:
+            title_parts.append(f"types: {', '.join(release_types)}")
+        if after:
+            title_parts.append(f"after {after}")
+        if before:
+            title_parts.append(f"before {before}")
+
+        table = Table(title=" ".join(title_parts))
         table.add_column("Version", style="cyan")
         table.add_column("Tag", style="green")
         table.add_column("Type", style="yellow")
         table.add_column("Published", style="magenta")
+        table.add_column("URL", style="blue")
 
         for release in releases:
             version = SemanticVersion.parse(release.version)
             rel_type = "RC" if not version.is_final() else "Final"
             published = release.published_at.strftime("%Y-%m-%d") if release.published_at else "Draft"
+            url = release.url if release.url else f"https://github.com/{repo_name}/releases/tag/{release.tag_name}"
 
             table.add_row(
                 release.version,
                 release.tag_name,
                 rel_type,
-                published
+                published,
+                url
             )
 
         console.print(table)
@@ -556,6 +854,40 @@ gap_detection = "warn"
 # Common values: "v", "release-", "" (empty for no prefix)
 # Default: "v"
 tag_prefix = "v"
+
+# =============================================================================
+# Branch Management Policy
+# =============================================================================
+# Controls how release branches are created and managed
+[branch_policy]
+# release_branch_template: Template for release branch names
+# Use {major}, {minor}, {patch} as placeholders
+# Examples:
+#   - "release/{major}.{minor}" → "release/9.1"
+#   - "rel-{major}.{minor}.x" → "rel-9.1.x"
+#   - "v{major}.{minor}" → "v9.1"
+# Default: "release/{major}.{minor}"
+release_branch_template = "release/{major}.{minor}"
+
+# default_branch: The default branch for new major versions
+# New major versions (e.g., 9.0.0 when coming from 8.x.x) will branch from this
+# Common values: "main", "master", "develop"
+# Default: "main"
+default_branch = "main"
+
+# create_branches: Automatically create release branches if they don't exist
+# When true, the tool will create a new release branch automatically
+# When false, you must create branches manually
+# Default: true
+create_branches = true
+
+# branch_from_previous_release: Branch new minor versions from previous release
+# Controls the branching strategy for new minor versions:
+#   - true:  9.1.0 branches from release/9.0 (if it exists)
+#   - false: 9.1.0 branches from main (default_branch)
+# This enables hotfix workflows where release branches persist
+# Default: true
+branch_from_previous_release = true
 
 # =============================================================================
 # Release Notes Categorization
@@ -891,6 +1223,25 @@ output_template = '''# {{ title }}
 #
 # Default: "docs/releases/{version}.md"
 output_path = "docs/docusaurus/docs/releases/release-{major}.{minor}/release-{major}.{minor}.{patch}.md"
+
+# draft_output_path: Path template for draft release notes (generate command)
+# This is where 'generate' command saves files by default (when --output not specified)
+# Files are saved here for review/editing before publishing to GitHub
+#
+# Available variables:
+#   - {repo}: Repository name (e.g., "owner-repo")
+#   - {version}: Full version string
+#   - {major}: Major version number
+#   - {minor}: Minor version number
+#   - {patch}: Patch version number
+#
+# Examples:
+#   - ".release_tool_cache/draft-releases/{repo}/{version}.md": Organized by repo and version
+#   - "drafts/{major}.{minor}.{patch}.md": Simple draft folder
+#   - "/tmp/releases/{repo}-{version}.md": Temporary location
+#
+# Default: ".release_tool_cache/draft-releases/{repo}/{version}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{repo}/{version}.md"
 
 # assets_path: Path template for downloaded media assets (images, videos)
 # Images and videos referenced in ticket descriptions will be downloaded here

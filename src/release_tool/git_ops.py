@@ -33,9 +33,16 @@ class GitOperations:
         return sorted(versions)
 
     def get_latest_tag(self) -> Optional[str]:
-        """Get the most recent tag."""
+        """Get the most recent tag by semantic version (not by commit date)."""
         try:
-            return str(self.repo.git.describe('--tags', '--abbrev=0'))
+            # Get all version tags sorted by semantic version
+            versions = self.get_version_tags()
+            if not versions:
+                return None
+
+            # Return the highest semantic version (including RCs)
+            latest = max(versions)
+            return latest.to_string(include_v=True) if latest else None
         except Exception:
             return None
 
@@ -144,6 +151,171 @@ class GitOperations:
                     continue
             # Return current branch as last resort
             return self.get_current_branch()
+
+    def get_all_branches(self, remote: bool = False) -> List[str]:
+        """Get all branch names (local or remote)."""
+        if remote:
+            try:
+                origin = self.repo.remote('origin')
+                return [ref.remote_head for ref in origin.refs if ref.remote_head != 'HEAD']
+            except Exception:
+                return []
+        else:
+            return [branch.name for branch in self.repo.branches]
+
+    def branch_exists(self, branch_name: str, remote: bool = False) -> bool:
+        """Check if a branch exists (locally or remotely)."""
+        branches = self.get_all_branches(remote=remote)
+        return branch_name in branches
+
+    def create_branch(self, branch_name: str, start_point: str = "HEAD") -> None:
+        """Create a new branch from a starting point."""
+        if self.branch_exists(branch_name):
+            raise ValueError(f"Branch {branch_name} already exists")
+
+        self.repo.create_head(branch_name, start_point)
+
+    def checkout_branch(self, branch_name: str, create: bool = False) -> None:
+        """Checkout a branch, optionally creating it first."""
+        if create and not self.branch_exists(branch_name):
+            self.create_branch(branch_name)
+
+        self.repo.git.checkout(branch_name)
+
+    def find_release_branches(self, major: int, minor: Optional[int] = None) -> List[str]:
+        """
+        Find release branches matching a pattern.
+
+        Args:
+            major: Major version number
+            minor: Optional minor version number
+
+        Returns:
+            List of branch names matching the pattern
+        """
+        all_branches = self.get_all_branches() + self.get_all_branches(remote=True)
+        all_branches = list(set(all_branches))  # Deduplicate
+
+        if minor is not None:
+            pattern = f"release/{major}.{minor}"
+            return [b for b in all_branches if b == pattern or b == f"origin/{pattern}"]
+        else:
+            pattern_prefix = f"release/{major}."
+            matches = []
+            for branch in all_branches:
+                clean_branch = branch.replace("origin/", "")
+                if clean_branch.startswith(pattern_prefix):
+                    matches.append(clean_branch)
+            return matches
+
+    def get_latest_release_branch(self, major: int) -> Optional[str]:
+        """
+        Get the most recent release branch for a given major version.
+
+        Args:
+            major: Major version number
+
+        Returns:
+            Branch name of the latest release, or None if no release branches exist
+        """
+        branches = self.find_release_branches(major)
+        if not branches:
+            return None
+
+        # Extract minor versions and sort
+        branch_versions = []
+        for branch in branches:
+            # Parse release/X.Y format
+            match = re.match(r'release/(\d+)\.(\d+)', branch)
+            if match:
+                branch_major, branch_minor = int(match.group(1)), int(match.group(2))
+                if branch_major == major:
+                    branch_versions.append((branch_minor, branch))
+
+        if not branch_versions:
+            return None
+
+        # Return branch with highest minor version
+        branch_versions.sort(reverse=True)
+        return branch_versions[0][1]
+
+
+def determine_release_branch_strategy(
+    version: SemanticVersion,
+    git_ops: "GitOperations",
+    available_versions: List[SemanticVersion],
+    branch_template: str = "release/{major}.{minor}",
+    default_branch: str = "main",
+    branch_from_previous: bool = True
+) -> Tuple[str, str, bool]:
+    """
+    Determine the release branch name and source branch for a version.
+
+    Args:
+        version: Target version
+        git_ops: GitOperations instance
+        available_versions: List of existing versions
+        branch_template: Template for branch names
+        default_branch: Default branch (e.g., "main")
+        branch_from_previous: Whether to branch from previous release
+
+    Returns:
+        Tuple of (release_branch_name, source_branch, should_create_branch)
+    """
+    # Format release branch name
+    release_branch = branch_template.format(
+        major=version.major,
+        minor=version.minor,
+        patch=version.patch
+    )
+
+    # Check if this branch already exists
+    branch_exists = git_ops.branch_exists(release_branch) or git_ops.branch_exists(release_branch, remote=True)
+
+    # Check if this is the first release for this major.minor
+    same_version_releases = [
+        v for v in available_versions
+        if v.major == version.major and v.minor == version.minor
+    ]
+
+    # Determine source branch
+    source_branch = default_branch  # Default fallback
+
+    if same_version_releases:
+        # Not the first release for this version - use existing release branch
+        source_branch = release_branch
+        should_create = False
+    else:
+        # First release for this major.minor - need to determine source
+        should_create = not branch_exists
+
+        if version.minor == 0:
+            # New major version - branch from default branch
+            source_branch = default_branch
+        elif branch_from_previous:
+            # New minor version - try to branch from previous minor's release branch
+            prev_release_branch = git_ops.get_latest_release_branch(version.major)
+
+            if prev_release_branch:
+                source_branch = prev_release_branch
+            else:
+                # No previous release branch found - check if there are any releases for this major
+                same_major_releases = [
+                    v for v in available_versions
+                    if v.major == version.major and v.is_final()
+                ]
+
+                if same_major_releases:
+                    # There are releases but no branches - branch from default
+                    source_branch = default_branch
+                else:
+                    # New major version - branch from default
+                    source_branch = default_branch
+        else:
+            # Not branching from previous - use default branch
+            source_branch = default_branch
+
+    return (release_branch, source_branch, should_create)
 
 
 def find_comparison_version(
