@@ -302,6 +302,182 @@ Loaded from `release_tool.toml`:
 - **`branch_policy.create_branches`**: Auto-create release branches (default: true)
 - **`branch_policy.branch_from_previous_release`**: Branch new minors from previous release (default: true)
 
+## Config Versioning System (CRITICAL)
+
+**MANDATORY**: The configuration file (`release_tool.toml`) is versioned using semantic versioning. When making format changes, you MUST follow these rules strictly.
+
+### Config Version Field
+Every config file has a `config_version` field (e.g., `config_version = "1.1"`). This is automatically checked when loading the config.
+
+### When to Increment Config Version
+
+You MUST increment the config version when making ANY of these changes:
+
+1. **Adding new required fields** to the config schema
+2. **Removing fields** from the config schema
+3. **Changing field types** or validation rules
+4. **Modifying template variables** available in:
+   - `entry_template`
+   - `output_template`
+   - `title_template`
+   - `description_template`
+   - PR templates (branch_template, title_template, body_template)
+5. **Changing default template structure** (e.g., output_template formatting)
+6. **Renaming fields** or changing field semantics
+
+### When NOT to Increment
+
+You do NOT need to increment version for:
+- Bug fixes that don't affect config structure
+- Internal code refactoring
+- Documentation updates
+- Adding optional fields with backward-compatible defaults
+
+### Versioning Scheme
+
+Use semantic versioning for config versions:
+- **Major (2.0)**: Breaking changes that require manual intervention
+- **Minor (1.1)**: Backward-compatible additions or improvements
+- **Patch (1.1.1)**: Bug fixes (rare for config, usually use minor)
+
+Current version: **1.1**
+
+### Migration System
+
+The migration system handles automatic upgrades of config files between versions.
+
+#### Creating a Migration
+
+When incrementing the config version, create a migration file in `src/release_tool/migrations/`:
+
+```bash
+# File naming: v{from}_to_v{to}.py (underscores for dots)
+# Example: v1_0_to_v1_1.py for 1.0 → 1.1
+```
+
+Migration file structure:
+```python
+"""Migration from config version X.Y to X.Z.
+
+Changes in X.Z:
+- Change 1
+- Change 2
+
+This migration:
+- What it does to the config
+"""
+
+from typing import Dict, Any
+
+def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Migrate config from version X.Y to X.Z."""
+    updated_config = config_dict.copy()
+
+    # Apply transformations
+    # Example: Add new field with default
+    if 'new_section' not in updated_config:
+        updated_config['new_section'] = {'new_field': 'default_value'}
+
+    # Example: Update template if still using old default
+    if updated_config.get('template') == OLD_DEFAULT:
+        updated_config['template'] = NEW_DEFAULT
+
+    # Update version
+    updated_config['config_version'] = 'X.Z'
+
+    return updated_config
+```
+
+#### Migration Process
+
+1. **Auto-detection**: When loading config, system checks `config_version`
+2. **User prompt**: If old version detected, shows changes and prompts to upgrade
+3. **Auto-upgrade**: With `--auto` flag, upgrades without prompting
+4. **Migration chain**: Supports sequential upgrades (1.0 → 1.1 → 1.2)
+5. **File update**: Upgraded config is saved back to the TOML file
+
+#### Example Migration (v1.0 to v1.1)
+
+```python
+# src/release_tool/migrations/v1_0_to_v1_1.py
+
+V1_0_DEFAULT_TEMPLATE = "..."  # Old default
+V1_1_DEFAULT_TEMPLATE = "..."  # New default with improvements
+
+def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Migrate from 1.0 to 1.1."""
+    updated = config_dict.copy()
+
+    # Only update template if user hasn't customized it
+    if updated.get('output_template') == V1_0_DEFAULT_TEMPLATE:
+        updated['output_template'] = V1_1_DEFAULT_TEMPLATE
+
+    updated['config_version'] = '1.1'
+    return updated
+```
+
+### Commands
+
+#### Automatic Upgrade (on any command)
+```bash
+# If old config detected, prompts to upgrade
+release-tool generate --new-minor
+
+# Auto-upgrade without prompt
+release-tool --auto generate --new-minor
+```
+
+#### Manual Upgrade Command
+```bash
+# Check current version and available upgrades
+release-tool update-config
+
+# Dry-run to preview changes
+release-tool update-config --dry-run
+
+# Auto-upgrade without prompt
+release-tool --auto update-config
+
+# Upgrade to specific version
+release-tool update-config --target-version 1.1
+```
+
+### Version History
+
+#### v1.1 (Current)
+- Added `ticket_url` and `pr_url` template variables
+- Made `url` a smart field (ticket_url if available, else pr_url)
+- Improved `output_template` formatting with better spacing and blank lines
+- Added `config_version` field for version tracking
+
+#### v1.0 (Initial)
+- Original config format
+- Single `url` field in templates
+- Basic output_template structure
+
+## Documentation Maintenance (CRITICAL)
+
+**MANDATORY**: When modifying CLI commands, features, or workflows, you MUST update documentation:
+
+### What to Update:
+1. **.claude/prompts/architecture.md** - Command list, module descriptions
+2. **.claude/prompts/project-context.md** - Workflows, examples, configuration
+3. **docs/*.md** - User-facing documentation (usage.md, configuration.md, etc.)
+4. **Docstrings in code** - CLI help text, function descriptions
+
+### When to Update:
+- Adding/removing CLI commands or options
+- Changing command behavior or defaults
+- Adding new configuration options
+- Modifying workflows or best practices
+- Fixing bugs that affect user behavior
+
+### Documentation Quality:
+- Keep examples up-to-date with actual command names
+- Include proper formatting (newlines after "Examples:")
+- Test help text formatting: `release-tool <command> --help`
+- Ensure consistency across all documentation files
+
 ## Common Issues to Avoid
 
 1. **Slow sync** - Not using Search API or not parallelizing
@@ -309,3 +485,4 @@ Loaded from `release_tool.toml`:
 3. **Type errors** - Missing type hints or Pydantic validation
 4. **Test failures** - Not updating tests after refactoring
 5. **Rate limiting** - Too many sequential requests (parallelize!)
+6. **Outdated docs** - Not updating documentation when changing commands

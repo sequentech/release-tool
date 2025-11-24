@@ -200,3 +200,51 @@ class TestReleaseBranchStrategy:
         assert branch == "release/9.1"
         # Should not create if exists remotely
         assert should_create is False
+
+
+class TestGetLatestTag:
+    """Tests for get_latest_tag with final_only parameter."""
+
+    def test_get_latest_tag_includes_rc_by_default(self):
+        """Test that latest tag includes RCs by default."""
+        from unittest.mock import Mock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.get_version_tags = Mock(return_value=[
+            SemanticVersion.parse("9.2.0"),
+            SemanticVersion.parse("9.3.0-rc.1"),
+            SemanticVersion.parse("9.3.0-rc.6")
+        ])
+
+        latest = git_ops.get_latest_tag(final_only=False)
+        assert latest == "v9.3.0-rc.6"
+
+    def test_get_latest_tag_final_only(self):
+        """Test that final_only=True excludes RCs."""
+        from unittest.mock import Mock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.get_version_tags = Mock(return_value=[
+            SemanticVersion.parse("9.2.0"),
+            SemanticVersion.parse("9.3.0-rc.1"),
+            SemanticVersion.parse("9.3.0-rc.6")
+        ])
+
+        latest = git_ops.get_latest_tag(final_only=True)
+        assert latest == "v9.2.0"
+
+    def test_get_latest_tag_no_final_versions(self):
+        """Test that final_only=True returns None if no final versions."""
+        from unittest.mock import Mock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.get_version_tags = Mock(return_value=[
+            SemanticVersion.parse("9.3.0-rc.1"),
+            SemanticVersion.parse("9.3.0-rc.6")
+        ])
+
+        latest = git_ops.get_latest_tag(final_only=True)
+        assert latest is None

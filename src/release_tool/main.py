@@ -29,14 +29,20 @@ console = Console()
     type=click.Path(exists=True),
     help='Path to configuration file'
 )
+@click.option(
+    '--auto',
+    is_flag=True,
+    help='Run in non-interactive mode (auto-apply defaults, skip prompts)'
+)
 @click.pass_context
-def cli(ctx, config: Optional[str]):
+def cli(ctx, config: Optional[str], auto: bool):
     """Release tool for managing semantic versioned releases."""
     ctx.ensure_object(dict)
-    # Don't load config for init-config command
-    if ctx.invoked_subcommand != 'init-config':
+    ctx.obj['auto'] = auto
+    # Don't load config for init-config and update-config commands
+    if ctx.invoked_subcommand not in ['init-config', 'update-config']:
         try:
-            ctx.obj['config'] = load_config(config)
+            ctx.obj['config'] = load_config(config, auto_upgrade=auto)
         except FileNotFoundError as e:
             console.print(f"[red]Error: {e}[/red]")
             sys.exit(1)
@@ -114,14 +120,22 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
     formatted release notes.
 
     VERSION can be specified explicitly (e.g., "9.1.0") or auto-calculated using
-    --new-major, --new-minor, --new-patch, or --new-rc options.
+    --new-major, --new-minor, --new-patch, or --new-rc options. Partial versions
+    are supported (e.g., "9.2" + --new-patch creates 9.2.1).
 
     Examples:
+
       release-tool generate 9.1.0
+
       release-tool generate --new-minor
+
       release-tool generate --new-rc
+
       release-tool generate 9.1.0 --dry-run
+
       release-tool generate --new-patch --repo-path /custom/path
+
+      release-tool generate 9.2 --new-patch
     """
     # Validate mutually exclusive version options
     version_flags = [new_major, new_minor, new_patch, new_rc]
@@ -132,6 +146,102 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
     if not version and not any(version_flags):
         console.print("[red]Error: VERSION argument or one of --new-major/--new-minor/--new-patch/--new-rc is required[/red]")
         return
+
+    # Check if version is provided WITH a bump flag (partial version support)
+    if version and any(version_flags):
+        # Parse as partial version to use as base
+        try:
+            base_version = SemanticVersion.parse(version, allow_partial=True)
+            console.print(f"[blue]Using base version: {base_version.to_string()}[/blue]")
+
+            # Apply the bump
+            if new_major:
+                target_version = base_version.bump_major()
+                console.print(f"[blue]Bumping major version → {target_version.to_string()}[/blue]")
+            elif new_minor:
+                target_version = base_version.bump_minor()
+                console.print(f"[blue]Bumping minor version → {target_version.to_string()}[/blue]")
+            elif new_patch:
+                target_version = base_version.bump_patch()
+                console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
+            elif new_rc:
+                # Find existing RCs for this base version and auto-increment
+                import re
+                rc_number = 0
+
+                # Check database and Git for existing RCs of the same base version
+                try:
+                    # Get config from context
+                    cfg = ctx.obj['config']
+
+                    # First, try database (has all synced releases from GitHub)
+                    db = Database(cfg.database.path)
+                    db.connect()
+
+                    # Get repository to get repo_id
+                    repo_name = cfg.repository.code_repo
+                    repo = db.get_repository(repo_name)
+
+                    matching_rcs = []
+
+                    if repo:
+                        # Get all releases with version prefix matching our base version
+                        version_prefix = f"{base_version.major}.{base_version.minor}.{base_version.patch}-rc"
+                        all_releases = db.get_all_releases(
+                            repo_id=repo.id,
+                            version_prefix=version_prefix
+                        )
+
+                        for release in all_releases:
+                            try:
+                                v = SemanticVersion.parse(release.version)
+                                if (v.major == base_version.major
+                                    and v.minor == base_version.minor
+                                    and v.patch == base_version.patch
+                                    and v.prerelease and v.prerelease.startswith('rc.')):
+                                    matching_rcs.append(v)
+                            except ValueError:
+                                continue
+
+                    db.close()
+
+                    # Also check Git tags in case there are local tags not synced
+                    try:
+                        git_ops_temp = GitOperations(cfg.get_code_repo_path())
+                        git_versions = git_ops_temp.get_version_tags()
+                        for v in git_versions:
+                            if (v.major == base_version.major
+                                and v.minor == base_version.minor
+                                and v.patch == base_version.patch
+                                and v.prerelease and v.prerelease.startswith('rc.')):
+                                if v not in matching_rcs:
+                                    matching_rcs.append(v)
+                    except Exception:
+                        pass
+
+                    if matching_rcs:
+                        # Extract RC numbers and find the highest
+                        rc_numbers = []
+                        for v in matching_rcs:
+                            match = re.match(r'rc\.(\d+)', v.prerelease)
+                            if match:
+                                rc_numbers.append(int(match.group(1)))
+
+                        if rc_numbers:
+                            rc_number = max(rc_numbers) + 1
+                except Exception as e:
+                    # If we can't check existing RCs, start at 0
+                    console.print(f"[yellow]Warning: Could not check existing RCs ({e}), starting at rc.0[/yellow]")
+
+                target_version = base_version.bump_rc(rc_number)
+                console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+
+            version = target_version.to_string()
+            # Skip the auto-calculation below
+            version_flags = [False, False, False, False]
+        except ValueError as e:
+            console.print(f"[red]Error parsing version: {e}[/red]")
+            return
 
     config: Config = ctx.obj['config']
 
@@ -169,12 +279,20 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
             # Auto-calculate version if using bump options
             if any(version_flags):
-                # Get latest tag from git
-                latest_tag = git_ops.get_latest_tag()
-                if not latest_tag:
-                    console.print("[red]Error: No tags found in repository. Cannot auto-bump version.[/red]")
-                    console.print("[yellow]Tip: Specify version explicitly or create an initial tag[/yellow]")
-                    return
+                # For --new-patch, use latest final version (exclude RCs)
+                # For other bumps, use latest version including RCs
+                if new_patch:
+                    latest_tag = git_ops.get_latest_tag(final_only=True)
+                    if not latest_tag:
+                        console.print("[red]Error: No final release tags found in repository. Cannot bump patch.[/red]")
+                        console.print("[yellow]Tip: Create a final release first (e.g., 1.0.0) or specify version explicitly[/yellow]")
+                        return
+                else:
+                    latest_tag = git_ops.get_latest_tag(final_only=False)
+                    if not latest_tag:
+                        console.print("[red]Error: No tags found in repository. Cannot auto-bump version.[/red]")
+                        console.print("[yellow]Tip: Specify version explicitly or create an initial tag[/yellow]")
+                        return
 
                 base_version = SemanticVersion.parse(latest_tag)
                 console.print(f"[blue]Latest version: {base_version.to_string()}[/blue]")
@@ -524,11 +642,17 @@ def list_releases(ctx, repository: Optional[str], limit: int, version: Optional[
     By default shows the last 10 releases. Use --limit 0 to show all releases.
 
     Examples:
+
       release-tool list-releases --version "9"              # All 9.x.x releases
+
       release-tool list-releases --version "9.3"            # All 9.3.x releases
+
       release-tool list-releases --type final               # Only final releases
+
       release-tool list-releases --type final --type rc     # Finals and RCs
+
       release-tool list-releases --after 2024-01-01         # Since 2024
+
       release-tool list-releases --before 2024-06-01        # Before June 2024
     """
     config: Config = ctx.obj['config']
@@ -1363,6 +1487,232 @@ pr_target_branch = "main"
     console.print("2. Set GITHUB_TOKEN environment variable")
     console.print("3. Run: release-tool sync")
     console.print("4. Run: release-tool generate <version> --repo-path /path/to/repo")
+
+
+def _merge_config_with_template(user_data: dict, template_doc) -> dict:
+    """Merge user config with template, preserving comments and structure.
+
+    Args:
+        user_data: User's config as plain dict (from tomli)
+        template_doc: Template loaded with tomlkit (has comments)
+
+    Returns:
+        Merged tomlkit document with template comments and user values
+    """
+    import tomlkit
+
+    def merge_recursive(template_item, user_value):
+        """Recursively merge user values into template structure."""
+        if isinstance(template_item, dict) and isinstance(user_value, dict):
+            # For dictionaries, merge each key
+            result = tomlkit.table()
+
+            # First, copy comments and structure from template
+            if hasattr(template_item, 'trivia'):
+                result.trivia.update(template_item.trivia)
+
+            # Add all keys from template with user values if available
+            for key in template_item:
+                if key in user_value:
+                    # User has this key - use their value but template structure
+                    result[key] = merge_recursive(template_item[key], user_value[key])
+                else:
+                    # User doesn't have this key - use template default
+                    result[key] = template_item[key]
+
+            # Add any keys user has that aren't in template
+            for key in user_value:
+                if key not in template_item:
+                    result[key] = user_value[key]
+
+            return result
+
+        elif isinstance(template_item, list) and isinstance(user_value, list):
+            # For arrays, use user's values
+            # Check if it's an array of tables (like categories)
+            if template_item and isinstance(template_item[0], dict):
+                # Array of tables - merge each item
+                result = tomlkit.array()
+                for user_item in user_value:
+                    # Try to find matching template item
+                    # For categories, match by 'name' or 'alias'
+                    template_match = None
+                    if 'name' in user_item:
+                        for t_item in template_item:
+                            if isinstance(t_item, dict) and t_item.get('name') == user_item['name']:
+                                template_match = t_item
+                                break
+
+                    if template_match:
+                        result.append(merge_recursive(template_match, user_item))
+                    else:
+                        # No template match - use user item as-is
+                        result.append(user_item)
+                return result
+            else:
+                # Simple array - use user's values
+                return user_value
+
+        else:
+            # Primitive value - use user's value
+            return user_value
+
+    # Start with template document structure
+    result = tomlkit.document()
+
+    # Copy top-level comments from template
+    if hasattr(template_doc, 'trivia'):
+        result.trivia.update(template_doc.trivia)
+
+    # Merge each top-level key
+    for key in template_doc:
+        if key in user_data:
+            result[key] = merge_recursive(template_doc[key], user_data[key])
+        else:
+            result[key] = template_doc[key]
+
+    # Add any top-level keys user has that aren't in template
+    for key in user_data:
+        if key not in template_doc:
+            result[key] = user_data[key]
+
+    return result
+
+
+@cli.command()
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    help='Show what would be upgraded without making changes'
+)
+@click.option(
+    '--target-version',
+    help='Target version to upgrade to (default: latest)'
+)
+@click.option(
+    '--restore-comments',
+    is_flag=True,
+    help='Restore comments and reformat templates (works on same version)'
+)
+@click.pass_context
+def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_comments: bool):
+    """Update configuration file to the latest version.
+
+    This command upgrades your release_tool.toml configuration file to the
+    latest format version, applying any necessary migrations.
+    """
+    from .migrations import MigrationManager
+    import tomli
+    import tomlkit
+
+    # Determine config file path
+    config_path = ctx.parent.params.get('config') if ctx.parent else None
+    if not config_path:
+        # Look for default config files
+        default_paths = [
+            "release_tool.toml",
+            ".release_tool.toml",
+            "config/release_tool.toml"
+        ]
+        for path in default_paths:
+            if Path(path).exists():
+                config_path = path
+                break
+
+    if not config_path:
+        console.print("[red]Error: No configuration file found[/red]")
+        console.print("Please specify a config file with --config or create one using:")
+        console.print("  release-tool init-config")
+        sys.exit(1)
+
+    config_path = Path(config_path)
+    console.print(f"[blue]Checking configuration file: {config_path}[/blue]\n")
+
+    # Load current config
+    try:
+        with open(config_path, 'rb') as f:
+            data = tomli.load(f)
+    except Exception as e:
+        console.print(f"[red]Error reading config file: {e}[/red]")
+        sys.exit(1)
+
+    # If restoring comments, load template and merge
+    if restore_comments:
+        try:
+            template_path = Path(__file__).parent / "config_template.toml"
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_doc = tomlkit.load(f)
+
+            # Merge: use template structure/comments but user's values
+            data = _merge_config_with_template(data, template_doc)
+            console.print("[dim]✓ Loaded comments from template[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not load template comments: {e}[/yellow]")
+            # Continue without comments - not critical
+
+    # Check version
+    manager = MigrationManager()
+    current_version = data.get('config_version', '1.0')
+    target_ver = target_version or manager.CURRENT_VERSION
+
+    console.print(f"Current version: [yellow]{current_version}[/yellow]")
+    console.print(f"Target version:  [green]{target_ver}[/green]\n")
+
+    # Check if upgrade is needed (unless restoring comments)
+    if not manager.needs_upgrade(current_version) and not restore_comments:
+        console.print("[green]✓ Configuration is already up to date![/green]")
+        return
+
+    # If restoring comments on same version, show different message
+    if restore_comments and current_version == target_ver:
+        console.print("[blue]Restoring comments and reformatting templates...[/blue]\n")
+    else:
+        # Show changes
+        changes = manager.get_changes_description(current_version, target_ver)
+        console.print("[blue]Changes:[/blue]")
+        console.print(changes)
+        console.print()
+
+    if dry_run:
+        console.print("[yellow]Dry-run mode: No changes made[/yellow]")
+        return
+
+    # Get auto flag from context
+    auto = ctx.obj.get('auto', False)
+
+    # Confirm upgrade
+    if not auto:
+        if not click.confirm(f"Upgrade config from v{current_version} to v{target_ver}?"):
+            console.print("[yellow]Upgrade cancelled[/yellow]")
+            return
+
+    # Apply migrations
+    try:
+        console.print(f"[blue]Upgrading configuration...[/blue]")
+
+        # If restoring comments on same version, force run current version migration
+        if restore_comments and current_version == target_ver:
+            # For v1.1, reapply the v1.0 -> v1.1 migration to reformat templates
+            if current_version == "1.1":
+                from .migrations.v1_0_to_v1_1 import migrate as v1_1_migrate
+                upgraded_data = v1_1_migrate(data)
+            else:
+                # For other versions, just use the data as-is
+                upgraded_data = data
+        else:
+            # Normal upgrade path
+            upgraded_data = manager.upgrade_config(data, target_ver)
+
+        # Save back to file
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(tomlkit.dumps(upgraded_data))
+
+        console.print(f"[green]✓ Configuration upgraded to v{target_ver}![/green]")
+        console.print(f"[green]✓ Saved to {config_path}[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error during upgrade: {e}[/red]")
+        sys.exit(1)
 
 
 def main():

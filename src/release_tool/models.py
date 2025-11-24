@@ -22,26 +22,51 @@ class SemanticVersion(BaseModel):
     prerelease: Optional[str] = None
 
     @classmethod
-    def parse(cls, version_str: str) -> "SemanticVersion":
-        """Parse a semantic version string."""
+    def parse(cls, version_str: str, allow_partial: bool = False) -> "SemanticVersion":
+        """
+        Parse a semantic version string.
+
+        Args:
+            version_str: Version string to parse (e.g., "1.2.3", "1.2.3-rc.1", "1.2")
+            allow_partial: If True, allows partial versions like "1.2" (patch defaults to 0)
+
+        Returns:
+            SemanticVersion instance
+
+        Raises:
+            ValueError: If version string is invalid
+        """
         import re
         # Remove leading 'v' if present
         version_str = version_str.lstrip('v')
 
-        # Pattern: major.minor.patch[-prerelease]
-        pattern = r'^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$'
-        match = re.match(pattern, version_str)
+        # Try full pattern first: major.minor.patch[-prerelease]
+        full_pattern = r'^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$'
+        match = re.match(full_pattern, version_str)
 
-        if not match:
-            raise ValueError(f"Invalid semantic version: {version_str}")
+        if match:
+            major, minor, patch, prerelease = match.groups()
+            return cls(
+                major=int(major),
+                minor=int(minor),
+                patch=int(patch),
+                prerelease=prerelease
+            )
 
-        major, minor, patch, prerelease = match.groups()
-        return cls(
-            major=int(major),
-            minor=int(minor),
-            patch=int(patch),
-            prerelease=prerelease
-        )
+        # Try partial pattern if allowed: major.minor
+        if allow_partial:
+            partial_pattern = r'^(\d+)\.(\d+)$'
+            match = re.match(partial_pattern, version_str)
+            if match:
+                major, minor = match.groups()
+                return cls(
+                    major=int(major),
+                    minor=int(minor),
+                    patch=0,
+                    prerelease=None
+                )
+
+        raise ValueError(f"Invalid semantic version: {version_str}")
 
     def to_string(self, include_v: bool = False) -> str:
         """Convert to string representation."""
@@ -305,7 +330,9 @@ class ReleaseNote(BaseModel):
     authors: List[Author] = Field(default_factory=list)  # Changed from List[str] to List[Author]
     pr_numbers: List[int] = Field(default_factory=list)
     commit_shas: List[str] = Field(default_factory=list)
-    url: Optional[str] = None
+    ticket_url: Optional[str] = None  # URL to the ticket/issue
+    pr_url: Optional[str] = None  # URL to the pull request
+    url: Optional[str] = None  # Smart URL: ticket_url if available, else pr_url
     tags: Dict[str, str] = Field(default_factory=dict)
 
 

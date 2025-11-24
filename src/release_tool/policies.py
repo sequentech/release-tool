@@ -247,12 +247,19 @@ class ReleaseNoteGenerator:
                 self.config.ticket_policy.migration_section_regex
             )
 
-        # Get URL
-        url = None
+        # Get URLs
+        ticket_url = None
+        pr_url = None
+        url = None  # Smart URL: ticket_url if available, else pr_url
+
         if ticket:
-            url = ticket.url
-        elif change.prs:
-            url = change.prs[0].url
+            ticket_url = ticket.url
+            url = ticket_url  # Prefer ticket URL
+
+        if change.prs:
+            pr_url = change.prs[0].url
+            if not url:  # Use PR URL if no ticket URL
+                url = pr_url
 
         # Get labels
         labels = []
@@ -271,6 +278,8 @@ class ReleaseNoteGenerator:
             authors=authors,
             pr_numbers=pr_numbers,
             commit_shas=commit_shas,
+            ticket_url=ticket_url,
+            pr_url=pr_url,
             url=url
         )
 
@@ -400,7 +409,9 @@ class ReleaseNoteGenerator:
 
         return {
             'title': note.title,
-            'url': note.url,
+            'url': note.url,  # Smart URL: ticket_url if available, else pr_url
+            'ticket_url': note.ticket_url,  # Direct ticket URL
+            'pr_url': note.pr_url,  # Direct PR URL
             'pr_numbers': note.pr_numbers,
             'authors': authors_dicts,
             'description': processed_description,

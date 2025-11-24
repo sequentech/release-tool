@@ -35,6 +35,27 @@ class TestSemanticVersion:
         with pytest.raises(ValueError):
             SemanticVersion.parse("invalid")
 
+    def test_parse_partial_version_with_flag(self):
+        """Test parsing partial version (major.minor) with allow_partial=True."""
+        version = SemanticVersion.parse("9.2", allow_partial=True)
+        assert version.major == 9
+        assert version.minor == 2
+        assert version.patch == 0
+        assert version.prerelease is None
+
+    def test_parse_partial_version_without_flag(self):
+        """Test parsing partial version fails without allow_partial flag."""
+        with pytest.raises(ValueError):
+            SemanticVersion.parse("9.2", allow_partial=False)
+
+    def test_parse_full_version_with_partial_flag(self):
+        """Test that full versions still work with allow_partial=True."""
+        version = SemanticVersion.parse("9.2.1", allow_partial=True)
+        assert version.major == 9
+        assert version.minor == 2
+        assert version.patch == 1
+        assert version.prerelease is None
+
     def test_to_string(self):
         version = SemanticVersion(major=1, minor=2, patch=3)
         assert version.to_string() == "1.2.3"

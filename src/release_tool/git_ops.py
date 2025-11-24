@@ -32,15 +32,29 @@ class GitOperations:
                 continue
         return sorted(versions)
 
-    def get_latest_tag(self) -> Optional[str]:
-        """Get the most recent tag by semantic version (not by commit date)."""
+    def get_latest_tag(self, final_only: bool = False) -> Optional[str]:
+        """
+        Get the most recent tag by semantic version (not by commit date).
+
+        Args:
+            final_only: If True, only considers final releases (excludes prereleases)
+
+        Returns:
+            Latest tag name, or None if no tags found
+        """
         try:
             # Get all version tags sorted by semantic version
             versions = self.get_version_tags()
             if not versions:
                 return None
 
-            # Return the highest semantic version (including RCs)
+            # Filter to final versions only if requested
+            if final_only:
+                versions = [v for v in versions if v.is_final()]
+                if not versions:
+                    return None
+
+            # Return the highest semantic version
             latest = max(versions)
             return latest.to_string(include_v=True) if latest else None
         except Exception:

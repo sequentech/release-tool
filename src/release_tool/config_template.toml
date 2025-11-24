@@ -1,0 +1,428 @@
+# =============================================================================
+# Release Tool Configuration
+# =============================================================================
+# This file controls how the release tool generates release notes.
+# Config version tracks format changes. Run `release-tool update-config` to upgrade.
+config_version = "1.1"
+
+# =============================================================================
+# Repository Configuration
+# =============================================================================
+[repository]
+# code_repo: The main repository where code lives (PRs, commits, tags)
+# Format: "owner/repo"
+# Example: "sequentech/step"
+code_repo = "owner/repo"
+
+# ticket_repos: List of repositories where tickets/issues are tracked
+# If empty, uses code_repo for tickets
+# Format: ["owner/repo1", "owner/repo2"]
+# Example: ["sequentech/meta"] for separate ticket tracking repo
+ticket_repos = []
+
+# default_branch: Main branch name (for major version releases)
+# Common values: "main", "master", "develop"
+default_branch = "main"
+
+# =============================================================================
+# GitHub API Configuration
+# =============================================================================
+[github]
+# token: GitHub personal access token (optional - can use GITHUB_TOKEN env var)
+# Get token from: https://github.com/settings/tokens
+# Required scopes: repo (for private repos) or public_repo (for public only)
+# token = "ghp_xxxxxxxxxxxx"
+
+# api_url: GitHub API endpoint
+# Default: "https://api.github.com" (GitHub.com)
+# GitHub Enterprise: "https://github.company.com/api/v3"
+api_url = "https://api.github.com"
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+[database]
+# path: SQLite database path for caching GitHub data
+# Default: "release_tool.db" (in current directory)
+# Example: ".release_tool_cache/data.db"
+path = "release_tool.db"
+
+# =============================================================================
+# Sync Configuration
+# =============================================================================
+[sync]
+# cutoff_date: Only sync tickets/PRs from this date onwards (ISO format)
+# Useful for large repos to limit historical data
+# Format: "YYYY-MM-DD"
+# Example: "2023-01-01"
+# Default: null (sync all history)
+# cutoff_date = "2023-01-01"
+
+# parallel_workers: Number of concurrent GitHub API requests
+# Higher = faster sync, but respect rate limits (5000 requests/hour)
+# Recommended: 10-20 for most repos
+# Default: 20
+parallel_workers = 20
+
+# clone_code_repo: Whether to clone the code repository locally
+# When true, enables offline release note generation
+# Default: true
+clone_code_repo = true
+
+# code_repo_path: Local path where to clone/sync the code repository
+# If not specified, defaults to .release_tool_cache/{repo_name}
+# Example: "/tmp/release_tool_repos/voting-booth"
+# code_repo_path = "/path/to/local/repo"
+
+# show_progress: Show progress updates during sync
+# Displays messages like "syncing 13 / 156 tickets (10% done)"
+# Default: true
+show_progress = true
+
+# =============================================================================
+# Ticket Extraction and Consolidation Policy
+# =============================================================================
+[ticket_policy]
+# patterns: Ordered list of ticket extraction patterns
+# Each pattern extracts ticket references from different sources
+# Patterns are tried in ORDER - first match wins
+#
+# Available strategies:
+#   - "branch_name": Extract from PR branch name
+#   - "pr_body": Extract from PR description
+#   - "pr_title": Extract from PR title
+#   - "commit_message": Extract from commit message
+#
+# Pattern uses Python regex with NAMED CAPTURE GROUPS:
+#   - Use (?P<ticket>\\d+) to capture ticket number
+#   - Use (?P<repo>\\w+) to capture repository name (optional)
+#   - Use (?P<project>[A-Z]+) for JIRA-style projects (optional)
+
+# ORDER 1: Branch name (most reliable)
+# Matches: feat/meta-123/main, fix/repo-456/develop
+[[ticket_policy.patterns]]
+order = 1
+strategy = "branch_name"
+pattern = "/(?P<repo>\\w+)-(?P<ticket>\\d+)"
+description = "Branch name format: type/repo-123/target"
+
+# ORDER 2: PR body - Parent issue link
+# Matches: "Parent issue: https://github.com/owner/repo/issues/123"
+[[ticket_policy.patterns]]
+order = 2
+strategy = "pr_body"
+pattern = "Parent issue:.*?/issues/(?P<ticket>\\d+)"
+description = "Parent issue URL in PR description"
+
+# ORDER 3: PR title - GitHub issue reference
+# Matches: "#123" in PR title
+[[ticket_policy.patterns]]
+order = 3
+strategy = "pr_title"
+pattern = "#(?P<ticket>\\d+)"
+description = "GitHub issue reference (#123) in PR title"
+
+# ORDER 4: Commit message - GitHub issue reference
+# Matches: "Fixes #123" or "Closes #456" in commits
+[[ticket_policy.patterns]]
+order = 4
+strategy = "commit_message"
+pattern = "#(?P<ticket>\\d+)"
+description = "GitHub issue reference (#123) in commit"
+
+# ORDER 5: Commit message - JIRA-style tickets
+# Matches: "PROJ-123" in commit messages
+[[ticket_policy.patterns]]
+order = 5
+strategy = "commit_message"
+pattern = "(?P<project>[A-Z]+)-(?P<ticket>\\d+)"
+description = "JIRA-style tickets (PROJ-123) in commit"
+
+# no_ticket_action: What to do when no ticket is found for a PR/commit
+# Options: "ignore", "warn", "error"
+# Default: "warn"
+no_ticket_action = "warn"
+
+# unclosed_ticket_action: What to do with unclosed tickets
+# Options: "ignore", "warn", "error"
+# Default: "warn"
+unclosed_ticket_action = "warn"
+
+# consolidation_enabled: Group commits by parent ticket
+# When true, multiple commits for same ticket are grouped together
+# Default: true
+consolidation_enabled = true
+
+# description_section_regex: Regex to extract description from ticket body
+# Uses regex with DOTALL flag - matches across newlines
+# Extracts text between "## Description" and next "##" or end
+# Default: "(?:## Description|## Summary)\\n(.*?)(?=\\n##|\\Z)"
+description_section_regex = "(?:## Description|## Summary)\\n(.*?)(?=\\n##|\\Z)"
+
+# migration_section_regex: Regex to extract migration notes from ticket body
+# Extracts text between "## Migration" and next "##" or end
+# Default: "(?:## Migration|## Migration Notes)\\n(.*?)(?=\\n##|\\Z)"
+migration_section_regex = "(?:## Migration|## Migration Notes)\\n(.*?)(?=\\n##|\\Z)"
+
+# =============================================================================
+# Version Policy
+# =============================================================================
+[version_policy]
+# gap_detection: What to do when version gaps are detected
+# Options: "ignore", "warn", "error"
+# Example: releasing 1.5.0 when 1.4.0 doesn't exist
+# Default: "warn"
+gap_detection = "warn"
+
+# tag_prefix: Prefix for version tags in Git
+# Common values: "v", "release-", "" (no prefix)
+# Default: "v"
+tag_prefix = "v"
+
+# =============================================================================
+# Branch Policy
+# =============================================================================
+[branch_policy]
+# release_branch_template: Template for release branch names
+# Available placeholders: {major}, {minor}, {patch}
+# Examples:
+#   - "release/{major}.{minor}": release/9.3
+#   - "release-{major}.{minor}.x": release-9.3.x
+#   - "v{major}.{minor}-stable": v9.3-stable
+# Default: "release/{major}.{minor}"
+release_branch_template = "release/{major}.{minor}"
+
+# default_branch: Branch to use for new major versions
+# Default: "main"
+default_branch = "main"
+
+# create_branches: Automatically create release branches if they don't exist
+# Default: true
+create_branches = true
+
+# branch_from_previous_release: Branch new minors from previous release branch
+# When true: 9.1.0 branches from release/9.0 (if it exists)
+# When false: Always branch from default_branch
+# Default: true
+branch_from_previous_release = true
+
+# =============================================================================
+# Release Notes Configuration
+# =============================================================================
+[release_notes]
+# Categories for grouping release notes by labels
+# Each category has:
+#   - name: Display name (can include emojis)
+#   - labels: List of GitHub labels that match this category
+#   - order: Sort order (lower numbers appear first)
+#   - alias: Short name for template references (optional)
+#
+# Label matching supports prefixes:
+#   - "label": Matches "label" from PRs or tickets
+#   - "pr:label": Only matches "label" from PRs
+#   - "ticket:label": Only matches "label" from tickets
+
+[[release_notes.categories]]
+name = "💥 Breaking Changes"
+labels = ["breaking-change", "breaking"]
+order = 1
+alias = "breaking"
+
+[[release_notes.categories]]
+name = "🚀 Features"
+labels = ["feature", "enhancement", "feat"]
+order = 2
+alias = "features"
+
+[[release_notes.categories]]
+name = "🛠 Bug Fixes"
+labels = ["bug", "fix", "bugfix", "hotfix"]
+order = 3
+alias = "bugfixes"
+
+[[release_notes.categories]]
+name = "📖 Documentation"
+labels = ["docs", "documentation"]
+order = 4
+alias = "docs"
+
+[[release_notes.categories]]
+name = "🛡 Security Updates"
+labels = ["security"]
+order = 5
+alias = "security"
+
+[[release_notes.categories]]
+name = "Other Changes"
+labels = []
+order = 99
+alias = "other"
+
+# excluded_labels: Labels that exclude items from release notes
+# PRs/commits with these labels will not appear in release notes
+excluded_labels = ["skip-changelog", "internal", "wip", "do-not-merge"]
+
+# title_template: Jinja2 template for release title
+# Available variables: version
+# Example: "Release {{ version }}"
+title_template = "Release {{ version }}"
+
+# entry_template: Jinja2 template for each release note entry
+# This template is used by render_entry() function in output_template
+#
+# Available variables:
+#   - title: PR/ticket title
+#   - url: Smart URL (ticket_url if available, else pr_url)
+#   - ticket_url: Direct URL to ticket/issue (may be null)
+#   - pr_url: Direct URL to pull request (may be null)
+#   - pr_numbers: List of PR numbers [123, 456]
+#   - authors: List of author objects with:
+#       - name: Git author name
+#       - username: GitHub username
+#       - mention: @username or name
+#   - description: Ticket description (extracted from body)
+#   - migration_notes: Migration notes (extracted from ticket body)
+#   - labels: List of label names
+#   - ticket_key: Ticket identifier (e.g., "meta-123")
+#   - category: Category name
+#   - commit_shas: List of commit SHAs
+#
+# Default format: Title, URL, and authors
+entry_template = '''- {{ title }}
+  {% if url %}{{ url }}{% endif %}
+  {% if authors %}
+  by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}'''
+
+# output_template: Master Jinja2 template for entire release notes output
+# This template controls the overall structure and layout
+#
+# Available variables:
+#   - version: Version string (e.g., "9.3.0")
+#   - title: Rendered title from title_template
+#   - categories: List of category objects with:
+#       - name: Category display name
+#       - alias: Category alias
+#       - notes: List of ReleaseNote objects
+#   - all_notes: Flat list of all ReleaseNote objects
+#   - render_entry(note): Function to render a note using entry_template
+#
+# Default: Comprehensive format with breaking changes, migrations, highlights, and categorized changes
+output_template = '''# {{ title }}
+
+{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
+{% if breaking_with_desc|length > 0 %}
+## 💥 Breaking Changes
+
+{% for note in breaking_with_desc %}
+### {{ note.title }}
+
+{{ note.description }}
+
+{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% set migration_notes = all_notes|selectattr('migration_notes')|list %}
+{% if migration_notes|length > 0 %}
+## 🔄 Migrations
+
+{% for note in migration_notes %}
+### {{ note.title }}
+
+{{ note.migration_notes }}
+
+{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
+{% if non_breaking_with_desc|length > 0 %}
+## 📝 Highlights
+
+{% for note in non_breaking_with_desc %}
+### {{ note.title }}
+
+{{ note.description }}
+
+{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+
+## 📋 All Changes
+
+{% for category in categories %}
+### {{ category.name }}
+
+{% for note in category.notes %}
+{{ render_entry(note) }}
+
+{% endfor %}
+{% endfor %}'''
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+[output]
+# output_path: Path template for release notes file
+# Available variables: {version}, {major}, {minor}, {patch}
+# Examples:
+#   - "CHANGELOG.md": Single changelog file
+#   - "docs/releases/{version}.md": Separate file per version
+#   - "releases/{major}.{minor}/{patch}.md": Organized by version
+# Default: "docs/releases/{version}.md"
+output_path = "docs/releases/{version}.md"
+
+# draft_output_path: Path template for draft release notes
+# Used by 'generate' command when --output is not specified
+# Available variables: {repo}, {version}, {major}, {minor}, {patch}
+# Default: ".release_tool_cache/draft-releases/{repo}/{version}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{repo}/{version}.md"
+
+# assets_path: Path template for downloaded media assets (images, videos)
+# Available variables: {version}, {major}, {minor}, {patch}
+# Default: "docs/releases/assets/{version}"
+assets_path = "docs/releases/assets/{version}"
+
+# download_media: Download and include images/videos from ticket descriptions
+# Default: true
+download_media = true
+
+# create_github_release: Whether to create a GitHub release
+# Used by 'publish' command
+# Default: false
+create_github_release = false
+
+# create_pr: Whether to create a PR with release notes
+# Used by 'publish' command
+# Default: false
+create_pr = false
+
+# pr_target_branch: Target branch for release notes PR
+# Default: "main"
+pr_target_branch = "main"
+
+[output.pr_templates]
+# branch_template: Branch name template for release notes PR
+# Available variables: {version}
+# Default: "release-notes-{version}"
+branch_template = "release-notes-{version}"
+
+# title_template: PR title template
+# Available variables: {version}
+# Default: "Release notes for {version}"
+title_template = "Release notes for {version}"
+
+# body_template: PR description template
+# Available variables: {version}, {num_changes}, {num_categories}
+body_template = '''Automated release notes for version {version}.
+
+## Summary
+This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.'''
+
+# =============================================================================
+# End of Configuration
+# =============================================================================

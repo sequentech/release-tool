@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 from pydantic import BaseModel, Field
 import tomli
+import tomlkit
 
 
 class PolicyAction(str, Enum):
@@ -247,45 +248,60 @@ class ReleaseNoteConfig(BaseModel):
             "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
             "{% if breaking_with_desc|length > 0 %}\n"
             "## 💥 Breaking Changes\n"
+            "\n"
             "{% for note in breaking_with_desc %}\n"
             "### {{ note.title }}\n"
+            "\n"
             "{{ note.description }}\n"
+            "\n"
             "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
             "\n"
             "{% endfor %}\n"
             "{% endif %}\n"
+            "\n"
             "{% set migration_notes = all_notes|selectattr('migration_notes')|list %}\n"
             "{% if migration_notes|length > 0 %}\n"
             "## 🔄 Migrations\n"
+            "\n"
             "{% for note in migration_notes %}\n"
             "### {{ note.title }}\n"
+            "\n"
             "{{ note.migration_notes }}\n"
+            "\n"
             "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
             "\n"
             "{% endfor %}\n"
             "{% endif %}\n"
+            "\n"
             "{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
             "{% if non_breaking_with_desc|length > 0 %}\n"
             "## 📝 Highlights\n"
+            "\n"
             "{% for note in non_breaking_with_desc %}\n"
             "### {{ note.title }}\n"
+            "\n"
             "{{ note.description }}\n"
+            "\n"
             "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
             "\n"
             "{% endfor %}\n"
             "{% endif %}\n"
+            "\n"
             "## 📋 All Changes\n"
+            "\n"
             "{% for category in categories %}\n"
             "### {{ category.name }}\n"
+            "\n"
             "{% for note in category.notes %}\n"
             "{{ render_entry(note) }}\n"
-            "{% endfor %}\n"
             "\n"
+            "{% endfor %}\n"
             "{% endfor %}"
         ),
         description="Master Jinja2 template for entire release notes output. "
                     "Available variables: version, title, categories (with 'alias' field), "
-                    "all_notes, render_entry (function to render entry_template)"
+                    "all_notes, render_entry (function to render entry_template). "
+                    "Note variables: title, url, ticket_url, pr_url, pr_numbers, authors, description, etc."
     )
 
 
@@ -386,6 +402,7 @@ class OutputConfig(BaseModel):
 
 class Config(BaseModel):
     """Main configuration model."""
+    config_version: str = Field(default="1.1", description="Config file format version")
     repository: RepositoryConfig
     github: GitHubConfig = Field(default_factory=GitHubConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
@@ -397,14 +414,62 @@ class Config(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
 
     @classmethod
-    def from_file(cls, config_path: str) -> "Config":
-        """Load configuration from TOML file."""
+    def from_file(cls, config_path: str, auto_upgrade: bool = False) -> "Config":
+        """Load configuration from TOML file.
+
+        Args:
+            config_path: Path to the config file
+            auto_upgrade: If True, automatically upgrade old configs without prompting
+
+        Returns:
+            Config object
+        """
         path = Path(config_path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
         with open(path, 'rb') as f:
             data = tomli.load(f)
+
+        # Check and upgrade config version if needed
+        from .migrations import MigrationManager
+        manager = MigrationManager()
+        current_version = data.get('config_version', '1.0')
+
+        if manager.needs_upgrade(current_version):
+            # Config is out of date
+            target_version = manager.CURRENT_VERSION
+            changes = manager.get_changes_description(current_version, target_version)
+
+            if auto_upgrade:
+                # Auto-upgrade without prompting
+                print(f"Auto-upgrading config from v{current_version} to v{target_version}...")
+                data = manager.upgrade_config(data, target_version)
+
+                # Save upgraded config back to file
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(tomlkit.dumps(data))
+                print(f"Config upgraded and saved to {config_path}")
+            else:
+                # Prompt user to upgrade
+                print(f"\n⚠️  Config file is version {current_version}, but current version is {target_version}")
+                print(f"\nChanges in v{target_version}:")
+                print(changes)
+                print(f"\nYou need to upgrade your config file to continue.")
+
+                response = input("\nUpgrade now? [Y/n]: ").strip().lower()
+                if response in ['', 'y', 'yes']:
+                    data = manager.upgrade_config(data, target_version)
+
+                    # Save upgraded config back to file
+                    with open(path, 'w', encoding='utf-8') as f:
+                        f.write(tomlkit.dumps(data))
+                    print(f"✓ Config upgraded to v{target_version} and saved to {config_path}")
+                else:
+                    raise ValueError(
+                        f"Config version {current_version} is not supported. "
+                        f"Please upgrade to v{target_version} using: release-tool update-config"
+                    )
 
         # Override GitHub token from environment if present
         if 'github' not in data:
@@ -449,10 +514,18 @@ class Config(BaseModel):
         return [cat.name for cat in sorted_cats]
 
 
-def load_config(config_path: Optional[str] = None) -> Config:
-    """Load configuration from file or use defaults."""
+def load_config(config_path: Optional[str] = None, auto_upgrade: bool = False) -> Config:
+    """Load configuration from file or use defaults.
+
+    Args:
+        config_path: Path to config file (optional, will search default locations if not provided)
+        auto_upgrade: If True, automatically upgrade old configs without prompting
+
+    Returns:
+        Config object
+    """
     if config_path and Path(config_path).exists():
-        return Config.from_file(config_path)
+        return Config.from_file(config_path, auto_upgrade=auto_upgrade)
 
     # Look for default config files
     default_paths = [
@@ -463,7 +536,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
 
     for default_path in default_paths:
         if Path(default_path).exists():
-            return Config.from_file(default_path)
+            return Config.from_file(default_path, auto_upgrade=auto_upgrade)
 
     # Return minimal config if no file found (will fail validation if required fields missing)
     raise FileNotFoundError(

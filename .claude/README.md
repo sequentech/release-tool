@@ -141,8 +141,8 @@ See `.claude/commands/` for custom slash commands:
 
 - Main docs: `docs/`
 - README: `README.md`
-- Example configs: `example_*.toml`
-- Template docs: `MASTER_TEMPLATE_FEATURE.md`, `OUTPUT_TEMPLATE_EXAMPLES.md`
+- Example configs: `examples/example_*.toml`
+- Template docs: `examples/MASTER_TEMPLATE_FEATURE.md`, `examples/OUTPUT_TEMPLATE_EXAMPLES.md`
 
 ## Key Design Patterns
 

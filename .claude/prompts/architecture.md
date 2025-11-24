@@ -6,15 +6,19 @@
 **Purpose**: Command-line interface using Click
 
 **Commands**:
-- `sync` - Synchronize GitHub data to local database
-- `generate` - Generate release notes for a version
-- `list-releases` - List all releases in database
+- `sync` - Synchronize GitHub data (tickets, PRs, releases) to local database
+- `generate` - Generate release notes for a version (saves to cache by default)
+- `publish` - Publish release notes to GitHub (create release/PR)
+- `list-releases` - List releases from database with filtering options
 - `init-config` - Create example configuration file
+- `update-config` - Upgrade configuration file to latest version
 
 **Key Functions**:
 - `cli()` - Main CLI group with config loading
 - `sync()` - Orchestrates SyncManager for data fetching
-- `generate()` - Orchestrates release note generation workflow
+- `generate()` - Orchestrates release note generation with auto-version bumping
+- `publish()` - Creates GitHub releases/PRs from generated markdown files
+- `list_releases()` - Queries database with filters (version, type, date range)
 
 ### models.py (Data Models)
 **Purpose**: Pydantic models for type-safe data handling
@@ -49,10 +53,45 @@
 - `OutputConfig` - output paths, GitHub release/PR creation
 
 **Key Methods**:
-- `load_config()` - Load from file with defaults
+- `load_config()` - Load from file with defaults (auto-upgrades old versions)
+- `Config.from_file()` - Load from TOML with version checking
 - `Config.from_dict()` - Create from dictionary
 - `get_ticket_repos()` - Get ticket repositories list
 - `get_category_map()` - Label to category mapping
+
+### migrations/ (Config Migration System)
+**Purpose**: Handle automatic upgrades of configuration files between versions
+
+**Structure**:
+- `migrations/manager.py` - MigrationManager class
+- `migrations/v1_0_to_v1_1.py` - Individual migration scripts (one per version transition)
+
+**MigrationManager Methods**:
+- `compare_versions()` - Semantic version comparison using packaging library
+- `needs_upgrade()` - Check if config version is outdated
+- `get_migration_path()` - Find migration chain (e.g., 1.0 → 1.1 → 1.2)
+- `_discover_migrations()` - Auto-discover migration files in migrations/ directory
+- `load_migration()` - Dynamically load migration module
+- `apply_migration()` - Execute single migration
+- `upgrade_config()` - Apply full migration chain
+- `get_changes_description()` - Human-readable change summary
+
+**Migration File Format**:
+Each migration is a Python file with a `migrate()` function:
+```python
+def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Migrate from version X to version Y."""
+    # Transform config_dict
+    # Update config_version
+    return updated_config
+```
+
+**Auto-Upgrade Flow**:
+1. Config loads, checks `config_version` field
+2. If outdated, shows changes to user
+3. Prompts to upgrade (or auto-upgrades with `--auto`)
+4. Applies migration chain
+5. Saves upgraded config back to TOML file
 
 ### db.py (Database Operations)
 **Purpose**: SQLite database for local caching

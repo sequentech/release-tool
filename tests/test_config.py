@@ -25,6 +25,8 @@ def test_load_from_file(tmp_path):
     """Test loading config from TOML file."""
     config_file = tmp_path / "test_config.toml"
     config_content = """
+config_version = "1.1"
+
 [repository]
 code_repo = "owner/repo"
 default_branch = "main"
