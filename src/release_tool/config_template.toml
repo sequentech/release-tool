@@ -124,7 +124,7 @@ description = "Branch name format: type/repo-123/target"
 [[ticket_policy.patterns]]
 order = 2
 strategy = "pr_body"
-pattern = "Parent issue:.*?/issues/(?P<ticket>\\d+)"
+pattern = "(Parent issue:.*?/issues/|sequentech/meta#)(?P<ticket>\\d+)"
 description = "Parent issue URL in PR description"
 
 # ORDER 3: GitHub issue reference in PR title
@@ -390,11 +390,10 @@ title_template = "Release {{ version }}"
 # The whitespace will collapse, <br> tags create line breaks
 # Uses author.mention which gives @username if available, otherwise falls back to name
 # Uses short_repo_link for concise display (e.g., "meta#123" instead of full URL)
-entry_template = '''- {{ title }}<br>
+entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }){% endif %}<br>
   {% if authors %}
   &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
-  {% endif %}
-  &nbsp;&nbsp;{% if short_repo_link %}{{ short_repo_link }}{% endif %}'''
+  {% endif %}'''
 
 # output_template: MASTER Jinja2 template for the entire release notes output
 # This is an ADVANCED feature that gives you complete control over the release
