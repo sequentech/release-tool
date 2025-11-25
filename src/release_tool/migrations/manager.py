@@ -17,7 +17,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.2"  # Latest config version
+    CURRENT_VERSION = "1.3"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -211,6 +211,14 @@ class MigrationManager:
                 "  • Handles tickets extracted but not found in database\n"
                 "  • Handles tickets found in different repositories\n"
                 "  • Provides diagnostics with potential reasons and links"
+            ),
+            ("1.2", "1.3"): (
+                "Version 1.3 fixes:\n"
+                "  • Ticket key format: removed '#' prefix from database storage\n"
+                "  • Database queries now normalize keys (accept both '8624' and '#8624')\n"
+                "  • BREAKING: Requires database migration to strip '#' from existing keys\n"
+                "  • Display still shows '#' prefix for user-friendly output\n"
+                "  • URL truncation fixed in tickets command"
             ),
         }
 

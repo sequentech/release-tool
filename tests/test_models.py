@@ -242,7 +242,7 @@ class TestTicket:
         ticket = Ticket(
             repo_id=1,
             number=456,
-            key="#456",
+            key="456",
             title="Fix bug",
             state="closed",
             labels=[Label(name="bug")]
@@ -276,7 +276,7 @@ class TestReleaseNote:
         author1 = Author(name="dev1", username="dev1")
         author2 = Author(name="dev2", username="dev2")
         note = ReleaseNote(
-            ticket_key="#123",
+            ticket_key="123",
             title="Add new feature",
             category="Features",
             authors=[author1, author2],

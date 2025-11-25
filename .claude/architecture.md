@@ -46,6 +46,28 @@ The release tool has a strict separation between online (GitHub API) and offline
   - ✅ CAN read from database
   - ❌ MUST NOT fetch additional data from GitHub
 
+### ✅ `tickets` command - Database Query (Offline)
+- **Purpose**: Query and explore tickets in local database
+- **Internet**: NOT REQUIRED (fully offline)
+- **Operations**:
+  - Search tickets by key, repo, or fuzzy patterns
+  - Support smart TICKET_KEY formats (8624, #8624, meta#8624, meta#8624~, owner/repo#8624)
+  - Export ticket data to CSV
+  - Debug partial ticket matches
+  - Explore synced data
+- **Rules**:
+  - ✅ CAN read from database
+  - ✅ CAN display data in table or CSV format
+  - ❌ MUST NOT call GitHub API
+  - ⚠️ Only shows synced tickets (remind user to sync first)
+
+### Use Cases for tickets:
+- **Debugging partial matches**: Find why a ticket wasn't matched during release note generation
+- **Exploring tickets**: See what tickets are in the database
+- **Data export**: Export tickets to CSV for analysis
+- **Number proximity**: Find tickets with similar numbers (useful for tracking down typos)
+- **Pattern matching**: Use starts-with, ends-with for flexible searching
+
 ## Database Design
 
 ### Ticket Storage
@@ -301,10 +323,28 @@ if doc['section'].get('field') == 'old_default':
 
 ### TOML Preservation
 
-- Use `tomlkit` (NOT `tomli`) for writing configs
-- Preserves comments and formatting
-- Preserves user's custom ordering where possible
-- Only modifies what's necessary
+⚠️ **CRITICAL**: Use `tomlkit` for BOTH reading AND writing configs!
+
+❌ **BAD** - Loses comments:
+```python
+import tomli
+with open(path, 'rb') as f:
+    data = tomli.load(f)  # Returns plain dict, NO comments!
+```
+
+✅ **GOOD** - Preserves comments:
+```python
+import tomlkit
+with open(path, 'r', encoding='utf-8') as f:
+    data = tomlkit.load(f)  # Preserves comments and formatting
+```
+
+**Rules**:
+- Use `tomlkit` for reading configs (NOT `tomli`)
+- Use text mode `'r'` (NOT binary `'rb'`)
+- Use `tomlkit.load()` and `tomlkit.dumps()`
+- Comments and formatting are preserved automatically
+- Only modify what's necessary
 
 ### Error Handling
 
@@ -317,3 +357,62 @@ if doc['section'].get('field') == 'old_default':
 - Validate before migration
 - Provide helpful error messages
 - Include line numbers if possible
+
+## CLI Patterns
+
+### Confirmation Prompts
+
+ALL commands with user confirmations MUST respect both `--auto` and `-y/--assume-yes` flags.
+
+**Flags**:
+- `--auto`: Non-interactive mode (skip all prompts, use defaults) - for automation/CI
+- `-y, --assume-yes`: Answer "yes" to confirmations - for interactive convenience
+
+**Pattern**:
+```python
+@click.pass_context
+def my_command(ctx, ...):
+    # Get flags from context
+    auto = ctx.obj.get('auto', False)
+    assume_yes = ctx.obj.get('assume_yes', False)
+
+    # Check before prompting
+    if not (auto or assume_yes):
+        if not click.confirm("Proceed?"):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    # Continue with operation...
+```
+
+**Requirements**:
+- ✅ ALL future commands with confirmations MUST implement this pattern
+- ✅ Check BOTH flags: `if not (auto or assume_yes):`
+- ✅ Always print cancellation message if user says no
+- ⚠️ Never prompt if either flag is set
+
+### Help Text Formatting
+
+Use `\b` marker to preserve formatting in command docstrings:
+
+```python
+@cli.command()
+def my_command():
+    """\b
+    This is my command.
+
+    Examples:
+      command --option1
+      command --option2
+
+    The \b prevents Click from rewrapping text.
+    """
+```
+
+Without `\b`, Click will collapse all text into paragraphs and break formatting.
+
+**Requirements**:
+- ✅ ALL commands with examples or formatted lists MUST use `\b`
+- ✅ Place `\b` on its own line right after the opening `"""`
+- ✅ Maintain proper indentation in docstrings
+- ⚠️ Test help output with `--help` to verify formatting

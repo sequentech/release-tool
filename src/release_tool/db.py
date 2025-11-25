@@ -295,6 +295,12 @@ class Database:
             return Repository(**dict(row))
         return None
 
+    def get_all_repositories(self) -> List[Repository]:
+        """Get all repositories from the database."""
+        self.cursor.execute("SELECT * FROM repositories")
+        rows = self.cursor.fetchall()
+        return [Repository(**dict(row)) for row in rows]
+
     # Pull request operations
     def upsert_pull_request(self, pr: PullRequest) -> int:
         """Insert or update a pull request."""
@@ -520,9 +526,12 @@ class Database:
         Returns:
             Ticket if found, None otherwise
         """
+        # Normalize key: strip "#" prefix if present
+        normalized_key = key.lstrip('#') if key.startswith('#') else key
+
         self.cursor.execute(
             "SELECT * FROM tickets WHERE key=? ORDER BY created_at DESC LIMIT 1",
-            (key,)
+            (normalized_key,)
         )
         row = self.cursor.fetchone()
         if row:
@@ -535,6 +544,171 @@ class Database:
                 data['closed_at'] = datetime.fromisoformat(data['closed_at'])
             return Ticket(**data)
         return None
+
+    def _parse_ticket_number(self, key: str) -> Optional[int]:
+        """
+        Parse numeric portion from a ticket key.
+
+        Handles various formats:
+        - "8624" -> 8624
+        - "#8624" -> 8624
+        - "ISSUE-8624" -> 8624
+        - "meta-8624" -> 8624
+
+        Args:
+            key: Ticket key in any format
+
+        Returns:
+            Integer ticket number if found, None otherwise
+        """
+        import re
+        # Try to find a number in the key
+        match = re.search(r'\d+', key)
+        if match:
+            try:
+                return int(match.group())
+            except ValueError:
+                return None
+        return None
+
+    def query_tickets(
+        self,
+        ticket_key: Optional[str] = None,
+        repo_id: Optional[int] = None,
+        repo_full_name: Optional[str] = None,
+        starts_with: Optional[str] = None,
+        ends_with: Optional[str] = None,
+        close_to: Optional[str] = None,
+        close_range: int = 10,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[Ticket]:
+        """
+        Query tickets with flexible filtering and fuzzy matching.
+
+        This method supports multiple query patterns:
+        - Exact match by ticket_key
+        - Filter by repository (id or full_name)
+        - Fuzzy matching: starts_with, ends_with
+        - Proximity search: close_to with configurable range
+
+        Args:
+            ticket_key: Exact ticket key to search for
+            repo_id: Filter by repository ID
+            repo_full_name: Filter by repository full name (e.g., "owner/repo")
+            starts_with: Find tickets where key starts with this prefix
+            ends_with: Find tickets where key ends with this suffix
+            close_to: Find tickets numerically close to this number
+            close_range: Range for close_to search (default: ±10)
+            limit: Maximum number of results (default: 20)
+            offset: Skip first N results (for pagination)
+
+        Returns:
+            List of Ticket objects matching the query
+
+        Examples:
+            # Find specific ticket
+            query_tickets(ticket_key="8624")
+
+            # Find all tickets in a repo
+            query_tickets(repo_full_name="sequentech/meta", limit=50)
+
+            # Fuzzy match: tickets starting with "86"
+            query_tickets(starts_with="86")
+
+            # Find tickets close to 8624 (8604-8644)
+            query_tickets(close_to="8624", close_range=10)
+        """
+        # Build the SQL query dynamically based on filters
+        conditions = []
+        params = []
+
+        # Handle repo filter (either by id or full_name)
+        if repo_id is not None:
+            conditions.append("t.repo_id = ?")
+            params.append(repo_id)
+        elif repo_full_name is not None:
+            # Need to join with repositories table
+            conditions.append("r.full_name = ?")
+            params.append(repo_full_name)
+
+        # Handle exact ticket key
+        if ticket_key:
+            # Normalize key: strip "#" prefix if present
+            normalized_key = ticket_key.lstrip('#') if ticket_key.startswith('#') else ticket_key
+            conditions.append("t.key = ?")
+            params.append(normalized_key)
+
+        # Handle fuzzy matching
+        if starts_with:
+            conditions.append("(t.key LIKE ? OR CAST(t.number AS TEXT) LIKE ?)")
+            params.append(f"{starts_with}%")
+            params.append(f"{starts_with}%")
+
+        if ends_with:
+            conditions.append("(t.key LIKE ? OR CAST(t.number AS TEXT) LIKE ?)")
+            params.append(f"%{ends_with}")
+            params.append(f"%{ends_with}")
+
+        # Handle proximity search
+        if close_to:
+            target_num = self._parse_ticket_number(close_to)
+            if target_num is not None:
+                lower = target_num - close_range
+                upper = target_num + close_range
+                conditions.append("t.number BETWEEN ? AND ?")
+                params.append(lower)
+                params.append(upper)
+
+        # Build the WHERE clause
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Build the full query with JOIN to get repo information
+        query = f"""
+            SELECT
+                t.*,
+                r.full_name as repo_full_name,
+                r.owner as repo_owner,
+                r.name as repo_name
+            FROM tickets t
+            LEFT JOIN repositories r ON t.repo_id = r.id
+            WHERE {where_clause}
+            ORDER BY t.created_at DESC
+            LIMIT ? OFFSET ?
+        """
+
+        params.extend([limit, offset])
+
+        # Execute query
+        self.cursor.execute(query, params)
+        rows = self.cursor.fetchall()
+
+        # Parse results into Ticket objects with repo info stored separately
+        tickets = []
+        for row in rows:
+            data = dict(row)
+            # Extract the joined repo fields (not part of Ticket model)
+            repo_full_name_val = data.pop('repo_full_name', None)
+            data.pop('repo_owner', None)
+            data.pop('repo_name', None)
+
+            # Parse JSON fields
+            data['labels'] = [Label(**l) for l in json.loads(data.get('labels', '[]'))]
+            data['tags'] = json.loads(data.get('tags', '{}'))
+
+            # Parse dates
+            if data.get('created_at'):
+                data['created_at'] = datetime.fromisoformat(data['created_at'])
+            if data.get('closed_at'):
+                data['closed_at'] = datetime.fromisoformat(data['closed_at'])
+
+            ticket = Ticket(**data)
+            # Store repo info in a way that won't conflict with Pydantic
+            # Use object.__setattr__ to bypass Pydantic's validation
+            object.__setattr__(ticket, '_repo_full_name', repo_full_name_val)
+            tickets.append(ticket)
+
+        return tickets
 
     # Release operations
     def upsert_release(self, release: Release) -> int:
@@ -704,3 +878,25 @@ class Database:
                 break
 
         return releases
+
+    def migrate_ticket_keys_strip_hash(self) -> int:
+        """
+        Migrate database: strip "#" prefix from all ticket keys.
+
+        This is a one-time migration for version 1.3 which changes the ticket key
+        storage format from "#8624" to "8624".
+
+        Returns:
+            Number of tickets updated
+        """
+        # Update all ticket keys that start with #
+        self.cursor.execute("""
+            UPDATE tickets
+            SET key = SUBSTR(key, 2)
+            WHERE key LIKE '#%'
+        """)
+
+        updated_count = self.cursor.rowcount
+        self.conn.commit()
+
+        return updated_count

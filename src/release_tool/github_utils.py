@@ -199,7 +199,7 @@ class GitHubClient:
             return Ticket(
                 repo_id=repo_id,
                 number=issue.number,
-                key=f"#{issue.number}",
+                key=str(issue.number),
                 title=issue.title,
                 body=issue.body,
                 state=issue.state,
