@@ -1,7 +1,9 @@
 """Policy implementations for ticket extraction, consolidation, and release notes."""
 
 import re
-from typing import List, Dict, Optional, Any
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any, Set
+from enum import Enum
 from rich.console import Console
 
 from .models import (
@@ -14,13 +16,57 @@ from .config import (
 console = Console()
 
 
+class PartialTicketReason(Enum):
+    """Reasons why a ticket might be partially matched."""
+
+    # Not found reasons
+    OLDER_THAN_CUTOFF = "older_than_cutoff"  # Ticket may be older than sync cutoff date
+    TYPO = "typo"  # Ticket may not exist (typo in branch/PR)
+    SYNC_NOT_RUN = "sync_not_run"  # Sync may not have been run yet
+
+    # Different repo reasons
+    REPO_CONFIG_MISMATCH = "repo_config_mismatch"  # Ticket found in different repo than configured
+    WRONG_TICKET_REPOS = "wrong_ticket_repos"  # Mismatch between ticket_repos config and actual location
+
+    @property
+    def description(self) -> str:
+        """Get human-readable description of the reason."""
+        descriptions = {
+            PartialTicketReason.OLDER_THAN_CUTOFF: "Ticket may be older than sync cutoff date",
+            PartialTicketReason.TYPO: "Ticket may not exist (typo in branch/PR)",
+            PartialTicketReason.SYNC_NOT_RUN: "Sync may not have been run yet",
+            PartialTicketReason.REPO_CONFIG_MISMATCH: "Ticket found in different repo than configured",
+            PartialTicketReason.WRONG_TICKET_REPOS: "Check repository.ticket_repos in config",
+        }
+        return descriptions.get(self, self.value)
+
+
+@dataclass
+class PartialTicketMatch:
+    """
+    Information about a partial ticket match.
+
+    A partial match occurs when a ticket is extracted from a branch/PR/commit
+    but cannot be fully resolved to a ticket in the database, or is found
+    in an unexpected repository.
+    """
+    ticket_key: str  # The extracted ticket key (e.g., "8624", "#123")
+    extracted_from: str  # Human-readable description of source (e.g., "branch feat/meta-8624/main, pattern #1")
+    match_type: str  # "not_found" or "different_repo"
+    found_in_repo: Optional[str] = None  # For different_repo type: which repo it was found in
+    ticket_url: Optional[str] = None  # For different_repo type: URL to the ticket
+    potential_reasons: Set[PartialTicketReason] = field(default_factory=set)  # Set of potential causes
+
+
 class TicketExtractor:
     """Extract ticket references from various sources."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, debug: bool = False):
         self.config = config
+        self.debug = debug
         # Sort patterns by order field, then group by strategy for efficient lookup
         sorted_patterns = sorted(config.ticket_policy.patterns, key=lambda p: p.order)
+        self.pattern_configs = sorted_patterns  # Store for debug output
         self.patterns_by_strategy: Dict[TicketExtractionStrategy, List[re.Pattern]] = {}
         for ticket_pattern in sorted_patterns:
             strategy = ticket_pattern.strategy
@@ -28,31 +74,69 @@ class TicketExtractor:
                 self.patterns_by_strategy[strategy] = []
             self.patterns_by_strategy[strategy].append(re.compile(ticket_pattern.pattern))
 
-    def _extract_with_patterns(self, text: str, patterns: List[re.Pattern]) -> List[str]:
+    def _extract_with_patterns(self, text: str, patterns: List[re.Pattern], show_results: bool = False) -> List[str]:
         """Extract ticket references using a list of patterns."""
         tickets = []
-        for pattern in patterns:
+        for i, pattern in enumerate(patterns):
+            matches_found = []
             # Use finditer to get match objects and extract named groups
             for match in pattern.finditer(text):
                 # Try to extract the 'ticket' named group
                 try:
                     ticket = match.group('ticket')
                     tickets.append(ticket)
+                    matches_found.append(ticket)
                 except IndexError:
                     # If no 'ticket' group, fall back to the entire match or first group
                     if match.groups():
-                        tickets.append(match.group(1))
+                        ticket = match.group(1)
+                        tickets.append(ticket)
+                        matches_found.append(ticket)
                     else:
-                        tickets.append(match.group(0))
+                        ticket = match.group(0)
+                        tickets.append(ticket)
+                        matches_found.append(ticket)
+
+            if self.debug and show_results:
+                if matches_found:
+                    console.print(f"    [green]✅ MATCH! Extracted: {matches_found}[/green]")
+                else:
+                    console.print(f"    [dim]❌ No match[/dim]")
+
         return tickets
 
     def extract_from_commit(self, commit: Commit) -> List[str]:
         """Extract ticket references from commit message."""
+        if self.debug:
+            console.print(f"\n🔍 [bold cyan]Extracting from commit:[/bold cyan] {commit.sha[:7]} - {commit.message[:60]}{'...' if len(commit.message) > 60 else ''}")
+
         patterns = self.patterns_by_strategy.get(TicketExtractionStrategy.COMMIT_MESSAGE, [])
-        return list(set(self._extract_with_patterns(commit.message, patterns)))
+
+        # Debug: show which patterns apply to commit_message
+        if self.debug and patterns:
+            matching_configs = [p for p in self.pattern_configs if p.strategy == TicketExtractionStrategy.COMMIT_MESSAGE]
+            for pattern_config in matching_configs:
+                console.print(f"  [dim]Trying pattern #{pattern_config.order} (strategy={pattern_config.strategy.value})[/dim]")
+                if pattern_config.description:
+                    console.print(f"    Description: \"{pattern_config.description}\"")
+                console.print(f"    Regex: {pattern_config.pattern}")
+                console.print(f"    Text: \"{commit.message[:100]}{'...' if len(commit.message) > 100 else ''}\"")
+
+        tickets = list(set(self._extract_with_patterns(commit.message, patterns, show_results=self.debug)))
+
+        if self.debug:
+            if tickets:
+                console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
+            else:
+                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
+
+        return tickets
 
     def extract_from_pr(self, pr: PullRequest) -> List[str]:
         """Extract ticket references from PR using configured strategies."""
+        if self.debug:
+            console.print(f"\n🔍 [bold cyan]Extracting from PR #{pr.number}:[/bold cyan] {pr.title[:60]}{'...' if len(pr.title) > 60 else ''}")
+
         tickets = []
 
         # Try patterns in order (sorted by order field)
@@ -60,36 +144,84 @@ class TicketExtractor:
         for ticket_pattern in sorted_patterns:
             strategy = ticket_pattern.strategy
             text = None
+            source_name = None
 
             if strategy == TicketExtractionStrategy.PR_BODY and pr.body:
                 text = pr.body
+                source_name = "pr_body"
             elif strategy == TicketExtractionStrategy.PR_TITLE and pr.title:
                 text = pr.title
+                source_name = "pr_title"
             elif strategy == TicketExtractionStrategy.BRANCH_NAME and pr.head_branch:
                 text = pr.head_branch
+                source_name = "branch_name"
+
+            if self.debug:
+                console.print(f"  [dim]Pattern #{ticket_pattern.order} (strategy={strategy.value})[/dim]")
+                if ticket_pattern.description:
+                    console.print(f"    Description: \"{ticket_pattern.description}\"")
+                console.print(f"    Regex: {ticket_pattern.pattern}")
 
             if text:
+                if self.debug:
+                    console.print(f"    Source: {source_name}")
+                    console.print(f"    Text: \"{text[:100]}{'...' if len(text) > 100 else ''}\"")
+
                 pattern = re.compile(ticket_pattern.pattern)
-                extracted = self._extract_with_patterns(text, [pattern])
+                extracted = self._extract_with_patterns(text, [pattern], show_results=self.debug)
                 if extracted:
                     tickets.extend(extracted)
+                    if self.debug:
+                        console.print(f"    [yellow]🛑 Stopping (first match wins)[/yellow]")
                     # Stop on first match to respect priority order
                     break
+            else:
+                if self.debug:
+                    console.print(f"    [dim]❌ Skipped (no {strategy.value} available)[/dim]")
+
+        if self.debug:
+            if tickets:
+                console.print(f"  [green]✅ Extracted tickets: {list(set(tickets))}[/green]")
+            else:
+                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
 
         return list(set(tickets))
 
     def extract_from_branch(self, branch_name: str) -> List[str]:
         """Extract ticket references from branch name."""
+        if self.debug:
+            console.print(f"\n🔍 [bold cyan]Extracting from branch:[/bold cyan] {branch_name}")
+
         patterns = self.patterns_by_strategy.get(TicketExtractionStrategy.BRANCH_NAME, [])
-        return list(set(self._extract_with_patterns(branch_name, patterns)))
+
+        # Debug: show which patterns apply to branch_name
+        if self.debug and patterns:
+            matching_configs = [p for p in self.pattern_configs if p.strategy == TicketExtractionStrategy.BRANCH_NAME]
+            for pattern_config in matching_configs:
+                console.print(f"  [dim]Trying pattern #{pattern_config.order} (strategy={pattern_config.strategy.value})[/dim]")
+                if pattern_config.description:
+                    console.print(f"    Description: \"{pattern_config.description}\"")
+                console.print(f"    Regex: {pattern_config.pattern}")
+                console.print(f"    Text: \"{branch_name}\"")
+
+        tickets = list(set(self._extract_with_patterns(branch_name, patterns, show_results=self.debug)))
+
+        if self.debug:
+            if tickets:
+                console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
+            else:
+                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
+
+        return tickets
 
 
 class CommitConsolidator:
     """Consolidate commits by parent ticket."""
 
-    def __init__(self, config: Config, extractor: TicketExtractor):
+    def __init__(self, config: Config, extractor: TicketExtractor, debug: bool = False):
         self.config = config
         self.extractor = extractor
+        self.debug = debug
 
     def consolidate(
         self,
@@ -113,21 +245,41 @@ class CommitConsolidator:
 
         consolidated: Dict[str, ConsolidatedChange] = {}
 
+        if self.debug:
+            console.print(f"\n[bold magenta]{'='*60}[/bold magenta]")
+            console.print(f"[bold magenta]📦 CONSOLIDATION PHASE[/bold magenta]")
+            console.print(f"[bold magenta]{'='*60}[/bold magenta]\n")
+
         for commit in commits:
+            if self.debug:
+                console.print(f"\n📦 [bold]Consolidating commit {commit.sha[:7]}:[/bold] \"{commit.message[:60]}{'...' if len(commit.message) > 60 else ''}\"")
+
             # Try to find ticket from commit
             tickets = self.extractor.extract_from_commit(commit)
+
+            if self.debug:
+                console.print(f"  → Tickets from commit: {tickets if tickets else '(none)'}")
 
             # Try to find associated PR
             pr = prs.get(commit.pr_number) if commit.pr_number else None
             if pr:
+                if self.debug:
+                    console.print(f"  → Associated PR: #{pr.number} \"{pr.title[:50]}{'...' if len(pr.title) > 50 else ''}\"")
                 pr_tickets = self.extractor.extract_from_pr(pr)
+                if self.debug:
+                    console.print(f"  → Tickets from PR: {pr_tickets if pr_tickets else '(none)'}")
                 tickets.extend(pr_tickets)
+            elif self.debug:
+                console.print(f"  → Associated PR: (none)")
 
             tickets = list(set(tickets))  # Remove duplicates
 
             if tickets:
                 # Use first ticket as the parent
                 ticket_key = tickets[0]
+                if self.debug:
+                    console.print(f"  [green]✅ Consolidated under ticket: {ticket_key}[/green]")
+
                 if ticket_key not in consolidated:
                     consolidated[ticket_key] = ConsolidatedChange(
                         type="ticket",
@@ -141,6 +293,9 @@ class CommitConsolidator:
             elif pr:
                 # No ticket but has PR
                 pr_key = f"pr-{pr.number}"
+                if self.debug:
+                    console.print(f"  [yellow]✅ Consolidated under PR: #{pr.number}[/yellow]")
+
                 if pr_key not in consolidated:
                     consolidated[pr_key] = ConsolidatedChange(
                         type="pr",
@@ -152,6 +307,9 @@ class CommitConsolidator:
             else:
                 # No ticket and no PR - standalone commit
                 commit_key = f"commit-{commit.sha[:8]}"
+                if self.debug:
+                    console.print(f"  [dim]✅ Standalone commit (no ticket or PR)[/dim]")
+
                 consolidated[commit_key] = ConsolidatedChange(
                     type="commit",
                     commits=[commit]
@@ -261,6 +419,16 @@ class ReleaseNoteGenerator:
             if not url:  # Use PR URL if no ticket URL
                 url = pr_url
 
+        # Compute short links from the smart URL
+        short_link = None
+        short_repo_link = None
+        if url:
+            repo_name, number = self._extract_github_url_info(url)
+            if number:
+                short_link = f"#{number}"
+                if repo_name:
+                    short_repo_link = f"{repo_name}#{number}"
+
         # Get labels
         labels = []
         if ticket:
@@ -280,7 +448,9 @@ class ReleaseNoteGenerator:
             commit_shas=commit_shas,
             ticket_url=ticket_url,
             pr_url=pr_url,
-            url=url
+            url=url,
+            short_link=short_link,
+            short_repo_link=short_repo_link
         )
 
     def _determine_category(
@@ -324,6 +494,35 @@ class ReleaseNoteGenerator:
             return match.group(1).strip()
         return None
 
+    def _extract_github_url_info(self, url: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Extract repository name and number from a GitHub URL.
+
+        Args:
+            url: GitHub URL (e.g., "https://github.com/owner/repo/issues/1234")
+
+        Returns:
+            Tuple of (owner_repo, number) where owner_repo is "owner/repo" format
+            and number is the issue/PR number as a string.
+            Returns (None, None) if URL is not a valid GitHub URL.
+
+        Examples:
+            "https://github.com/sequentech/meta/issues/8853" -> ("sequentech/meta", "8853")
+            "https://github.com/owner/repo/pull/123" -> ("owner/repo", "123")
+        """
+        # Pattern: https://github.com/owner/repo/(issues|pull)/number
+        pattern = r'github\.com/([^/]+)/([^/]+)/(issues|pull)/(\d+)'
+        match = re.search(pattern, url)
+
+        if match:
+            owner = match.group(1)       # Owner name (e.g., "sequentech")
+            repo = match.group(2)        # Repo name (e.g., "meta")
+            number = match.group(4)      # The issue/PR number
+            owner_repo = f"{owner}/{repo}"
+            return (owner_repo, number)
+
+        return (None, None)
+
     def group_by_category(
         self,
         notes: List[ReleaseNote]
@@ -355,20 +554,24 @@ class ReleaseNoteGenerator:
 
         - Multiple spaces/tabs collapse to single space
         - Newlines are ignored unless using <br> or <br/>
+        - &nbsp; entities are preserved as non-breaking spaces
         - Leading/trailing whitespace stripped from lines
         """
         import re
 
-        # 1. Replace <br> and <br/> with newline markers
-        processed = text.replace('<br/>', '\n<BR_MARKER>\n').replace('<br>', '\n<BR_MARKER>\n')
+        # 1. Protect &nbsp; entities from whitespace collapse
+        processed = text.replace('&nbsp;', '<NBSP_MARKER>')
 
-        # 2. Collapse multiple spaces/tabs into single space (like HTML)
+        # 2. Replace <br> and <br/> with newline markers
+        processed = processed.replace('<br/>', '\n<BR_MARKER>\n').replace('<br>', '\n<BR_MARKER>\n')
+
+        # 3. Collapse multiple spaces/tabs into single space (like HTML)
         processed = re.sub(r'[^\S\n]+', ' ', processed)
 
-        # 3. Strip leading/trailing whitespace from each line
+        # 4. Strip leading/trailing whitespace from each line
         processed = '\n'.join(line.strip() for line in processed.split('\n'))
 
-        # 4. Remove empty lines (unless they came from <br> tags)
+        # 5. Remove empty lines (unless they came from <br> tags)
         lines_list = []
         for line in processed.split('\n'):
             if line == '<BR_MARKER>':
@@ -376,7 +579,14 @@ class ReleaseNoteGenerator:
             elif line.strip():
                 lines_list.append(line)
 
-        return '\n'.join(lines_list)
+        result = '\n'.join(lines_list)
+
+        # Note: We don't replace <NBSP_MARKER> here because the output might be
+        # processed again (e.g., entry_template processed, then inserted into
+        # output_template which is also processed). Markers are replaced at the
+        # very end in the format_markdown methods.
+
+        return result
 
     def _prepare_note_for_template(
         self,
@@ -412,6 +622,8 @@ class ReleaseNoteGenerator:
             'url': note.url,  # Smart URL: ticket_url if available, else pr_url
             'ticket_url': note.ticket_url,  # Direct ticket URL
             'pr_url': note.pr_url,  # Direct PR URL
+            'short_link': note.short_link,  # Short format: #1234
+            'short_repo_link': note.short_repo_link,  # Short format: owner/repo#1234
             'pr_numbers': note.pr_numbers,
             'authors': authors_dicts,
             'description': processed_description,
@@ -524,7 +736,13 @@ class ReleaseNoteGenerator:
             render_entry=render_entry
         )
 
-        return self._process_html_like_whitespace(output)
+        # Process HTML-like whitespace
+        output = self._process_html_like_whitespace(output)
+
+        # Replace &nbsp; markers with actual spaces (done at the very end)
+        output = output.replace('<NBSP_MARKER>', ' ')
+
+        return output
 
     def _format_with_legacy_layout(
         self,
@@ -578,7 +796,12 @@ class ReleaseNoteGenerator:
 
             lines.append("")
 
-        return "\n".join(lines)
+        output = "\n".join(lines)
+
+        # Replace &nbsp; markers with actual spaces (done at the very end)
+        output = output.replace('<NBSP_MARKER>', ' ')
+
+        return output
 
 
 class VersionGapChecker:

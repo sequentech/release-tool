@@ -287,6 +287,14 @@ class Database:
             return Repository(**dict(row))
         return None
 
+    def get_repository_by_id(self, repo_id: int) -> Optional[Repository]:
+        """Get repository by ID."""
+        self.cursor.execute("SELECT * FROM repositories WHERE id = ?", (repo_id,))
+        row = self.cursor.fetchone()
+        if row:
+            return Repository(**dict(row))
+        return None
+
     # Pull request operations
     def upsert_pull_request(self, pr: PullRequest) -> int:
         """Insert or update a pull request."""
@@ -486,6 +494,35 @@ class Database:
         self.cursor.execute(
             "SELECT * FROM tickets WHERE repo_id=? AND key=?",
             (repo_id, key)
+        )
+        row = self.cursor.fetchone()
+        if row:
+            data = dict(row)
+            data['labels'] = [Label(**l) for l in json.loads(data.get('labels', '[]'))]
+            data['tags'] = json.loads(data.get('tags', '{}'))
+            if data.get('created_at'):
+                data['created_at'] = datetime.fromisoformat(data['created_at'])
+            if data.get('closed_at'):
+                data['closed_at'] = datetime.fromisoformat(data['closed_at'])
+            return Ticket(**data)
+        return None
+
+    def get_ticket_by_key(self, key: str) -> Optional[Ticket]:
+        """
+        Get ticket by key across all repositories.
+
+        This searches for a ticket by key without requiring a specific repo_id.
+        Useful when the ticket could be in any of the configured ticket repos.
+
+        Args:
+            key: Ticket key (e.g., "8624", "#123", "JIRA-456")
+
+        Returns:
+            Ticket if found, None otherwise
+        """
+        self.cursor.execute(
+            "SELECT * FROM tickets WHERE key=? ORDER BY created_at DESC LIMIT 1",
+            (key,)
         )
         row = self.cursor.fetchone()
         if row:

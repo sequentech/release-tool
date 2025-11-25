@@ -333,6 +333,8 @@ class ReleaseNote(BaseModel):
     ticket_url: Optional[str] = None  # URL to the ticket/issue
     pr_url: Optional[str] = None  # URL to the pull request
     url: Optional[str] = None  # Smart URL: ticket_url if available, else pr_url
+    short_link: Optional[str] = None  # Short format: #1234
+    short_repo_link: Optional[str] = None  # Short format with repo: owner/repo#1234
     tags: Dict[str, str] = Field(default_factory=dict)
 
 

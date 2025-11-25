@@ -281,3 +281,75 @@ and<br>line break"""
     lines = output.split('\n')
     assert "and" in output
     assert "line break" in output
+
+
+def test_nbsp_entity_preservation():
+    """Test that &nbsp; entities are preserved as spaces and not collapsed."""
+    config_dict = {
+        "repository": {
+            "code_repo": "test/repo"
+        },
+        "github": {
+            "token": "test_token"
+        },
+        "release_notes": {
+            "output_template": """# {{ title }}
+
+Test&nbsp;&nbsp;two&nbsp;spaces
+Normal    spaces   collapse
+Mixed:&nbsp;&nbsp;preserved    and   collapsed"""
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    generator = ReleaseNoteGenerator(config)
+    output = generator.format_markdown({}, "1.0.0")
+
+    # Two consecutive &nbsp; should preserve two spaces
+    assert "Test  two spaces" in output
+
+    # Normal multiple spaces should collapse
+    assert "Normal spaces collapse" in output
+
+    # Mixed usage: &nbsp; preserved, normal spaces collapsed
+    assert "Mixed:  preserved and collapsed" in output
+
+
+def test_nbsp_in_entry_template():
+    """Test that &nbsp; works correctly in entry_template."""
+    config_dict = {
+        "repository": {
+            "code_repo": "test/repo"
+        },
+        "github": {
+            "token": "test_token"
+        },
+        "release_notes": {
+            "categories": [
+                {"name": "Features", "labels": ["feature"], "order": 1},
+            ],
+            "entry_template": """- {{ title }}<br>&nbsp;&nbsp;by {{ authors[0].mention }}""",
+            "output_template": """# {{ title }}
+{% for note in all_notes %}
+{{ render_entry(note) }}
+{% endfor %}"""
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    author = Author(name="Alice", username="alice")
+    notes = [
+        ReleaseNote(
+            title="Add feature",
+            category="Features",
+            labels=["feature"],
+            authors=[author]
+        )
+    ]
+
+    generator = ReleaseNoteGenerator(config)
+    grouped = generator.group_by_category(notes)
+    output = generator.format_markdown(grouped, "1.0.0")
+
+    # Should have two spaces (from &nbsp;&nbsp;) before "by"
+    assert "  by @alice" in output

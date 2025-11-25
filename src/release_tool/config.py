@@ -130,6 +130,10 @@ class TicketPolicyConfig(BaseModel):
         default=PolicyAction.WARN,
         description="What to do with unclosed tickets"
     )
+    partial_ticket_action: PolicyAction = Field(
+        default=PolicyAction.WARN,
+        description="What to do with partial ticket matches (extracted but not found or wrong repo)"
+    )
     consolidation_enabled: bool = Field(
         default=True,
         description="Whether to consolidate commits by parent ticket"
@@ -234,7 +238,7 @@ class ReleaseNoteConfig(BaseModel):
     entry_template: str = Field(
         default=(
             "- {{ title }}\n"
-            "  {% if url %}{{ url }}{% endif %}\n"
+            "  {% if short_repo_link %}{{ short_repo_link }}{% endif %}\n"
             "  {% if authors %}\n"
             "  by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}\n"
             "  {% endif %}"
@@ -301,7 +305,8 @@ class ReleaseNoteConfig(BaseModel):
         description="Master Jinja2 template for entire release notes output. "
                     "Available variables: version, title, categories (with 'alias' field), "
                     "all_notes, render_entry (function to render entry_template). "
-                    "Note variables: title, url, ticket_url, pr_url, pr_numbers, authors, description, etc."
+                    "Note variables: title, url (prioritizes ticket_url over pr_url), ticket_url, pr_url, "
+                    "short_link (#1234), short_repo_link (owner/repo#1234), pr_numbers, authors, description, etc."
     )
 
 

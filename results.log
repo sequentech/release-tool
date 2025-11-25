@@ -1,0 +1,955 @@
+Using base version: 9.3.0
+Creating RC version → 9.3.0-rc.7
+Using synced repository: /Users/eduardorobles/proyectos/sequent/release-tool/.release_tool_cache/step
+DRY RUN: Generating release notes for version 9.3.0-rc.7
+Release branch: release/9.3
+→ Using existing branch (source: release/9.3)
+Comparing 9.3.0-rc.6 → 9.3.0-rc.7
+Found 25 commits
+
+============================================================
+📦 CONSOLIDATION PHASE
+============================================================
+
+
+📦 Consolidating commit e2fd70a: "✨ Prepare Release 9.2.0 (#2169)
+
+Parent issue: https://githu..."
+
+🔍 Extracting from commit: e2fd70a - ✨ Prepare Release 9.2.0 (#2169)
+
+Parent issue: https://githu...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Prepare Release 9.2.0 (#2169)
+
+Parent issue: https://github.com/sequentech/meta/issues/8853"
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Prepare Release 9.2.0 (#2169)
+
+Parent issue: https://github.com/sequentech/meta/issues/8853"
+    ✅ MATCH! Extracted: ['2169']
+    ❌ No match
+  ✅ Extracted tickets: ['2169']
+  → Tickets from commit: ['2169']
+  → Associated PR: #2169 "✨ Prepare Release 9.2.0"
+
+🔍 Extracting from PR #2169: ✨ Prepare Release 9.2.0
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "docs/feat-8853/main"
+    ✅ MATCH! Extracted: ['8853']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8853']
+  → Tickets from PR: ['8853']
+  ✅ Consolidated under ticket: 8853
+
+📦 Consolidating commit d99157f: "✨ Publicly Open Source Preparations: SAML SSO fixes (#2165)
+..."
+
+🔍 Extracting from commit: d99157f - ✨ Publicly Open Source Preparations: SAML SSO fixes (#2165)
+...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: SAML SSO fixes (#2165)
+
+Parent issue: https://github.com/sequen..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: SAML SSO fixes (#2165)
+
+Parent issue: https://github.com/sequen..."
+    ✅ MATCH! Extracted: ['2165']
+    ❌ No match
+  ✅ Extracted tickets: ['2165']
+  → Tickets from commit: ['2165']
+  → Associated PR: #2165 "✨ Publicly Open Source Preparations: SAML SSO fixe..."
+
+🔍 Extracting from PR #2165: ✨ Publicly Open Source Preparations: SAML SSO fixes
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.saml/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit 44ae920: "📖  v9.0.2 documentation (#2167)
+
+Parent issue: https://..."
+
+🔍 Extracting from commit: 44ae920 - 📖  v9.0.2 documentation (#2167)
+
+Parent issue: https://...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "📖  v9.0.2 documentation (#2167)
+
+Parent issue: https://github.com/sequentech/meta/issues/9156"
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "📖  v9.0.2 documentation (#2167)
+
+Parent issue: https://github.com/sequentech/meta/issues/9156"
+    ✅ MATCH! Extracted: ['2167']
+    ❌ No match
+  ✅ Extracted tickets: ['2167']
+  → Tickets from commit: ['2167']
+  → Associated PR: #2167 "📖  v9.0.2 documentation"
+
+🔍 Extracting from PR #2167: 📖  v9.0.2 documentation
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "doc/meta-9156/main"
+    ✅ MATCH! Extracted: ['9156']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9156']
+  → Tickets from PR: ['9156']
+  ✅ Consolidated under ticket: 9156
+
+📦 Consolidating commit 19b8989: "✨ Publicly Open Source Preparations: Docusaurus fix (#2164)
+..."
+
+🔍 Extracting from commit: 19b8989 - ✨ Publicly Open Source Preparations: Docusaurus fix (#2164)
+...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: Docusaurus fix (#2164)
+
+Parent issue: https://github.com/sequen..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: Docusaurus fix (#2164)
+
+Parent issue: https://github.com/sequen..."
+    ✅ MATCH! Extracted: ['2164']
+    ❌ No match
+  ✅ Extracted tickets: ['2164']
+  → Tickets from commit: ['2164']
+  → Associated PR: #2164 "✨ Publicly Open Source Preparations: Docusaurus fi..."
+
+🔍 Extracting from PR #2164: ✨ Publicly Open Source Preparations: Docusaurus fix
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.docusaurus/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit 0d99c2b: "✨ Publicly Open Source Preparations: fix CLA (#2163)
+
+Parent..."
+
+🔍 Extracting from commit: 0d99c2b - ✨ Publicly Open Source Preparations: fix CLA (#2163)
+
+Parent...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: fix CLA (#2163)
+
+Parent issue: https://github.com/sequentech/me..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations: fix CLA (#2163)
+
+Parent issue: https://github.com/sequentech/me..."
+    ✅ MATCH! Extracted: ['2163']
+    ❌ No match
+  ✅ Extracted tickets: ['2163']
+  → Tickets from commit: ['2163']
+  → Associated PR: #2163 "✨ Publicly Open Source Preparations: fix CLA"
+
+🔍 Extracting from PR #2163: ✨ Publicly Open Source Preparations: fix CLA
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.cla/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit 261ad8f: "✨ Publicly Open Source Preparations (#2149)
+
+Related: https:..."
+
+🔍 Extracting from commit: 261ad8f - ✨ Publicly Open Source Preparations (#2149)
+
+Related: https:...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations (#2149)
+
+Related: https://github.com/sequentech/meta/issues/9060"
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Publicly Open Source Preparations (#2149)
+
+Related: https://github.com/sequentech/meta/issues/9060"
+    ✅ MATCH! Extracted: ['2149']
+    ❌ No match
+  ✅ Extracted tickets: ['2149']
+  → Tickets from commit: ['2149']
+  → Associated PR: #2149 "✨ Publicly Open Source Preparations"
+
+🔍 Extracting from PR #2149: ✨ Publicly Open Source Preparations
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit 50e1446: "🐞 Fixes after dependency updates (#2157)
+
+Parent issue: http..."
+
+🔍 Extracting from commit: 50e1446 - 🐞 Fixes after dependency updates (#2157)
+
+Parent issue: http...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Fixes after dependency updates (#2157)
+
+Parent issue: https://github.com/sequentech/meta/issues/91..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Fixes after dependency updates (#2157)
+
+Parent issue: https://github.com/sequentech/meta/issues/91..."
+    ✅ MATCH! Extracted: ['2157']
+    ❌ No match
+  ✅ Extracted tickets: ['2157']
+  → Tickets from commit: ['2157']
+  → Associated PR: #2157 "🐞 Fixes after dependency updates"
+
+🔍 Extracting from PR #2157: 🐞 Fixes after dependency updates
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-9132/main"
+    ✅ MATCH! Extracted: ['9132']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9132']
+  → Tickets from PR: ['9132']
+  ✅ Consolidated under ticket: 2157
+
+📦 Consolidating commit 6c3e752: "✨ Preparation for open source 2nd-gen: open source doc impro..."
+
+🔍 Extracting from commit: 6c3e752 - ✨ Preparation for open source 2nd-gen: open source doc impro...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: open source doc improvements (#2156)
+
+Parent issue: https://g..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: open source doc improvements (#2156)
+
+Parent issue: https://g..."
+    ✅ MATCH! Extracted: ['2156']
+    ❌ No match
+  ✅ Extracted tickets: ['2156']
+  → Tickets from commit: ['2156']
+  → Associated PR: #2156 "✨ Preparation for open source 2nd-gen: open source..."
+
+🔍 Extracting from PR #2156: ✨ Preparation for open source 2nd-gen: open source doc impro...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.doc3/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit 0822840: "✨ Preparation for open source 2nd-gen: documentation link (#..."
+
+🔍 Extracting from commit: 0822840 - ✨ Preparation for open source 2nd-gen: documentation link (#...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: documentation link (#2155)
+
+Parent issue: https://github.com/..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: documentation link (#2155)
+
+Parent issue: https://github.com/..."
+    ✅ MATCH! Extracted: ['2155']
+    ❌ No match
+  ✅ Extracted tickets: ['2155']
+  → Tickets from commit: ['2155']
+  → Associated PR: #2155 "✨ Preparation for open source 2nd-gen: documentati..."
+
+🔍 Extracting from PR #2155: ✨ Preparation for open source 2nd-gen: documentation link
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.doc2/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 2155
+
+📦 Consolidating commit d12e689: "✨ Preparation for open source 2nd-gen: documentation (#2154)..."
+
+🔍 Extracting from commit: d12e689 - ✨ Preparation for open source 2nd-gen: documentation (#2154)...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: documentation (#2154)
+
+Parent issue: https://github.com/seque..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Preparation for open source 2nd-gen: documentation (#2154)
+
+Parent issue: https://github.com/seque..."
+    ✅ MATCH! Extracted: ['2154']
+    ❌ No match
+  ✅ Extracted tickets: ['2154']
+  → Tickets from commit: ['2154']
+  → Associated PR: #2154 "✨ Preparation for open source 2nd-gen: documentati..."
+
+🔍 Extracting from PR #2154: ✨ Preparation for open source 2nd-gen: documentation
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-9060.doc/main"
+    ✅ MATCH! Extracted: ['9060']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['9060']
+  → Tickets from PR: ['9060']
+  ✅ Consolidated under ticket: 9060
+
+📦 Consolidating commit cef7d1b: "📖  Adding a section: Reference/Third-Party Libraries (#..."
+
+🔍 Extracting from commit: cef7d1b - 📖  Adding a section: Reference/Third-Party Libraries (#...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "📖  Adding a section: Reference/Third-Party Libraries (#2153)
+
+Parent issue: https://github.com/..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "📖  Adding a section: Reference/Third-Party Libraries (#2153)
+
+Parent issue: https://github.com/..."
+    ✅ MATCH! Extracted: ['2153']
+    ❌ No match
+  ✅ Extracted tickets: ['2153']
+  → Tickets from commit: ['2153']
+  → Associated PR: #2153 "📖  Adding a section: Reference/Third-Party Li..."
+
+🔍 Extracting from PR #2153: 📖  Adding a section: Reference/Third-Party Libraries
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-7996d/main"
+    ✅ MATCH! Extracted: ['7996']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['7996']
+  → Tickets from PR: ['7996']
+  ✅ Consolidated under ticket: 2153
+
+📦 Consolidating commit 5790915: "📖  Adding a section: `Reference/Third-Party Libraries` ..."
+
+🔍 Extracting from commit: 5790915 - 📖  Adding a section: `Reference/Third-Party Libraries` ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "📖  Adding a section: `Reference/Third-Party Libraries` (#1988)
+
+Parent issue: https://github.co..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "📖  Adding a section: `Reference/Third-Party Libraries` (#1988)
+
+Parent issue: https://github.co..."
+    ✅ MATCH! Extracted: ['1988']
+    ❌ No match
+  ✅ Extracted tickets: ['1988']
+  → Tickets from commit: ['1988']
+  → Associated PR: #1988 "📖  Adding a section: `Reference/Third-Party L..."
+
+🔍 Extracting from PR #1988: 📖  Adding a section: `Reference/Third-Party Libraries`
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-7996/main"
+    ✅ MATCH! Extracted: ['7996']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['7996']
+  → Tickets from PR: ['7996']
+  ✅ Consolidated under ticket: 7996
+
+📦 Consolidating commit c7faf70: "✨ IdP-initiated SAML SSO authentication flow support (#2083)..."
+
+🔍 Extracting from commit: c7faf70 - ✨ IdP-initiated SAML SSO authentication flow support (#2083)...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ IdP-initiated SAML SSO authentication flow support (#2083)
+
+Parent issue: https://github.com/seque..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ IdP-initiated SAML SSO authentication flow support (#2083)
+
+Parent issue: https://github.com/seque..."
+    ✅ MATCH! Extracted: ['2083']
+    ❌ No match
+  ✅ Extracted tickets: ['2083']
+  → Tickets from commit: ['2083']
+  → Associated PR: #2083 "✨ IdP-initiated SAML SSO authentication flow suppo..."
+
+🔍 Extracting from PR #2083: ✨ IdP-initiated SAML SSO authentication flow support
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-8213/main"
+    ✅ MATCH! Extracted: ['8213']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8213']
+  → Tickets from PR: ['8213']
+  ✅ Consolidated under ticket: 8213
+
+📦 Consolidating commit 58eb5bb: "✨ Move voter signature to the voting portal (#1969)
+
+Parent ..."
+
+🔍 Extracting from commit: 58eb5bb - ✨ Move voter signature to the voting portal (#1969)
+
+Parent ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Move voter signature to the voting portal (#1969)
+
+Parent issue: https://github.com/sequentech/met..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Move voter signature to the voting portal (#1969)
+
+Parent issue: https://github.com/sequentech/met..."
+    ✅ MATCH! Extracted: ['1969']
+    ❌ No match
+  ✅ Extracted tickets: ['1969']
+  → Tickets from commit: ['1969']
+  → Associated PR: #1969 "✨ Move voter signature to the voting portal"
+
+🔍 Extracting from PR #1969: ✨ Move voter signature to the voting portal
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-5518/main"
+    ✅ MATCH! Extracted: ['5518']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['5518']
+  → Tickets from PR: ['5518']
+  ✅ Consolidated under ticket: 5518
+
+📦 Consolidating commit 7fe4c6c: "🐞 Windmill > Can't create Ballot Images on ARM (#2144) (#214..."
+
+🔍 Extracting from commit: 7fe4c6c - 🐞 Windmill > Can't create Ballot Images on ARM (#2144) (#214...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Windmill > Can't create Ballot Images on ARM (#2144) (#2146)
+
+Parent issue: https://github.com/seq..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Windmill > Can't create Ballot Images on ARM (#2144) (#2146)
+
+Parent issue: https://github.com/seq..."
+    ✅ MATCH! Extracted: ['2144', '2146']
+    ❌ No match
+  ✅ Extracted tickets: ['2146', '2144']
+  → Tickets from commit: ['2146', '2144']
+  → Associated PR: #2144 "🐞 Windmill > Can't create Ballot Images on ARM"
+
+🔍 Extracting from PR #2144: 🐞 Windmill > Can't create Ballot Images on ARM
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-8621/release/9.2"
+    ✅ MATCH! Extracted: ['8621']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8621']
+  → Tickets from PR: ['8621']
+  ✅ Consolidated under ticket: 2146
+
+📦 Consolidating commit e258da8: "🐞 Voter log errors (#2039)
+
+Parent issue: https://github.com..."
+
+🔍 Extracting from commit: e258da8 - 🐞 Voter log errors (#2039)
+
+Parent issue: https://github.com...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Voter log errors (#2039)
+
+Parent issue: https://github.com/sequentech/meta/issues/8097
+
+---------
+..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Voter log errors (#2039)
+
+Parent issue: https://github.com/sequentech/meta/issues/8097
+
+---------
+..."
+    ✅ MATCH! Extracted: ['2039']
+    ❌ No match
+  ✅ Extracted tickets: ['2039']
+  → Tickets from commit: ['2039']
+  → Associated PR: #2039 "🐞 Voter log errors"
+
+🔍 Extracting from PR #2039: 🐞 Voter log errors
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-8097/main"
+    ✅ MATCH! Extracted: ['8097']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8097']
+  → Tickets from PR: ['8097']
+  ✅ Consolidated under ticket: 2039
+
+📦 Consolidating commit cc70600: "🐞 Admin Portal > Sidebar: Can't select active events tab if ..."
+
+🔍 Extracting from commit: cc70600 - 🐞 Admin Portal > Sidebar: Can't select active events tab if ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived (#2132)
+
+Parent ..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived (#2132)
+
+Parent ..."
+    ✅ MATCH! Extracted: ['2132']
+    ❌ No match
+  ✅ Extracted tickets: ['2132']
+  → Tickets from commit: ['2132']
+  → Associated PR: #2132 "🐞 Admin Portal > Sidebar: Can't select active even..."
+
+🔍 Extracting from PR #2132: 🐞 Admin Portal > Sidebar: Can't select active events tab if ...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-8876/main"
+    ✅ MATCH! Extracted: ['8876']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8876']
+  → Tickets from PR: ['8876']
+  ✅ Consolidated under ticket: 2132
+
+📦 Consolidating commit bb3b131: "🐞 Admin Portal > Sidebar: Can't select active events tab if ..."
+
+🔍 Extracting from commit: bb3b131 - 🐞 Admin Portal > Sidebar: Can't select active events tab if ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived (#2131)
+
+Parent ..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived (#2131)
+
+Parent ..."
+    ✅ MATCH! Extracted: ['2131']
+    ❌ No match
+  ✅ Extracted tickets: ['2131']
+  → Tickets from commit: ['2131']
+  → Associated PR: #2131 "🐞 Admin Portal > Sidebar: Can't select active even..."
+
+🔍 Extracting from PR #2131: 🐞 Admin Portal > Sidebar: Can't select active events tab if ...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-8876/main"
+    ✅ MATCH! Extracted: ['8876']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8876']
+  → Tickets from PR: ['8876']
+  ✅ Consolidated under ticket: 2131
+
+📦 Consolidating commit ff6e476: "🐞 Default Invalid vote policy mismatch (#2126)
+
+Parent issue..."
+
+🔍 Extracting from commit: ff6e476 - 🐞 Default Invalid vote policy mismatch (#2126)
+
+Parent issue...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "🐞 Default Invalid vote policy mismatch (#2126)
+
+Parent issue: https://github.com/sequentech/meta/iss..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "🐞 Default Invalid vote policy mismatch (#2126)
+
+Parent issue: https://github.com/sequentech/meta/iss..."
+    ✅ MATCH! Extracted: ['2126']
+    ❌ No match
+  ✅ Extracted tickets: ['2126']
+  → Tickets from commit: ['2126']
+  → Associated PR: #2126 "🐞 Default Invalid vote policy mismatch"
+
+🔍 Extracting from PR #2126: 🐞 Default Invalid vote policy mismatch
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "fix/meta-8855/main"
+    ✅ MATCH! Extracted: ['8855']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8855']
+  → Tickets from PR: ['8855']
+  ✅ Consolidated under ticket: 2126
+
+📦 Consolidating commit 19d3bb2: "✨ Voting Portal > Nightwatch voting with no revotes (#2125)
+..."
+
+🔍 Extracting from commit: 19d3bb2 - ✨ Voting Portal > Nightwatch voting with no revotes (#2125)
+...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2125)
+
+Parent issue: https://github.com/sequen..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2125)
+
+Parent issue: https://github.com/sequen..."
+    ✅ MATCH! Extracted: ['2125']
+    ❌ No match
+  ✅ Extracted tickets: ['2125']
+  → Tickets from commit: ['2125']
+  → Associated PR: #2125 "✨ Voting Portal > Nightwatch voting with no revote..."
+
+🔍 Extracting from PR #2125: ✨ Voting Portal > Nightwatch voting with no revotes
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-8624/main"
+    ✅ MATCH! Extracted: ['8624']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8624']
+  → Tickets from PR: ['8624']
+  ✅ Consolidated under ticket: 2125
+
+📦 Consolidating commit 95c9245: "✨ Voting Portal > Nightwatch voting with no revotes (#2122)
+..."
+
+🔍 Extracting from commit: 95c9245 - ✨ Voting Portal > Nightwatch voting with no revotes (#2122)
+...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2122)
+
+Parent issue: https://github.com/sequen..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2122)
+
+Parent issue: https://github.com/sequen..."
+    ✅ MATCH! Extracted: ['2122']
+    ❌ No match
+  ✅ Extracted tickets: ['2122']
+  → Tickets from commit: ['2122']
+  → Associated PR: #2122 "✨ Voting Portal > Nightwatch voting with no revote..."
+
+🔍 Extracting from PR #2122: ✨ Voting Portal > Nightwatch voting with no revotes
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-8624/main"
+    ✅ MATCH! Extracted: ['8624']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8624']
+  → Tickets from PR: ['8624']
+  ✅ Consolidated under ticket: 2122
+
+📦 Consolidating commit 0661cfc: "✨ Automatic Launch of E2E tests for environments and during ..."
+
+🔍 Extracting from commit: 0661cfc - ✨ Automatic Launch of E2E tests for environments and during ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2121)
+
+Parent issue: h..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2121)
+
+Parent issue: h..."
+    ✅ MATCH! Extracted: ['2121']
+    ❌ No match
+  ✅ Extracted tickets: ['2121']
+  → Tickets from commit: ['2121']
+  → Associated PR: #2121 "✨ Automatic Launch of E2E tests for environments a..."
+
+🔍 Extracting from PR #2121: ✨ Automatic Launch of E2E tests for environments and during ...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-7004-felix/main"
+    ✅ MATCH! Extracted: ['7004']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['7004']
+  → Tickets from PR: ['7004']
+  ✅ Consolidated under ticket: 7004
+
+📦 Consolidating commit 85965c1: "✨ Automatic Launch of E2E tests for environments and during ..."
+
+🔍 Extracting from commit: 85965c1 - ✨ Automatic Launch of E2E tests for environments and during ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2120)
+
+Parent issue: h..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2120)
+
+Parent issue: h..."
+    ✅ MATCH! Extracted: ['2120']
+    ❌ No match
+  ✅ Extracted tickets: ['2120']
+  → Tickets from commit: ['2120']
+  → Associated PR: #2120 "✨ Automatic Launch of E2E tests for environments a..."
+
+🔍 Extracting from PR #2120: ✨ Automatic Launch of E2E tests for environments and during ...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-7004-felix/main"
+    ✅ MATCH! Extracted: ['7004']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['7004']
+  → Tickets from PR: ['7004']
+  ✅ Consolidated under ticket: 7004
+
+📦 Consolidating commit 8671f12: "✨ Automatic Launch of E2E tests for environments and during ..."
+
+🔍 Extracting from commit: 8671f12 - ✨ Automatic Launch of E2E tests for environments and during ...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2098)
+
+Parent issue: h..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Automatic Launch of E2E tests for environments and during release process (#2098)
+
+Parent issue: h..."
+    ✅ MATCH! Extracted: ['2098']
+    ❌ No match
+  ✅ Extracted tickets: ['2098']
+  → Tickets from commit: ['2098']
+  → Associated PR: #2098 "✨ Automatic Launch of E2E tests for environments a..."
+
+🔍 Extracting from PR #2098: ✨ Automatic Launch of E2E tests for environments and during ...
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-7004-felix/main"
+    ✅ MATCH! Extracted: ['7004']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['7004']
+  → Tickets from PR: ['7004']
+  ✅ Consolidated under ticket: 7004
+
+📦 Consolidating commit d30569b: "✨ Voting Portal > Nightwatch voting with no revotes (#2118)
+..."
+
+🔍 Extracting from commit: d30569b - ✨ Voting Portal > Nightwatch voting with no revotes (#2118)
+...
+  Trying pattern #4 (strategy=commit_message)
+    Description: "GitHub issue reference (#123) in commit"
+    Regex: #(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2118)
+
+Parent issue: https://github.com/sequen..."
+  Trying pattern #5 (strategy=commit_message)
+    Description: "JIRA-style tickets (PROJ-123) in commit"
+    Regex: (?P<project>[A-Z]+)-(?P<ticket>\d+)
+    Text: "✨ Voting Portal > Nightwatch voting with no revotes (#2118)
+
+Parent issue: https://github.com/sequen..."
+    ✅ MATCH! Extracted: ['2118']
+    ❌ No match
+  ✅ Extracted tickets: ['2118']
+  → Tickets from commit: ['2118']
+  → Associated PR: #2118 "✨ Voting Portal > Nightwatch voting with no revote..."
+
+🔍 Extracting from PR #2118: ✨ Voting Portal > Nightwatch voting with no revotes
+  Pattern #1 (strategy=branch_name)
+    Description: "Branch name format: type/repo-123/target"
+    Regex: /(?P<repo>\w+)-(?P<ticket>\d+)
+    Source: branch_name
+    Text: "feat/meta-8624/main"
+    ✅ MATCH! Extracted: ['8624']
+    🛑 Stopping (first match wins)
+  ✅ Extracted tickets: ['8624']
+  → Tickets from PR: ['8624']
+  ✅ Consolidated under ticket: 2118
+Consolidated into 18 changes
+
+================================================================================
+DRY RUN - Release notes for 9.3.0-rc.7:
+================================================================================
+
+# Release 9.3.0-rc.7
+
+
+## 📋 All Changes
+
+
+### 🚀 Features
+
+- ✨ Automatic Launch of E2E tests for environments and during release process
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2121
+
+
+### 🛠 Bug Fixes
+
+- 🐞 Fixes after dependency updates
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2157
+
+- 📖  Adding a section: Reference/Third-Party Libraries
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2153
+
+- 🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2132
+
+- 🐞 Admin Portal > Sidebar: Can't select active events tab if all Events are archived
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2131
+
+- 🐞 Default Invalid vote policy mismatch
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2126
+
+- ✨ Voting Portal > Nightwatch voting with no revotes
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2125
+
+- ✨ Voting Portal > Nightwatch voting with no revotes
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2122
+
+- ✨ Voting Portal > Nightwatch voting with no revotes
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2118
+
+
+### 📖 Documentation
+
+- ✨ Prepare Release 9.2.0
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2169
+
+- 📖  v9.0.2 documentation
+  by Félix Robles, @Findeton
+  https://github.com/sequentech/step/pull/2167
+
+
+================================================================================
+DRY RUN complete. No files were created.
+================================================================================
+

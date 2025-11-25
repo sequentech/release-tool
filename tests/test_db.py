@@ -116,6 +116,38 @@ def test_upsert_ticket(db):
     assert fetched_ticket.number == 123
 
 
+def test_get_ticket_by_key(db):
+    """Test getting ticket by key across all repos."""
+    # Create two different repos (simulating code repo and ticket repo)
+    code_repo = Repository(owner="org", name="code")
+    code_repo_id = db.upsert_repository(code_repo)
+
+    ticket_repo = Repository(owner="org", name="tickets")
+    ticket_repo_id = db.upsert_repository(ticket_repo)
+
+    # Create ticket in ticket repo
+    ticket = Ticket(
+        repo_id=ticket_repo_id,
+        number=8624,
+        key="8624",  # Bare number as extracted from branch
+        title="Implement feature X",
+        state="closed",
+        labels=[Label(name="enhancement")]
+    )
+    db.upsert_ticket(ticket)
+
+    # Query by repo_id should fail when using wrong repo
+    wrong_ticket = db.get_ticket(code_repo_id, "8624")
+    assert wrong_ticket is None
+
+    # Query by key only should succeed
+    found_ticket = db.get_ticket_by_key("8624")
+    assert found_ticket is not None
+    assert found_ticket.title == "Implement feature X"
+    assert found_ticket.number == 8624
+    assert found_ticket.repo_id == ticket_repo_id
+
+
 def test_upsert_release(db):
     """Test release upsert."""
     repo = Repository(owner="test", name="repo")

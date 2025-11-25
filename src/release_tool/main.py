@@ -2,7 +2,8 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+from collections import defaultdict
 import click
 from rich.console import Console
 from rich.table import Table
@@ -16,8 +17,11 @@ from .policies import (
     TicketExtractor,
     CommitConsolidator,
     ReleaseNoteGenerator,
-    VersionGapChecker
+    VersionGapChecker,
+    PartialTicketMatch,
+    PartialTicketReason
 )
+from .config import PolicyAction
 
 console = Console()
 
@@ -109,10 +113,11 @@ def sync(ctx, repository: Optional[str], repo_path: Optional[str]):
 @click.option('--new-patch', is_flag=True, help='Auto-bump patch version (x.y.Z)')
 @click.option('--new-rc', is_flag=True, help='Create new RC version (auto-increments from existing RCs)')
 @click.option('--format', type=click.Choice(['markdown', 'json'], case_sensitive=False), default='markdown', help='Output format (default: markdown)')
+@click.option('--debug', is_flag=True, help='Show detailed pattern matching debug output')
 @click.pass_context
 def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path: Optional[str],
              output: Optional[str], dry_run: bool, new_major: bool, new_minor: bool,
-             new_patch: bool, new_rc: bool, format: str):
+             new_patch: bool, new_rc: bool, format: str, debug: bool):
     """
     Generate release notes for a version.
 
@@ -421,8 +426,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         pr_map[commit.pr_number] = pr
 
             # Extract tickets and consolidate
-            extractor = TicketExtractor(config)
-            consolidator = CommitConsolidator(config, extractor)
+            extractor = TicketExtractor(config, debug=debug)
+            consolidator = CommitConsolidator(config, extractor, debug=debug)
             consolidated_changes = consolidator.consolidate(commit_models, pr_map)
 
             console.print(f"[blue]Consolidated into {len(consolidated_changes)} changes[/blue]")
@@ -430,24 +435,70 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             # Handle missing tickets
             consolidator.handle_missing_tickets(consolidated_changes)
 
-            # Fetch ticket information from GitHub
-            github_client = GitHubClient(config)
-            ticket_repos = config.get_ticket_repos()
-            ticket_repo = ticket_repos[0] if ticket_repos else repo_name
+            # Load ticket information from database (offline) with partial detection
+            # Tickets must be synced first using: release-tool sync
+            partial_matches: List[PartialTicketMatch] = []
+
+            # Get expected ticket repository IDs
+            expected_repos = config.get_ticket_repos()
+            expected_repo_ids = []
+            for repo_name in expected_repos:
+                repo = db.get_repository(repo_name)
+                if repo:
+                    expected_repo_ids.append(repo.id)
 
             for change in consolidated_changes:
-                if change.ticket_key and change.ticket_key.startswith('#'):
-                    # Fetch from GitHub if not in DB
-                    ticket = db.get_ticket(repo_id, change.ticket_key)
+                if change.ticket_key:
+                    # Query ticket from database across all repos
+                    ticket = db.get_ticket_by_key(change.ticket_key)
+
                     if not ticket:
-                        ticket = github_client.fetch_issue_by_key(
-                            ticket_repo,
-                            change.ticket_key,
-                            repo_id
+                        # NOT FOUND - create partial match
+                        extraction_source = _get_extraction_source(change)
+                        partial = PartialTicketMatch(
+                            ticket_key=change.ticket_key,
+                            extracted_from=extraction_source,
+                            match_type="not_found",
+                            potential_reasons={
+                                PartialTicketReason.OLDER_THAN_CUTOFF,
+                                PartialTicketReason.TYPO,
+                                PartialTicketReason.SYNC_NOT_RUN
+                            }
                         )
-                        if ticket:
-                            db.upsert_ticket(ticket)
+                        partial_matches.append(partial)
+
+                        if debug:
+                            console.print(f"\n[yellow]⚠️  Ticket {change.ticket_key} not found in DB[/yellow]")
+
+                    elif ticket.repo_id not in expected_repo_ids:
+                        # DIFFERENT REPO - create partial match
+                        found_repo = db.get_repository_by_id(ticket.repo_id)
+                        extraction_source = _get_extraction_source(change)
+                        partial = PartialTicketMatch(
+                            ticket_key=change.ticket_key,
+                            extracted_from=extraction_source,
+                            match_type="different_repo",
+                            found_in_repo=found_repo.full_name if found_repo else "unknown",
+                            ticket_url=ticket.url,
+                            potential_reasons={
+                                PartialTicketReason.REPO_CONFIG_MISMATCH,
+                                PartialTicketReason.WRONG_TICKET_REPOS
+                            }
+                        )
+                        partial_matches.append(partial)
+
+                        if debug:
+                            console.print(f"\n[yellow]⚠️  Ticket {change.ticket_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
+
+                    else:
+                        # Found in correct repo
+                        if debug:
+                            console.print(f"\n[dim]📋 Found ticket in DB: #{ticket.number} - {ticket.title}[/dim]")
+
                     change.ticket = ticket
+
+            # Apply partial ticket policy
+            _handle_partial_tickets(partial_matches, config, debug)
 
             # Generate release notes
             note_generator = ReleaseNoteGenerator(config)
@@ -526,6 +577,125 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
         if '--debug' in sys.argv:
             raise
         sys.exit(1)
+
+
+def _get_extraction_source(change, commits_map=None, prs_map=None):
+    """
+    Get human-readable description of where a ticket was extracted from.
+
+    Args:
+        change: ConsolidatedChange object
+        commits_map: Optional dict mapping sha to commit for lookups
+        prs_map: Optional dict mapping pr_number to PR for lookups
+
+    Returns:
+        String like "branch feat/meta-8624/main, pattern #1"
+    """
+    # Try to get from PR first (most reliable)
+    if change.prs and len(change.prs) > 0:
+        pr = change.prs[0]
+        if pr.head_branch:
+            return f"branch {pr.head_branch}, PR #{pr.number}"
+        return f"PR #{pr.number}"
+
+    # Fall back to commit info
+    if change.commits and len(change.commits) > 0:
+        commit = change.commits[0]
+        return f"commit {commit.sha[:7]}"
+
+    return "unknown source"
+
+
+def _handle_partial_tickets(partials: List[PartialTicketMatch], config, debug: bool):
+    """
+    Handle partial ticket matches based on policy configuration.
+
+    Args:
+        partials: List of PartialTicketMatch objects
+        config: Config object with ticket_policy.partial_ticket_action
+        debug: Whether debug mode is enabled
+
+    Raises:
+        RuntimeError: If policy is ERROR and partials exist
+    """
+    if not partials:
+        return
+
+    action = config.ticket_policy.partial_ticket_action
+
+    if action == PolicyAction.IGNORE:
+        return
+
+    # Group by type
+    not_found = [p for p in partials if p.match_type == "not_found"]
+    different_repo = [p for p in partials if p.match_type == "different_repo"]
+
+    # Build warning message
+    msg_lines = []
+    msg_lines.append("")
+    msg_lines.append(f"[yellow]⚠️  Found {len(partials)} partial ticket match(es)[/yellow]")
+    msg_lines.append("")
+
+    # Handle different_repo partials
+    if different_repo:
+        msg_lines.append(f"[cyan]Tickets in different repository ({len(different_repo)}):[/cyan]")
+
+        # Group tickets by reason
+        tickets_by_reason = defaultdict(list)
+        for p in different_repo:
+            for reason in p.potential_reasons:
+                tickets_by_reason[reason].append(p)
+
+        # Show reasons with associated tickets
+        msg_lines.append(f"  [dim]This might be because of:[/dim]")
+        for reason, tickets in tickets_by_reason.items():
+            ticket_keys = [p.ticket_key for p in tickets]
+            msg_lines.append(f"    • {reason.description}")
+            msg_lines.append(f"      [dim]Tickets:[/dim] {', '.join(ticket_keys)}")
+
+        msg_lines.append("")
+        msg_lines.append("  [dim]Details:[/dim]")
+        for p in different_repo:
+            msg_lines.append(f"    • [bold]{p.ticket_key}[/bold] (from {p.extracted_from})")
+            if p.found_in_repo:
+                msg_lines.append(f"      [dim]Found in:[/dim] {p.found_in_repo}")
+            if p.ticket_url:
+                msg_lines.append(f"      [dim]URL:[/dim] {p.ticket_url}")
+        msg_lines.append("")
+
+    # Handle not_found partials
+    if not_found:
+        msg_lines.append(f"[cyan]Tickets not found in database ({len(not_found)}):[/cyan]")
+
+        # Group tickets by reason
+        tickets_by_reason = defaultdict(list)
+        for p in not_found:
+            for reason in p.potential_reasons:
+                tickets_by_reason[reason].append(p)
+
+        # Show reasons with associated tickets
+        msg_lines.append(f"  [dim]This might be because of:[/dim]")
+        for reason, tickets in tickets_by_reason.items():
+            ticket_keys = [p.ticket_key for p in tickets]
+            msg_lines.append(f"    • {reason.description}")
+            msg_lines.append(f"      [dim]Tickets:[/dim] {', '.join(ticket_keys)}")
+
+        msg_lines.append("")
+        msg_lines.append("  [dim]Details:[/dim]")
+        for p in not_found:
+            msg_lines.append(f"    • [bold]{p.ticket_key}[/bold] (from {p.extracted_from})")
+        msg_lines.append("")
+
+    msg_lines.append("[dim]To resolve:[/dim]")
+    msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
+    msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
+    msg_lines.append("  3. Verify ticket numbers in branches/PRs")
+    msg_lines.append("")
+
+    console.print("\n".join(msg_lines))
+
+    if action == PolicyAction.ERROR:
+        raise RuntimeError(f"Partial ticket matches found ({len(partials)} total). Policy: error")
 
 
 @cli.command()
@@ -863,7 +1033,6 @@ show_progress = true
 # =============================================================================
 # Ticket Extraction and Consolidation Policy
 # =============================================================================
-[ticket_policy]
 # patterns: Ordered list of ticket extraction patterns
 # Each pattern is associated with a specific extraction strategy (where to look)
 # and uses Python regex with NAMED CAPTURE GROUPS (use "ticket" group for the ID)
@@ -911,22 +1080,7 @@ strategy = "pr_title"
 pattern = "#(?P<ticket>\\\\d+)"
 description = "GitHub issue reference (#123) in PR title"
 
-# ORDER 4: GitHub issue reference in commit message
-# Matches: "#123" in commit messages
-[[ticket_policy.patterns]]
-order = 4
-strategy = "commit_message"
-pattern = "#(?P<ticket>\\\\d+)"
-description = "GitHub issue reference (#123) in commit"
-
-# ORDER 5: JIRA-style tickets in commit message
-# Matches: "PROJECT-123", "TICKET-456" in commit messages
-[[ticket_policy.patterns]]
-order = 5
-strategy = "commit_message"
-pattern = "(?P<project>[A-Z]+)-(?P<ticket>\\\\d+)"
-description = "JIRA-style tickets (PROJ-123) in commit"
-
+[ticket_policy]
 # no_ticket_action: What to do when a commit/PR has no associated ticket
 # Valid values:
 #   - "ignore": Silently skip the warning, include in release notes
@@ -1509,36 +1663,111 @@ def _merge_config_with_template(user_data: dict, template_doc) -> dict:
     Returns:
         Merged tomlkit document with template comments and user values
     """
+    import tomlkit
+
+    def to_tomlkit_value(value):
+        """Convert plain Python value to tomlkit type to preserve comments."""
+        if isinstance(value, dict):
+            result = tomlkit.table()
+            for k, v in value.items():
+                result[k] = to_tomlkit_value(v)
+            return result
+        elif isinstance(value, list):
+            result = tomlkit.array()
+            for item in value:
+                result.append(to_tomlkit_value(item))
+            return result
+        else:
+            # Scalars (str, int, bool, etc.) are fine as-is
+            return value
+
+    def values_equal(val1, val2):
+        """Check if two values are equal for merge purposes."""
+        # Convert both to comparable types
+        if isinstance(val1, (list, dict)) and isinstance(val2, (list, dict)):
+            # Use unwrap to get plain Python objects for comparison
+            v1 = val1.unwrap() if hasattr(val1, 'unwrap') else val1
+            v2 = val2.unwrap() if hasattr(val2, 'unwrap') else val2
+            return v1 == v2
+        else:
+            # For scalars, convert to string for comparison
+            return str(val1) == str(val2)
+
     def update_values_in_place(template_item, user_value):
         """Update template values in-place with user values."""
         if isinstance(template_item, dict) and isinstance(user_value, dict):
             # Update each key in template with user's value
-            for key in template_item:
+            # Create list of keys first to avoid "dictionary changed during iteration"
+            for key in list(template_item.keys()):
                 if key in user_value:
+                    template_val = template_item[key]
+                    user_val = user_value[key]
+
+                    # SKIP updating if values are identical - this preserves comments!
+                    if values_equal(template_val, user_val):
+                        continue
+
                     # Check if we need to recurse
-                    if isinstance(template_item[key], dict) and isinstance(user_value[key], dict):
-                        update_values_in_place(template_item[key], user_value[key])
-                    elif isinstance(template_item[key], list) and isinstance(user_value[key], list):
-                        # For lists, just replace (too complex to merge arrays)
-                        template_item[key] = user_value[key]
+                    if isinstance(template_val, dict) and isinstance(user_val, dict):
+                        update_values_in_place(template_val, user_val)
+                    # Special handling for AoT (Array of Tables) - preserve the type
+                    elif isinstance(template_val, tomlkit.items.AoT) and isinstance(user_val, list):
+                        # Clear existing items and repopulate with user data
+                        template_val.clear()
+                        for item in user_val:
+                            template_val.append(to_tomlkit_value(item))
+                    elif isinstance(template_val, list) and isinstance(user_val, list):
+                        # For regular lists, preserve trivia and convert to tomlkit array
+                        old_trivia = template_val.trivia if hasattr(template_val, 'trivia') else None
+                        new_val = to_tomlkit_value(user_val)
+                        if old_trivia and hasattr(new_val, 'trivia'):
+                            new_val.trivia.indent = old_trivia.indent
+                            new_val.trivia.comment_ws = old_trivia.comment_ws
+                            new_val.trivia.comment = old_trivia.comment
+                            new_val.trivia.trail = old_trivia.trail
+                        template_item[key] = new_val
                     else:
-                        # Primitive value - replace
-                        template_item[key] = user_value[key]
+                        # Primitive value - preserve trivia and convert to tomlkit type
+                        old_trivia = template_val.trivia if hasattr(template_val, 'trivia') else None
+                        new_val = to_tomlkit_value(user_val)
+                        if old_trivia and hasattr(new_val, 'trivia'):
+                            new_val.trivia.indent = old_trivia.indent
+                            new_val.trivia.comment_ws = old_trivia.comment_ws
+                            new_val.trivia.comment = old_trivia.comment
+                            new_val.trivia.trail = old_trivia.trail
+                        template_item[key] = new_val
 
             # Add any keys from user that template doesn't have
             for key in user_value:
                 if key not in template_item:
-                    template_item[key] = user_value[key]
+                    template_item[key] = to_tomlkit_value(user_value[key])
+
+    def needs_update(template_section, user_section):
+        """Check if a section needs any updates."""
+        if not isinstance(template_section, dict) or not isinstance(user_section, dict):
+            return True
+
+        # Check if all keys in user section exist in template and have same values
+        for key in user_section:
+            if key not in template_section:
+                return True  # New key needs to be added
+            if not values_equal(template_section[key], user_section[key]):
+                return True  # Value differs
+        return False  # All values match, no update needed
 
     # Modify template in-place to preserve comments
-    for key in template_doc:
+    # Create list of keys first to avoid "dictionary changed during iteration"
+    for key in list(template_doc.keys()):
         if key in user_data:
-            update_values_in_place(template_doc[key], user_data[key])
+            template_item = template_doc[key]
+
+            # Update values in place
+            update_values_in_place(template_item, user_data[key])
 
     # Add any top-level keys user has that template doesn't have
     for key in user_data:
         if key not in template_doc:
-            template_doc[key] = user_data[key]
+            template_doc[key] = to_tomlkit_value(user_data[key])
 
     return template_doc
 

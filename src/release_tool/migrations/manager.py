@@ -17,7 +17,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.1"  # Latest config version
+    CURRENT_VERSION = "1.2"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -204,6 +204,13 @@ class MigrationManager:
                 "  • New template variables: ticket_url, pr_url for more flexible URL handling\n"
                 "  • Improved output_template formatting with better spacing\n"
                 "  • url field now intelligently uses ticket_url if available, else pr_url"
+            ),
+            ("1.1", "1.2"): (
+                "Version 1.2 adds:\n"
+                "  • New partial_ticket_action policy (ignore/warn/error)\n"
+                "  • Handles tickets extracted but not found in database\n"
+                "  • Handles tickets found in different repositories\n"
+                "  • Provides diagnostics with potential reasons and links"
             ),
         }
 

@@ -88,7 +88,6 @@ show_progress = true
 # =============================================================================
 # Ticket Extraction and Consolidation Policy
 # =============================================================================
-[ticket_policy]
 # patterns: Ordered list of ticket extraction patterns
 # Each pattern is associated with a specific extraction strategy (where to look)
 # and uses Python regex with NAMED CAPTURE GROUPS (use "ticket" group for the ID)
@@ -107,7 +106,7 @@ show_progress = true
 #   [[ticket_policy.patterns]]
 #   order = 1              # Priority (lower = tried first)
 #   strategy = "branch_name"  # Where to look
-#   pattern = "regex_here"    # What to match (use (?P<ticket>\\\\d+) for ID)
+#   pattern = "regex_here"    # What to match (use (?P<ticket>\\d+) for ID)
 #   description = "explanation"  # Optional: what this pattern matches
 
 # ORDER 1: Branch name (most reliable, structured format)
@@ -116,7 +115,7 @@ show_progress = true
 [[ticket_policy.patterns]]
 order = 1
 strategy = "branch_name"
-pattern = "/(?P<repo>\\\\w+)-(?P<ticket>\\\\d+)"
+pattern = "/(?P<repo>\\w+)-(?P<ticket>\\d+)"
 description = "Branch name format: type/repo-123/target"
 
 # ORDER 2: Parent issue URL in PR body (backup policy)
@@ -125,7 +124,7 @@ description = "Branch name format: type/repo-123/target"
 [[ticket_policy.patterns]]
 order = 2
 strategy = "pr_body"
-pattern = "Parent issue:.*?/issues/(?P<ticket>\\\\d+)"
+pattern = "Parent issue:.*?/issues/(?P<ticket>\\d+)"
 description = "Parent issue URL in PR description"
 
 # ORDER 3: GitHub issue reference in PR title
@@ -133,25 +132,10 @@ description = "Parent issue URL in PR description"
 [[ticket_policy.patterns]]
 order = 3
 strategy = "pr_title"
-pattern = "#(?P<ticket>\\\\d+)"
+pattern = "#(?P<ticket>\\d+)"
 description = "GitHub issue reference (#123) in PR title"
 
-# ORDER 4: GitHub issue reference in commit message
-# Matches: "#123" in commit messages
-[[ticket_policy.patterns]]
-order = 4
-strategy = "commit_message"
-pattern = "#(?P<ticket>\\\\d+)"
-description = "GitHub issue reference (#123) in commit"
-
-# ORDER 5: JIRA-style tickets in commit message
-# Matches: "PROJECT-123", "TICKET-456" in commit messages
-[[ticket_policy.patterns]]
-order = 5
-strategy = "commit_message"
-pattern = "(?P<project>[A-Z]+)-(?P<ticket>\\\\d+)"
-description = "JIRA-style tickets (PROJ-123) in commit"
-
+[ticket_policy]
 # no_ticket_action: What to do when a commit/PR has no associated ticket
 # Valid values:
 #   - "ignore": Silently skip the warning, include in release notes
@@ -168,6 +152,31 @@ no_ticket_action = "warn"
 #   - "error": Stop if any tickets are still open
 # Default: "warn"
 unclosed_ticket_action = "warn"
+
+# partial_ticket_action: What to do when a ticket is extracted but not found in DB
+# or found in a different repository than expected
+#
+# "Partial matches" occur when:
+#   - Ticket key extracted from branch/PR, but ticket not in database (common causes):
+#     * Ticket created before your sync cutoff date
+#     * Ticket doesn't exist (typo in branch name)
+#     * Sync hasn't been run yet
+#   - Ticket found in database, but in wrong repository:
+#     * Branch says "meta-8624" but ticket is in "step" repo
+#     * Mismatch between ticket_repos config and actual ticket location
+#
+# Valid values:
+#   - "ignore": Silently skip partial matches, continue with next pattern
+#   - "warn": Print detailed warnings with potential causes and ticket links (RECOMMENDED)
+#   - "error": Stop release note generation if any partial matches found
+#
+# Default: "warn"
+# When in warn mode, the tool will list:
+#   - Which tickets had partial matches
+#   - Whether they were not found or in different repo
+#   - Potential reasons (cutoff date, typo, wrong repo, etc.)
+#   - Links to tickets if found in different repos
+partial_ticket_action = "warn"
 
 # consolidation_enabled: Group multiple commits by their parent ticket
 # When true: Commits with the same ticket (e.g., TICKET-123) are grouped
@@ -272,45 +281,6 @@ branch_from_previous_release = true
 #   labels = ["label1", "pr:label2", "ticket:label3"]  # With optional prefixes
 #   order = 1                   # Display order (lower numbers appear first)
 
-[[release_notes.categories]]
-name = "💥 Breaking Changes"
-labels = ["breaking-change", "breaking"]
-order = 1
-alias = "breaking"
-
-[[release_notes.categories]]
-name = "🚀 Features"
-labels = ["feature", "enhancement", "feat"]
-order = 2
-alias = "features"
-
-[[release_notes.categories]]
-name = "🛠 Bug Fixes"
-labels = ["bug", "fix", "bugfix", "hotfix"]
-order = 3
-alias = "bugfixes"
-
-[[release_notes.categories]]
-name = "📖 Documentation"
-labels = ["docs", "documentation"]
-order = 4
-alias = "docs"
-
-[[release_notes.categories]]
-name = "🛡 Security Updates"
-labels = ["security"]
-order = 5
-alias = "security"
-
-[[release_notes.categories]]
-name = "Other Changes"
-labels = []
-order = 99
-alias = "other"
-
-# =============================================================================
-# Release Notes Formatting and Content
-# =============================================================================
 [release_notes]
 # excluded_labels: Skip tickets/PRs with these labels from release notes
 # Useful for internal changes, CI updates, etc.
@@ -332,13 +302,23 @@ title_template = "Release {{ version }}"
 #   - Multiple spaces/tabs are collapsed into a single space (like HTML)
 #   - New lines in the template are ignored unless you use <br> or <br/>
 #   - Use <br> or <br/> for explicit line breaks in the output
+#   - Use &nbsp; for explicit spaces that won't collapse (e.g., &nbsp;&nbsp; = two spaces)
 #   - This allows multi-line templates for readability while controlling output
 #
 # Available variables for each entry:
 #   - {{ title }}           : The title/summary of the change (string)
 #                             Example: "Fix authentication bug in login flow"
-#   - {{ url }}             : Link to the ticket or PR (string or None)
+#   - {{ url }}             : Smart link prioritizing ticket over PR (string or None)
 #                             Example: "https://github.com/owner/repo/issues/123"
+#                             Priority: ticket_url > pr_url
+#   - {{ ticket_url }}      : Direct link to the ticket/issue (string or None)
+#                             Example: "https://github.com/owner/repo/issues/123"
+#   - {{ pr_url }}          : Direct link to the pull request (string or None)
+#                             Example: "https://github.com/owner/repo/pull/456"
+#   - {{ short_link }}      : Short format link (string or None)
+#                             Example: "#123"
+#   - {{ short_repo_link }} : Short format with repo name (string or None)
+#                             Example: "owner/repo#123"
 #   - {{ pr_numbers }}      : List of related PR numbers (list of int)
 #                             Example: [123, 124]
 #   - {{ authors }}         : List of author objects (list of dict)
@@ -406,14 +386,15 @@ title_template = "Release {{ version }}"
 #      {% if authors %}<br>Contributors: {% for author in authors %}@{{ author.username or author.name }}{% if author.company %} ({{ author.company }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
 #      {% if migration_notes %}<br>  **Migration:** {{ migration_notes }}{% endif %}'''
 #
-# Default: Multi-line template with title, URL, and author mentions
-# The whitespace will collapse, <br> tags not used in default for single-line output
+# Default: Multi-line template with title, short_repo_link, and author mentions
+# The whitespace will collapse, <br> tags create line breaks
 # Uses author.mention which gives @username if available, otherwise falls back to name
+# Uses short_repo_link for concise display (e.g., "meta#123" instead of full URL)
 entry_template = '''- {{ title }}<br>
-  {% if url %}{{ url }}{% endif %}
   {% if authors %}
-  by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
-  {% endif %}<br>'''
+  &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+  &nbsp;&nbsp;{% if short_repo_link %}{{ short_repo_link }}{% endif %}'''
 
 # output_template: MASTER Jinja2 template for the entire release notes output
 # This is an ADVANCED feature that gives you complete control over the release
@@ -428,6 +409,7 @@ entry_template = '''- {{ title }}<br>
 # IMPORTANT: HTML-like behavior for whitespace (same as entry_template)
 #   - Multiple spaces collapse to single space
 #   - Line breaks: Use <br> or <br/> for new lines in output
+#   - Non-breaking spaces: Use &nbsp; for explicit spaces that won't collapse
 #
 # Available variables:
 #   - {{ version }}      : Version string (e.g., "1.2.3")
@@ -437,7 +419,9 @@ entry_template = '''- {{ title }}<br>
 #   - {{ render_entry(note) }}: Function to render a note using entry_template
 #
 # Each note dict contains:
-#   - title, url, pr_numbers, commit_shas, labels, ticket_key, category
+#   - title, url (prioritizes ticket_url over pr_url), ticket_url, pr_url
+#   - short_link (#123), short_repo_link (meta#123)
+#   - pr_numbers, commit_shas, labels, ticket_key, category
 #   - description, migration_notes (processed, may be None)
 #   - authors (list of author dicts with all fields)
 #
@@ -518,13 +502,12 @@ entry_template = '''- {{ title }}<br>
 #      {% endfor %}'''
 #
 # Default: Comprehensive template with breaking changes, migrations, descriptions, and categorized changes
-output_template = '''# EDU {{ title }}<br><br>
-
+output_template = '''# {{ title }}<br>
 {% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
 {% if breaking_with_desc|length > 0 %}
-## 💥 Breaking Changes
+<br>## 💥 Breaking Changes
 {% for note in breaking_with_desc %}
-### {{ note.title }}
+<br>### {{ note.title }}
 {{ note.description }}
 {% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
 
@@ -532,9 +515,9 @@ output_template = '''# EDU {{ title }}<br><br>
 {% endif %}
 {% set migration_notes = all_notes|selectattr('migration_notes')|list %}
 {% if migration_notes|length > 0 %}
-## 🔄 Migrations
+<br>## 🔄 Migrations<br>
 {% for note in migration_notes %}
-### {{ note.title }}
+<br>### {{ note.title }}<br>
 {{ note.migration_notes }}
 {% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
 
@@ -542,19 +525,19 @@ output_template = '''# EDU {{ title }}<br><br>
 {% endif %}
 {% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
 {% if non_breaking_with_desc|length > 0 %}
-## 📝 Highlights
+<br>## 📝 Highlights<br>
 {% for note in non_breaking_with_desc %}
-### {{ note.title }}
+<br>### {{ note.title }}<br>
 {{ note.description }}
 {% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
 
 {% endfor %}
 {% endif %}
-## 📋 All Changes
+<br>## 📋 All Changes<br>
 {% for category in categories %}
-### {{ category.name }}
+<br>### {{ category.name }}<br>
 {% for note in category.notes %}
-{{ render_entry(note) }}
+{{ render_entry(note) }}<br>
 {% endfor %}
 
 {% endfor %}'''
@@ -562,6 +545,47 @@ output_template = '''# EDU {{ title }}<br><br>
 # =============================================================================
 # Output Configuration
 # =============================================================================
+
+[[release_notes.categories]]
+name = "💥 Breaking Changes"
+labels = ["breaking-change", "breaking"]
+order = 1
+alias = "breaking"
+
+[[release_notes.categories]]
+name = "🚀 Features"
+labels = ["feature", "enhancement", "feat"]
+order = 2
+alias = "features"
+
+[[release_notes.categories]]
+name = "🛠 Bug Fixes"
+labels = ["bug", "fix", "bugfix", "hotfix"]
+order = 3
+alias = "bugfixes"
+
+[[release_notes.categories]]
+name = "📖 Documentation"
+labels = ["docs", "documentation"]
+order = 4
+alias = "docs"
+
+[[release_notes.categories]]
+name = "🛡 Security Updates"
+labels = ["security"]
+order = 5
+alias = "security"
+
+[[release_notes.categories]]
+name = "Other Changes"
+labels = []
+order = 99
+alias = "other"
+
+# =============================================================================
+# Release Notes Formatting and Content
+# =============================================================================
+
 [output]
 # output_path: Path template for release notes file
 # This file will only be created/updated if you use the CLI --output flag
