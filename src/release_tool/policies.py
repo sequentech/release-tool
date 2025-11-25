@@ -359,23 +359,8 @@ class ReleaseNoteGenerator:
     ) -> ReleaseNote:
         """Create a release note from a consolidated change."""
         # Extract and deduplicate authors from commits and PRs
-        authors_dict = {}  # Key by best identifier to deduplicate
-
-        # Collect authors from commits
-        for commit in change.commits:
-            key = commit.author.get_identifier()
-            if key not in authors_dict:
-                authors_dict[key] = commit.author
-
-        # Collect authors from PRs (may have more complete GitHub info)
-        for pr in change.prs:
-            if pr.author:
-                key = pr.author.get_identifier()
-                # PR author may have more complete info, prefer it
-                if key not in authors_dict or (pr.author.username and not authors_dict[key].username):
-                    authors_dict[key] = pr.author
-
-        authors = list(authors_dict.values())
+        authors = self._deduplicate_authors(change)
+        
         pr_numbers = list(set(pr.number for pr in change.prs))
         commit_shas = [commit.sha for commit in change.commits]
 
@@ -452,6 +437,56 @@ class ReleaseNoteGenerator:
             short_link=short_link,
             short_repo_link=short_repo_link
         )
+
+    def _deduplicate_authors(self, change: ConsolidatedChange) -> List[Any]:
+        """
+        Deduplicate authors from commits and PRs.
+        
+        Prioritizes PR authors because they have GitHub usernames (needed for @mentions).
+        Commits often only have Name/Email, and Email might be private/missing in PR data.
+        """
+        final_authors_map = {}  # Key by identifier -> Author
+
+        # 1. Index PR authors (they are our "source of truth" for GitHub identity)
+        pr_authors_by_pr_number = {}
+        known_authors_by_name = {}
+        known_authors_by_email = {}
+
+        for pr in change.prs:
+            if pr.author:
+                pr_authors_by_pr_number[pr.number] = pr.author
+
+                # Add to final map immediately
+                final_authors_map[pr.author.get_identifier()] = pr.author
+
+                # Index for matching
+                if pr.author.name:
+                    known_authors_by_name[pr.author.name] = pr.author
+                if pr.author.email:
+                    known_authors_by_email[pr.author.email] = pr.author
+
+        # 2. Process commits and try to link them to existing PR authors
+        for commit in change.commits:
+            resolved_author = commit.author
+
+            # Strategy A: Link via PR number (Strongest link)
+            if commit.pr_number and commit.pr_number in pr_authors_by_pr_number:
+                resolved_author = pr_authors_by_pr_number[commit.pr_number]
+
+            # Strategy B: Link via Email (Strong link, if available)
+            elif commit.author.email and commit.author.email in known_authors_by_email:
+                resolved_author = known_authors_by_email[commit.author.email]
+
+            # Strategy C: Link via Name (Weaker link, but helps if email is missing)
+            elif commit.author.name and commit.author.name in known_authors_by_name:
+                resolved_author = known_authors_by_name[commit.author.name]
+
+            # Add to map (deduplicates by identifier)
+            # If we resolved to a PR author, get_identifier() returns username.
+            # If we stayed with commit author, get_identifier() returns name/email.
+            final_authors_map[resolved_author.get_identifier()] = resolved_author
+
+        return list(final_authors_map.values())
 
     def _determine_category(
         self,

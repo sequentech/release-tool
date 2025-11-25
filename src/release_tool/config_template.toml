@@ -390,7 +390,7 @@ title_template = "Release {{ version }}"
 # The whitespace will collapse, <br> tags create line breaks
 # Uses author.mention which gives @username if available, otherwise falls back to name
 # Uses short_repo_link for concise display (e.g., "meta#123" instead of full URL)
-entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }){% endif %}<br>
+entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }}){% endif %}<br>
   {% if authors %}
   &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
   {% endif %}'''
