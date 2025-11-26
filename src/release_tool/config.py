@@ -134,6 +134,10 @@ class TicketPolicyConfig(BaseModel):
         default=PolicyAction.WARN,
         description="What to do with partial ticket matches (extracted but not found or wrong repo)"
     )
+    inter_release_duplicate_action: PolicyAction = Field(
+        default=PolicyAction.WARN,
+        description="What to do when a ticket appears in multiple releases (ignore=exclude from new release, warn=include but warn, error=fail)"
+    )
     consolidation_enabled: bool = Field(
         default=True,
         description="Whether to consolidate commits by parent ticket"

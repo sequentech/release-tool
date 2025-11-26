@@ -234,7 +234,10 @@ class GitHubClient:
         since: Optional[datetime] = None
     ) -> List[int]:
         """
-        Search for ticket numbers using GitHub Search API (FAST - single API call per page).
+        Search for ticket numbers using GitHub Search API with proper pagination.
+
+        GitHub Search API has a 1000-result limit per query. This method handles
+        that by chunking the date range when needed.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
@@ -243,26 +246,67 @@ class GitHubClient:
         Returns:
             List of ticket numbers
         """
-        try:
-            # Build search query
-            query = f"repo:{repo_full_name} is:issue"
-            if since:
-                query += f" created:>={since.strftime('%Y-%m-%d')}"
+        from datetime import timedelta
 
+        try:
             console.print(f"  [cyan]Searching for tickets...[/cyan]")
 
-            # Use search API (much faster than iterating)
-            issues = self.gh.search_issues(query, sort='created', order='desc')
+            # NOTE: GitHub Search API has a 1000-result limit per query
+            # AND it lies about totalCount - it caps at 1000 even when there are more results
+            # So we must always chunk and check if we hit exactly 1000 results
 
             ticket_numbers = []
-            for issue in issues:
-                ticket_numbers.append(issue.number)
+            current_start = since
 
-                if len(ticket_numbers) % 500 == 0:
-                    console.print(f"  [dim]Found {len(ticket_numbers)} tickets...[/dim]")
+            while True:
+                # Query for this chunk (sorted ascending to get oldest first in this range)
+                chunk_query = f"repo:{repo_full_name} is:issue"
+                if current_start:
+                    chunk_query += f" created:>={current_start.strftime('%Y-%m-%d')}"
+
+                chunk_issues = self.gh.search_issues(chunk_query, sort='created', order='asc')
+                chunk_count = chunk_issues.totalCount
+
+                if chunk_count == 0:
+                    break
+
+                # Show progress
+                if len(ticket_numbers) == 0:
+                    if chunk_count >= 1000:
+                        console.print(f"  [yellow]Note: API shows {chunk_count} tickets, but there may be more (API limit: 1000)[/yellow]")
+                    else:
+                        console.print(f"  [dim]Total tickets to fetch: {chunk_count}[/dim]")
+
+                # Fetch up to 1000 from this chunk
+                fetched_in_chunk = 0
+                last_created_date = None
+
+                for issue in chunk_issues:
+                    ticket_numbers.append(issue.number)
+                    last_created_date = issue.created_at
+                    fetched_in_chunk += 1
+
+                    if len(ticket_numbers) % 500 == 0:
+                        console.print(f"  [dim]Found {len(ticket_numbers)} tickets...[/dim]")
+
+                    # Stop at 1000 per chunk to avoid API limit
+                    if fetched_in_chunk >= 1000:
+                        break
+
+                # If we fetched less than 1000, we're done (no more results)
+                if fetched_in_chunk < 1000:
+                    break
+
+                # We fetched exactly 1000 - there might be more, continue to next chunk
+                if last_created_date:
+                    current_start = last_created_date + timedelta(seconds=1)
+                    console.print(f"  [yellow]Fetched 1000 results - chunking to continue from {current_start.strftime('%Y-%m-%d %H:%M:%S')}...[/yellow]")
+                else:
+                    break
 
             console.print(f"  [green]✓[/green] Found {len(ticket_numbers)} tickets")
             return ticket_numbers
+
         except GithubException as e:
             console.print(f"[red]Error searching tickets from {repo_full_name}: {e}[/red]")
             return []
@@ -273,35 +317,79 @@ class GitHubClient:
         since: Optional[datetime] = None
     ) -> List[int]:
         """
-        Search for merged PR numbers using GitHub Search API (FAST - single API call per page).
+        Search for merged PR numbers using GitHub Search API with proper pagination.
+
+        GitHub Search API has a 1000-result limit per query. This method handles
+        that by chunking the date range when needed.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
-            since: Only include PRs created after this datetime
+            since: Only include PRs merged after this datetime
 
         Returns:
             List of PR numbers
         """
-        try:
-            # Build search query for merged PRs only
-            query = f"repo:{repo_full_name} is:pr is:merged"
-            if since:
-                query += f" merged:>={since.strftime('%Y-%m-%d')}"
+        from datetime import timedelta
 
+        try:
             console.print(f"  [cyan]Searching for merged PRs...[/cyan]")
 
-            # Use search API (much faster than iterating)
-            prs = self.gh.search_issues(query, sort='created', order='desc')
+            # NOTE: GitHub Search API has a 1000-result limit per query
+            # AND it lies about totalCount - it caps at 1000 even when there are more results
+            # So we must always chunk and check if we hit exactly 1000 results
 
             pr_numbers = []
-            for pr in prs:
-                pr_numbers.append(pr.number)
+            current_start = since
 
-                if len(pr_numbers) % 500 == 0:
-                    console.print(f"  [dim]Found {len(pr_numbers)} merged PRs...[/dim]")
+            while True:
+                # Query for this chunk (sorted ascending to get oldest first in this range)
+                chunk_query = f"repo:{repo_full_name} is:pr is:merged"
+                if current_start:
+                    chunk_query += f" merged:>={current_start.strftime('%Y-%m-%d')}"
+
+                chunk_prs = self.gh.search_issues(chunk_query, sort='created', order='asc')
+                chunk_count = chunk_prs.totalCount
+
+                if chunk_count == 0:
+                    break
+
+                # Show progress
+                if len(pr_numbers) == 0:
+                    if chunk_count >= 1000:
+                        console.print(f"  [yellow]Note: API shows {chunk_count} PRs, but there may be more (API limit: 1000)[/yellow]")
+                    else:
+                        console.print(f"  [dim]Total PRs to fetch: {chunk_count}[/dim]")
+
+                # Fetch up to 1000 from this chunk
+                fetched_in_chunk = 0
+                last_created_date = None
+
+                for pr in chunk_prs:
+                    pr_numbers.append(pr.number)
+                    last_created_date = pr.created_at
+                    fetched_in_chunk += 1
+
+                    if len(pr_numbers) % 500 == 0:
+                        console.print(f"  [dim]Found {len(pr_numbers)} merged PRs...[/dim]")
+
+                    # Stop at 1000 per chunk to avoid API limit
+                    if fetched_in_chunk >= 1000:
+                        break
+
+                # If we fetched less than 1000, we're done (no more results)
+                if fetched_in_chunk < 1000:
+                    break
+
+                # We fetched exactly 1000 - there might be more, continue to next chunk
+                if last_created_date:
+                    current_start = last_created_date + timedelta(seconds=1)
+                    console.print(f"  [yellow]Fetched 1000 results - chunking to continue from {current_start.strftime('%Y-%m-%d %H:%M:%S')}...[/yellow]")
+                else:
+                    break
 
             console.print(f"  [green]✓[/green] Found {len(pr_numbers)} merged PRs")
             return pr_numbers
+
         except GithubException as e:
             console.print(f"[red]Error searching PRs from {repo_full_name}: {e}[/red]")
             return []

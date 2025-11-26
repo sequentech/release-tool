@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Set
 from collections import defaultdict
 import click
 from rich.console import Console
@@ -26,7 +26,7 @@ from .config import PolicyAction
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 @click.option(
     '--config',
     '-c',
@@ -58,7 +58,7 @@ def cli(ctx, config: Optional[str], auto: bool, assume_yes: bool):
             sys.exit(1)
 
 
-@cli.command()
+@cli.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('repository', required=False)
 @click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository')
 @click.pass_context
@@ -108,7 +108,7 @@ def sync(ctx, repository: Optional[str], repo_path: Optional[str]):
         db.close()
 
 
-@cli.command()
+@cli.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version', required=False)
 @click.option('--from-version', help='Compare from this version (auto-detected if not specified)')
 @click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to synced repo)')
@@ -165,14 +165,45 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             base_version = SemanticVersion.parse(version, allow_partial=True)
             console.print(f"[blue]Using base version: {base_version.to_string()}[/blue]")
 
-            # Apply the bump
-            if new_major:
+            # For patch bumps, check if the base version exists first
+            # If it doesn't exist, use the base version instead of bumping
+            if new_patch and base_version.patch == 0:
+                # Need to check if base version exists in Git
+                # Load config early to access repo path
+                cfg = ctx.obj['config']
+                try:
+                    git_ops_temp = GitOperations(cfg.get_code_repo_path())
+                    existing_versions = git_ops_temp.get_version_tags()
+                    base_exists = any(
+                        v.major == base_version.major and
+                        v.minor == base_version.minor and
+                        v.patch == base_version.patch and
+                        v.prerelease == base_version.prerelease
+                        for v in existing_versions
+                    )
+
+                    if not base_exists:
+                        # Base version doesn't exist, use it instead of bumping
+                        target_version = base_version
+                        console.print(f"[blue]Base version {base_version.to_string()} does not exist → Creating {target_version.to_string()}[/blue]")
+                    else:
+                        # Base version exists, bump to next patch
+                        target_version = base_version.bump_patch()
+                        console.print(f"[blue]Base version {base_version.to_string()} exists → Bumping to {target_version.to_string()}[/blue]")
+                except Exception as e:
+                    # If we can't check, default to bumping
+                    console.print(f"[yellow]Warning: Could not check existing versions ({e}), bumping patch[/yellow]")
+                    target_version = base_version.bump_patch()
+                    console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
+            # Apply the bump for other cases
+            elif new_major:
                 target_version = base_version.bump_major()
                 console.print(f"[blue]Bumping major version → {target_version.to_string()}[/blue]")
             elif new_minor:
                 target_version = base_version.bump_minor()
                 console.print(f"[blue]Bumping minor version → {target_version.to_string()}[/blue]")
             elif new_patch:
+                # Patch != 0, just bump it
                 target_version = base_version.bump_patch()
                 console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
             elif new_rc:
@@ -444,6 +475,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             # Load ticket information from database (offline) with partial detection
             # Tickets must be synced first using: release-tool sync
             partial_matches: List[PartialTicketMatch] = []
+            resolved_ticket_keys: Set[str] = set()  # Track successfully resolved tickets
 
             # Get expected ticket repository IDs
             expected_repos = config.get_ticket_repos()
@@ -497,14 +529,25 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                             console.print(f"\n[yellow]⚠️  Ticket {change.ticket_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
 
                     else:
-                        # Found in correct repo
+                        # Found in correct repo - mark as resolved
+                        resolved_ticket_keys.add(change.ticket_key)
                         if debug:
                             console.print(f"\n[dim]📋 Found ticket in DB: #{ticket.number} - {ticket.title}[/dim]")
 
                     change.ticket = ticket
 
-            # Apply partial ticket policy
-            _handle_partial_tickets(partial_matches, config, debug)
+            # Apply partial ticket policy (with resolved/unresolved tracking)
+            _handle_partial_tickets(partial_matches, resolved_ticket_keys, config, debug)
+
+            # Check for inter-release duplicate tickets
+            consolidated_changes = _check_inter_release_duplicates(
+                consolidated_changes,
+                target_version,
+                db,
+                repo_id,
+                config,
+                debug
+            )
 
             # Generate release notes
             note_generator = ReleaseNoteGenerator(config)
@@ -657,39 +700,166 @@ def _get_extraction_source(change, commits_map=None, prs_map=None):
     return "unknown source"
 
 
-def _handle_partial_tickets(partials: List[PartialTicketMatch], config, debug: bool):
+def _extract_ticket_keys_from_release_notes(release_body: str) -> Set[str]:
     """
-    Handle partial ticket matches based on policy configuration.
+    Extract ticket keys from release notes body.
 
     Args:
-        partials: List of PartialTicketMatch objects
-        config: Config object with ticket_policy.partial_ticket_action
-        debug: Whether debug mode is enabled
+        release_body: The markdown body of release notes
 
-    Raises:
-        RuntimeError: If policy is ERROR and partials exist
+    Returns:
+        Set of ticket keys found in the release notes
     """
-    if not partials:
-        return
+    import re
+    ticket_keys = set()
 
-    action = config.ticket_policy.partial_ticket_action
+    # Pattern 1: #1234 format
+    for match in re.finditer(r'#(\d+)', release_body):
+        ticket_keys.add(match.group(1))
 
+    # Pattern 2: owner/repo#1234 format
+    for match in re.finditer(r'[\w-]+/[\w-]+#(\d+)', release_body):
+        ticket_keys.add(match.group(1))
+
+    return ticket_keys
+
+
+def _check_inter_release_duplicates(
+    consolidated_changes: List,
+    target_version: SemanticVersion,
+    db: Database,
+    repo_id: int,
+    config,
+    debug: bool
+) -> List:
+    """
+    Check for tickets that appear in earlier releases and apply deduplication policy.
+
+    Args:
+        consolidated_changes: List of consolidated changes with tickets
+        target_version: The version being generated
+        db: Database instance
+        repo_id: Repository ID
+        config: Config with inter_release_duplicate_action policy
+        debug: Debug mode flag
+
+    Returns:
+        Filtered list of consolidated changes (with duplicates removed if policy is IGNORE)
+    """
+    from .models import SemanticVersion
+
+    action = config.ticket_policy.inter_release_duplicate_action
+
+    if action == PolicyAction.IGNORE and not debug:
+        # Skip the check entirely if ignoring and not debugging
+        pass
+
+    # Get all earlier releases (semantically before target version)
+    all_releases = db.get_all_releases(repo_id=repo_id, limit=None)
+
+    earlier_releases = []
+    for release in all_releases:
+        try:
+            release_version = SemanticVersion.parse(release.version)
+            if release_version < target_version:
+                earlier_releases.append(release)
+        except ValueError:
+            # Skip releases with invalid version strings
+            continue
+
+    if not earlier_releases:
+        # No earlier releases to check against
+        return consolidated_changes
+
+    # Extract ticket keys from all earlier releases
+    tickets_in_earlier_releases = {}  # ticket_key -> list of (version, release)
+    for release in earlier_releases:
+        if release.body:
+            ticket_keys = _extract_ticket_keys_from_release_notes(release.body)
+            for ticket_key in ticket_keys:
+                if ticket_key not in tickets_in_earlier_releases:
+                    tickets_in_earlier_releases[ticket_key] = []
+                tickets_in_earlier_releases[ticket_key].append((release.version, release))
+
+    # Check current changes against earlier releases
+    duplicate_tickets = {}  # ticket_key -> list of versions
+    for change in consolidated_changes:
+        if change.ticket_key and change.ticket_key in tickets_in_earlier_releases:
+            versions = [v for v, r in tickets_in_earlier_releases[change.ticket_key]]
+            duplicate_tickets[change.ticket_key] = versions
+
+    if not duplicate_tickets:
+        # No duplicates found
+        return consolidated_changes
+
+    # Apply policy
     if action == PolicyAction.IGNORE:
-        return
+        # Filter out duplicate tickets from consolidated_changes
+        filtered_changes = [
+            change for change in consolidated_changes
+            if not (change.ticket_key and change.ticket_key in duplicate_tickets)
+        ]
+
+        if debug:
+            console.print(f"\n[dim]Filtered out {len(duplicate_tickets)} duplicate ticket(s) found in earlier releases:[/dim]")
+            for ticket_key, versions in duplicate_tickets.items():
+                console.print(f"  [dim]• #{ticket_key} (in releases: {', '.join(versions)})[/dim]")
+
+        return filtered_changes
+
+    elif action == PolicyAction.WARN:
+        # Include duplicates but warn
+        msg_lines = []
+        msg_lines.append("")
+        msg_lines.append(f"[yellow]⚠️  Warning: Found {len(duplicate_tickets)} ticket(s) that appear in earlier releases:[/yellow]")
+        for ticket_key, versions in duplicate_tickets.items():
+            msg_lines.append(f"  • [bold]#{ticket_key}[/bold] (in releases: {', '.join(versions)})")
+        msg_lines.append("")
+        msg_lines.append("[dim]These tickets will be included in this release but also exist in earlier releases.[/dim]")
+        msg_lines.append("[dim]To exclude duplicates, set ticket_policy.inter_release_duplicate_action = 'ignore'[/dim]")
+        msg_lines.append("")
+        console.print("\n".join(msg_lines))
+
+        return consolidated_changes
+
+    elif action == PolicyAction.ERROR:
+        # Fail with error
+        msg_lines = []
+        msg_lines.append(f"[red]Error: Found {len(duplicate_tickets)} ticket(s) that appear in earlier releases:[/red]")
+        for ticket_key, versions in duplicate_tickets.items():
+            msg_lines.append(f"  • [bold]#{ticket_key}[/bold] (in releases: {', '.join(versions)})")
+        console.print("\n".join(msg_lines))
+        raise RuntimeError(f"Inter-release duplicate tickets found ({len(duplicate_tickets)} total). Policy: error")
+
+    return consolidated_changes
+
+
+def _display_partial_section(partials: List[PartialTicketMatch], section_title: str) -> List[str]:
+    """
+    Helper function to display a section of partial tickets with details.
+
+    Args:
+        partials: List of PartialTicketMatch objects to display
+        section_title: Title for this section
+
+    Returns:
+        List of formatted message lines
+    """
+    msg_lines = []
+
+    if not partials:
+        return msg_lines
 
     # Group by type
     not_found = [p for p in partials if p.match_type == "not_found"]
     different_repo = [p for p in partials if p.match_type == "different_repo"]
 
-    # Build warning message
-    msg_lines = []
-    msg_lines.append("")
-    msg_lines.append(f"[yellow]⚠️  Found {len(partials)} partial ticket match(es)[/yellow]")
+    msg_lines.append(f"[cyan]{section_title}:[/cyan]")
     msg_lines.append("")
 
     # Handle different_repo partials
     if different_repo:
-        msg_lines.append(f"[cyan]Tickets in different repository ({len(different_repo)}):[/cyan]")
+        msg_lines.append(f"[yellow]Tickets in different repository ({len(different_repo)}):[/yellow]")
 
         # Group tickets by reason
         tickets_by_reason = defaultdict(list)
@@ -716,7 +886,7 @@ def _handle_partial_tickets(partials: List[PartialTicketMatch], config, debug: b
 
     # Handle not_found partials
     if not_found:
-        msg_lines.append(f"[cyan]Tickets not found in database ({len(not_found)}):[/cyan]")
+        msg_lines.append(f"[yellow]Tickets not found in database ({len(not_found)}):[/yellow]")
 
         # Group tickets by reason
         tickets_by_reason = defaultdict(list)
@@ -737,19 +907,106 @@ def _handle_partial_tickets(partials: List[PartialTicketMatch], config, debug: b
             msg_lines.append(f"    • [bold]{p.ticket_key}[/bold] (from {p.extracted_from})")
         msg_lines.append("")
 
-    msg_lines.append("[dim]To resolve:[/dim]")
-    msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
-    msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
-    msg_lines.append("  3. Verify ticket numbers in branches/PRs")
-    msg_lines.append("")
-
-    console.print("\n".join(msg_lines))
-
-    if action == PolicyAction.ERROR:
-        raise RuntimeError(f"Partial ticket matches found ({len(partials)} total). Policy: error")
+    return msg_lines
 
 
-@cli.command()
+def _handle_partial_tickets(
+    all_partials: List[PartialTicketMatch],
+    resolved_ticket_keys: Set[str],
+    config,
+    debug: bool
+):
+    """
+    Handle partial ticket matches based on policy configuration.
+
+    Args:
+        all_partials: List of ALL PartialTicketMatch objects (resolved and unresolved)
+        resolved_ticket_keys: Set of ticket keys that were eventually resolved
+        config: Config object with ticket_policy.partial_ticket_action
+        debug: Whether debug mode is enabled
+
+    Raises:
+        RuntimeError: If policy is ERROR and unresolved partials exist
+    """
+    if not all_partials:
+        return
+
+    action = config.ticket_policy.partial_ticket_action
+
+    if action == PolicyAction.IGNORE:
+        return
+
+    # Split into resolved and unresolved
+    unresolved_partials = [p for p in all_partials if p.ticket_key not in resolved_ticket_keys]
+    resolved_partials = [p for p in all_partials if p.ticket_key in resolved_ticket_keys]
+
+    # DEBUG MODE: Show both resolved and unresolved with full details
+    if debug:
+        msg_lines = []
+        msg_lines.append("")
+
+        # Header with counts
+        if unresolved_partials and resolved_partials:
+            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved and {len(resolved_partials)} resolved partial ticket match(es)[/yellow]")
+        elif unresolved_partials:
+            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved partial ticket match(es)[/yellow]")
+        else:
+            msg_lines.append(f"[green]✓ {len(resolved_partials)} partial ticket match(es) were fully resolved[/green]")
+        msg_lines.append("")
+
+        # Show unresolved section first (if any)
+        if unresolved_partials:
+            unresolved_section = _display_partial_section(unresolved_partials, "Unresolved Partial Matches")
+            msg_lines.extend(unresolved_section)
+
+        # Show resolved section (if any)
+        if resolved_partials:
+            resolved_section = _display_partial_section(resolved_partials, "Resolved Partial Matches")
+            msg_lines.extend(resolved_section)
+
+        # Add resolution tips for unresolved
+        if unresolved_partials:
+            msg_lines.append("[dim]To resolve:[/dim]")
+            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
+            msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
+            msg_lines.append("  3. Verify ticket numbers in branches/PRs")
+            msg_lines.append("")
+
+        console.print("\n".join(msg_lines))
+
+    # WARN MODE: Brief message if all resolved, full details if any unresolved
+    elif action == PolicyAction.WARN:
+        if not unresolved_partials:
+            # All resolved - brief message only
+            console.print(f"[dim]ℹ️  {len(resolved_partials)} partial ticket match(es) were fully resolved. Use --debug for details.[/dim]")
+        else:
+            # Has unresolved - show full details for unresolved only
+            msg_lines = []
+            msg_lines.append("")
+            msg_lines.append(f"[yellow]⚠️  Warning: Found {len(unresolved_partials)} unresolved partial ticket match(es)[/yellow]")
+            if resolved_partials:
+                msg_lines.append(f"[dim]({len(resolved_partials)} were resolved)[/dim]")
+            msg_lines.append("")
+
+            # Show unresolved details
+            unresolved_section = _display_partial_section(unresolved_partials, "Unresolved Partial Matches")
+            msg_lines.extend(unresolved_section)
+
+            # Add resolution tips
+            msg_lines.append("[dim]To resolve:[/dim]")
+            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
+            msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
+            msg_lines.append("  3. Verify ticket numbers in branches/PRs")
+            msg_lines.append("")
+
+            console.print("\n".join(msg_lines))
+
+    # ERROR MODE: Fail if any unresolved
+    if action == PolicyAction.ERROR and unresolved_partials:
+        raise RuntimeError(f"Unresolved partial ticket matches found ({len(unresolved_partials)} total). Policy: error")
+
+
+@cli.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version')
 @click.option('--notes-file', '-f', type=click.Path(exists=True), help='Path to release notes file (markdown)')
 @click.option('--release/--no-release', 'create_release', default=True, help='Create GitHub release (default: true)')
@@ -848,7 +1105,7 @@ def publish(ctx, version: str, notes_file: Optional[str], create_release: bool,
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('repository', required=False)
 @click.option('--limit', '-n', type=int, default=10, help='Number of releases to show (default: 10, use 0 for all)')
 @click.option('--version', '-v', type=str, help='Filter by version prefix (e.g., "9" for 9.x.x, "9.3" for 9.3.x)')
@@ -978,9 +1235,10 @@ def list_releases(ctx, repository: Optional[str], limit: int, version: Optional[
         db.close()
 
 
-@cli.command('init-config')
+@cli.command('init-config', context_settings={'help_option_names': ['-h', '--help']})
+@click.option('-y', '--assume-yes', is_flag=True, help='Assume "yes" for confirmation prompts')
 @click.pass_context
-def init_config(ctx):
+def init_config(ctx, assume_yes: bool):
     """Create an example configuration file."""
     # Load template from config_template.toml
     template_path = Path(__file__).parent / "config_template.toml"
@@ -1694,12 +1952,13 @@ pr_target_branch = "main"
     if config_path.exists():
         console.print("[yellow]Configuration file already exists at release_tool.toml[/yellow]")
 
-        # Get flags from context
+        # Get flags from context (for global -y flag) and merge with local parameter
         auto = ctx.obj.get('auto', False)
-        assume_yes = ctx.obj.get('assume_yes', False)
+        assume_yes_global = ctx.obj.get('assume_yes', False)
+        assume_yes_effective = assume_yes or assume_yes_global
 
         # Check both flags before prompting
-        if not (auto or assume_yes):
+        if not (auto or assume_yes_effective):
             if not click.confirm("Overwrite?"):
                 return
 
@@ -1831,7 +2090,7 @@ def _merge_config_with_template(user_data: dict, template_doc) -> dict:
     return template_doc
 
 
-@cli.command()
+@cli.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.option(
     '--dry-run',
     is_flag=True,
@@ -1846,8 +2105,9 @@ def _merge_config_with_template(user_data: dict, template_doc) -> dict:
     is_flag=True,
     help='Restore comments and reformat templates (works on same version)'
 )
+@click.option('-y', '--assume-yes', is_flag=True, help='Assume "yes" for confirmation prompts')
 @click.pass_context
-def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_comments: bool):
+def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_comments: bool, assume_yes: bool):
     """Update configuration file to the latest version.
 
     This command upgrades your release_tool.toml configuration file to the
@@ -1887,8 +2147,14 @@ def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_com
         console.print(f"[red]Error reading config file: {e}[/red]")
         sys.exit(1)
 
-    # If restoring comments, load template and merge
-    if restore_comments:
+    # Check version first to determine if we need to merge with template
+    manager = MigrationManager()
+    current_version = data.get('config_version', '1.0')
+    target_ver = target_version or manager.CURRENT_VERSION
+
+    # Always load template and merge to preserve comments during upgrades
+    # This ensures user's values are kept but template comments are restored
+    if manager.needs_upgrade(current_version) or restore_comments:
         try:
             template_path = Path(__file__).parent / "config_template.toml"
             with open(template_path, 'r', encoding='utf-8') as f:
@@ -1900,11 +2166,6 @@ def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_com
         except Exception as e:
             console.print(f"[yellow]Warning: Could not load template comments: {e}[/yellow]")
             # Continue without comments - not critical
-
-    # Check version
-    manager = MigrationManager()
-    current_version = data.get('config_version', '1.0')
-    target_ver = target_version or manager.CURRENT_VERSION
 
     console.print(f"Current version: [yellow]{current_version}[/yellow]")
     console.print(f"Target version:  [green]{target_ver}[/green]\n")
@@ -1928,12 +2189,13 @@ def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_com
         console.print("[yellow]Dry-run mode: No changes made[/yellow]")
         return
 
-    # Get flags from context
+    # Get flags from context (for global -y flag) and merge with local parameter
     auto = ctx.obj.get('auto', False)
-    assume_yes = ctx.obj.get('assume_yes', False)
+    assume_yes_global = ctx.obj.get('assume_yes', False)
+    assume_yes_effective = assume_yes or assume_yes_global
 
     # Confirm upgrade
-    if not (auto or assume_yes):
+    if not (auto or assume_yes_effective):
         if not click.confirm(f"Upgrade config from v{current_version} to v{target_ver}?"):
             console.print("[yellow]Upgrade cancelled[/yellow]")
             return
@@ -1967,7 +2229,7 @@ def update_config(ctx, dry_run: bool, target_version: Optional[str], restore_com
         sys.exit(1)
 
 
-@cli.command(name='tickets')
+@cli.command(name='tickets', context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('ticket_key', required=False)
 @click.option('--repo', '-r', help='Filter by repository (owner/name)')
 @click.option('--limit', '-n', type=int, default=20, help='Max number of results (default: 20)')
@@ -2019,19 +2281,27 @@ def tickets(ctx, ticket_key, repo, limit, offset, output_format, starts_with, en
     parsed_proximity = False
 
     if ticket_key:
-        parsed_repo, parsed_ticket, parsed_proximity = _parse_ticket_key_arg(ticket_key)
+        # Special case: if ticket_key looks like a repo name (contains "/" but no "#" or ticket number),
+        # treat it as a --repo filter instead of a ticket key
+        if '/' in ticket_key and '#' not in ticket_key and not any(c.isdigit() for c in ticket_key.split('/')[-1]):
+            # This looks like "owner/repo" format, use as repo filter
+            if not repo:
+                repo = ticket_key
+            ticket_key = None
+        else:
+            parsed_repo, parsed_ticket, parsed_proximity = _parse_ticket_key_arg(ticket_key)
 
-        # If repo was parsed from ticket_key, use it (unless --repo was also specified)
-        if parsed_repo and not repo:
-            repo = parsed_repo
+            # If repo was parsed from ticket_key, use it (unless --repo was also specified)
+            if parsed_repo and not repo:
+                repo = parsed_repo
 
-        # If proximity search (~) was indicated, use close_to
-        if parsed_proximity and not close_to:
-            close_to = parsed_ticket
-            parsed_ticket = None  # Don't use as exact match
+            # If proximity search (~) was indicated, use close_to
+            if parsed_proximity and not close_to:
+                close_to = parsed_ticket
+                parsed_ticket = None  # Don't use as exact match
 
-        # Use parsed ticket as the key
-        ticket_key = parsed_ticket
+            # Use parsed ticket as the key
+            ticket_key = parsed_ticket
 
     # Validation
     if close_range < 0:

@@ -178,6 +178,23 @@ unclosed_ticket_action = "warn"
 #   - Links to tickets if found in different repos
 partial_ticket_action = "warn"
 
+# inter_release_duplicate_action: What to do when a ticket appears in multiple releases
+# This checks if tickets in the new release already exist in semantically-earlier releases
+# (e.g., creating 9.3.1 and finding tickets that already appeared in 9.2.0)
+#
+# This happens when a single ticket includes multiple PRs that land in different releases,
+# or when backporting fixes to older release branches.
+#
+# Valid values:
+#   - "ignore": Exclude duplicate tickets from the new release (keep only in earlier release)
+#   - "warn": Include duplicates but show a warning (RECOMMENDED)
+#   - "error": Stop release note generation if duplicates are found
+#
+# Default: "warn"
+# Use "ignore" if you want strict deduplication (one ticket per release across history)
+# Use "warn" for visibility into which tickets span multiple releases
+inter_release_duplicate_action = "warn"
+
 # consolidation_enabled: Group multiple commits by their parent ticket
 # When true: Commits with the same ticket (e.g., TICKET-123) are grouped
 #            into a single release note entry
