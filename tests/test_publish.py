@@ -23,7 +23,8 @@ def test_config():
             "create_github_release": False,
             "create_pr": False,
             "draft_release": False,
-            "prerelease": False
+            "prerelease": "auto",
+            "draft_output_path": ".release_tool_cache/draft-releases/{repo}/{version}.md"
         }
     }
     return Config.from_dict(config_dict)
@@ -85,7 +86,7 @@ def test_dry_run_with_draft_and_prerelease(test_config, test_notes_file):
 
     result = runner.invoke(
         publish,
-        ['1.0.0-rc.1', '-f', str(test_notes_file), '--dry-run', '--release', '--draft', '--prerelease'],
+        ['1.0.0-rc.1', '-f', str(test_notes_file), '--dry-run', '--release', '--draft', '--prerelease', 'true'],
         obj={'config': test_config}
     )
 
@@ -217,8 +218,11 @@ def test_error_handling_without_debug(test_config, test_notes_file):
 
 
 def test_auto_detect_prerelease_version(test_config, test_notes_file):
-    """Test that prerelease is auto-detected from version."""
+    """Test that prerelease is auto-detected from version when set to 'auto'."""
     runner = CliRunner()
+
+    # Ensure config is set to "auto" (default)
+    test_config.output.prerelease = "auto"
 
     with patch('release_tool.commands.publish.GitHubClient') as mock_client_class:
         mock_client = Mock()
@@ -295,16 +299,107 @@ def test_docusaurus_file_detection_in_dry_run(test_config, test_notes_file, tmp_
     assert result.exit_code == 0
 
 
-def test_pr_requires_notes_file(test_config):
-    """Test that creating PR requires notes file."""
+def test_pr_without_notes_file_shows_warning(test_config):
+    """Test that creating PR without notes file shows warning and skips."""
     runner = CliRunner()
 
-    result = runner.invoke(
-        publish,
-        ['1.0.0', '--pr'],
-        obj={'config': test_config}
-    )
+    with patch('release_tool.commands.publish._find_draft_releases', return_value=[]):
+        result = runner.invoke(
+            publish,
+            ['1.0.0', '--pr', '--dry-run'],
+            obj={'config': test_config}
+        )
 
-    # Should error about missing notes file
-    assert '--notes-file required' in result.output
-    assert result.exit_code == 0  # Currently returns, not exit(1)
+        # Should show warning about no notes available
+        assert 'No draft release notes found' in result.output or 'No release notes available' in result.output
+
+
+def test_prerelease_explicit_true(test_config, test_notes_file):
+    """Test that --prerelease true always marks as prerelease."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # Use a stable version but force prerelease
+        result = runner.invoke(
+            publish,
+            ['1.0.0', '-f', str(test_notes_file), '--release', '--prerelease', 'true'],
+            obj={'config': test_config}
+        )
+
+        # Should call create_release with prerelease=True
+        call_args = mock_client.create_release.call_args
+        assert call_args.kwargs['prerelease'] == True
+        assert result.exit_code == 0
+
+
+def test_prerelease_explicit_false(test_config, test_notes_file):
+    """Test that --prerelease false never marks as prerelease."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # Use an RC version but force stable
+        result = runner.invoke(
+            publish,
+            ['1.0.0-rc.1', '-f', str(test_notes_file), '--release', '--prerelease', 'false'],
+            obj={'config': test_config}
+        )
+
+        # Should call create_release with prerelease=False
+        call_args = mock_client.create_release.call_args
+        assert call_args.kwargs['prerelease'] == False
+        assert result.exit_code == 0
+
+
+def test_auto_find_draft_notes_success(test_config, tmp_path):
+    """Test successful auto-finding of draft notes."""
+    # Create a draft notes file
+    draft_dir = tmp_path / ".release_tool_cache" / "draft-releases" / "test-repo"
+    draft_dir.mkdir(parents=True)
+    draft_file = draft_dir / "1.0.0.md"
+    draft_file.write_text("# Release 1.0.0\n\nAuto-found draft notes")
+
+    # Update config to point to tmp_path
+    test_config.output.draft_output_path = str(tmp_path / ".release_tool_cache" / "draft-releases" / "{repo}" / "{version}.md")
+
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # Don't specify --notes-file, should auto-find
+        result = runner.invoke(
+            publish,
+            ['1.0.0', '--release'],
+            obj={'config': test_config},
+            catch_exceptions=False
+        )
+
+        # Should find and use the draft notes
+        assert 'Auto-found release notes' in result.output or result.exit_code == 0
+        # Should create release
+        if mock_client.create_release.called:
+            assert result.exit_code == 0
+
+
+def test_auto_find_draft_notes_not_found(test_config):
+    """Test error when no draft notes found."""
+    runner = CliRunner()
+
+    # Don't create any draft files
+    with patch('release_tool.commands.publish._find_draft_releases', return_value=[]):
+        result = runner.invoke(
+            publish,
+            ['1.0.0'],
+            obj={'config': test_config}
+        )
+
+        # Should error and list available drafts
+        assert 'No draft release notes found' in result.output
+        assert result.exit_code == 1

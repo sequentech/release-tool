@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union, Literal
 from enum import Enum
 from pydantic import BaseModel, Field, model_validator
 import tomli
@@ -416,9 +416,9 @@ class OutputConfig(BaseModel):
         default=False,
         description="Create GitHub releases as drafts by default"
     )
-    prerelease: bool = Field(
-        default=False,
-        description="Mark GitHub releases as prereleases by default (auto-detected from version if not specified)"
+    prerelease: Union[bool, Literal["auto"]] = Field(
+        default="auto",
+        description="Mark GitHub releases as prereleases. Options: 'auto' (detect from version), true, false"
     )
     pr_templates: PRTemplateConfig = Field(
         default_factory=PRTemplateConfig,

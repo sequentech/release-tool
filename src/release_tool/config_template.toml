@@ -733,18 +733,18 @@ download_media = false
 # create_github_release: Automatically create a GitHub release
 # When true: Uploads release notes to GitHub Releases
 # When false: Only generates markdown (no upload)
-# Default: false
+# Default: true
 # CLI override: --release / --no-release
 # SECURITY: Requires GitHub token with repo write permissions
-create_github_release = false
+create_github_release = true
 
 # create_pr: Automatically create a PR with the release notes file
 # When true: Creates a PR to add/update the release notes file
 # When false: No PR is created
 # Requires: output_path to be configured
-# Default: false
+# Default: true
 # CLI override: --pr / --no-pr
-create_pr = false
+create_pr = true
 
 # draft_release: Create GitHub releases as drafts by default
 # When true: Releases are created as drafts (unpublished)
@@ -752,16 +752,20 @@ create_pr = false
 # Default: false
 # CLI override: --draft / --no-draft
 # Use case: Set to true if you want to review releases before publishing
-draft_release = false
+draft_release = true
 
-# prerelease: Mark GitHub releases as prereleases by default
-# When true: Releases are marked as prereleases
-# When false: Releases are marked as stable/final
-# Note: Automatically detected from version (e.g., "1.0.0-rc.1" → prerelease)
-# Default: false
-# CLI override: --prerelease / --no-prerelease
-# Use case: Set to true if you typically create beta/RC releases
-prerelease = false
+# prerelease: Mark GitHub releases as prereleases
+# Options:
+#   - "auto": Auto-detect from version (e.g., "1.0.0-rc.1" → prerelease, "1.0.0" → stable)
+#   - true: Always mark as prerelease
+#   - false: Always mark as stable/final
+# Default: "auto"
+# CLI override: --prerelease auto|true|false
+# Use cases:
+#   - "auto": Most flexible, automatically handles RCs and stable releases
+#   - true: If you typically create beta/RC releases and want to be explicit
+#   - false: For projects that only do stable releases
+prerelease = "auto"
 
 # =============================================================================
 # Pull Request Templates (for create_pr)

@@ -71,13 +71,18 @@ vim .release_tool_cache/draft-releases/owner-repo/9.1.0.md
 
 ### 4. Publish Release
 
-Once satisfied with the notes, publish to GitHub:
+Once satisfied with the notes, publish to GitHub. The tool will automatically find your draft notes if you don't specify a file:
 
 ```bash
+# Auto-finds draft notes for the version
+release-tool publish 9.1.0
+
+# Or explicitly specify a notes file
 release-tool publish 9.1.0 -f .release_tool_cache/draft-releases/owner-repo/9.1.0.md
 ```
 
 This will:
+- Auto-find draft release notes (or use specified file)
 - Create a git tag `v9.1.0`
 - Create a GitHub release with the release notes
 - Optionally create a PR with release notes (use `--pr`)
@@ -122,17 +127,30 @@ Configure default behavior in `release_tool.toml`:
 create_github_release = true  # Auto-create releases
 create_pr = true               # Auto-create PRs
 draft_release = false          # Publish immediately (not draft)
-prerelease = false             # Mark as stable release
+prerelease = "auto"            # Auto-detect prerelease from version (or true/false)
 ```
+
+Prerelease options:
+- `"auto"`: Auto-detect from version (e.g., `1.0.0-rc.1` → prerelease, `1.0.0` → stable)
+- `true`: Always mark as prerelease
+- `false`: Always mark as stable
 
 Then simply run:
 
 ```bash
-# Uses config defaults
+# Uses config defaults (auto-finds notes file)
+release-tool publish 9.1.0
+
+# Explicitly specify notes file
 release-tool publish 9.1.0 -f notes.md
 
 # Override config with CLI flags
 release-tool publish 9.1.0 -f notes.md --no-release --pr --draft
+
+# Override prerelease setting
+release-tool publish 9.1.0 --prerelease true  # Force prerelease
+release-tool publish 9.1.0 --prerelease false # Force stable
+release-tool publish 9.1.0 --prerelease auto  # Auto-detect
 ```
 
 ## Common Commands
@@ -144,12 +162,45 @@ release-tool publish 9.1.0 -f notes.md --no-release --pr --draft
 | `generate --new-major/minor/patch/rc` | Auto-bumps version and generates notes |
 | `generate --dry-run` | Preview generated notes without creating files |
 | `list-releases` | Lists releases from the database with filters |
+| `publish <version>` | Creates a GitHub release (auto-finds draft notes) |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
+| `publish --list` or `publish -l` | List all available draft releases |
 | `publish --dry-run` | Preview publish operation without making changes |
 | `publish --debug` | Show detailed debugging information |
+| `publish --prerelease auto\|true\|false` | Control prerelease status |
 | `init-config` | Creates an example configuration file |
 
 ## Advanced Usage
+
+### List Draft Releases
+
+View all available draft releases that are ready to be published:
+
+```bash
+# List all draft releases
+release-tool publish --list
+
+# Or use the shorthand
+release-tool publish -l
+```
+
+This shows a table with:
+- Code Repository
+- Version
+- Type (RC or Final)
+- Created timestamp
+- File path
+
+### Auto-Finding Draft Notes
+
+When publishing without specifying `--notes-file`, the tool automatically searches for matching draft notes:
+
+```bash
+# Automatically finds .release_tool_cache/draft-releases/{repo}/9.1.0.md
+release-tool publish 9.1.0
+```
+
+If no matching draft is found, it displays all available drafts and exits with an error.
 
 ### List Releases
 
