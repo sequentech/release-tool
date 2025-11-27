@@ -82,6 +82,59 @@ This will:
 - Create a GitHub release with the release notes
 - Optionally create a PR with release notes (use `--pr`)
 
+#### Testing Before Publishing
+
+Use `--dry-run` to preview what would be published without making any changes:
+
+```bash
+# Preview the publish operation
+release-tool publish 9.1.0 -f notes.md --dry-run
+
+# Preview with specific flags
+release-tool publish 9.1.0 -f notes.md --dry-run --release --pr --draft
+```
+
+#### Debugging Issues
+
+Use `--debug` to see detailed information:
+
+```bash
+# Show verbose debugging information
+release-tool publish 9.1.0 -f notes.md --debug
+
+# Combine with dry-run for safe debugging
+release-tool publish 9.1.0 -f notes.md --debug --dry-run
+```
+
+Debug mode shows:
+- Configuration values being used
+- Version parsing details
+- Template substitution results
+- File paths and content lengths
+- Docusaurus file preview (if configured)
+
+#### Using Configuration Defaults
+
+Configure default behavior in `release_tool.toml`:
+
+```toml
+[output]
+create_github_release = true  # Auto-create releases
+create_pr = true               # Auto-create PRs
+draft_release = false          # Publish immediately (not draft)
+prerelease = false             # Mark as stable release
+```
+
+Then simply run:
+
+```bash
+# Uses config defaults
+release-tool publish 9.1.0 -f notes.md
+
+# Override config with CLI flags
+release-tool publish 9.1.0 -f notes.md --no-release --pr --draft
+```
+
 ## Common Commands
 
 | Command | Description |
@@ -89,8 +142,11 @@ This will:
 | `sync` | Syncs repository, tickets, PRs, and releases from GitHub |
 | `generate <version>` | Generates release notes for the specified version |
 | `generate --new-major/minor/patch/rc` | Auto-bumps version and generates notes |
+| `generate --dry-run` | Preview generated notes without creating files |
 | `list-releases` | Lists releases from the database with filters |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
+| `publish --dry-run` | Preview publish operation without making changes |
+| `publish --debug` | Show detailed debugging information |
 | `init-config` | Creates an example configuration file |
 
 ## Advanced Usage

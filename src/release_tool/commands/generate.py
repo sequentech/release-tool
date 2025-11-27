@@ -408,8 +408,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             # Get expected ticket repository IDs
             expected_repos = config.get_ticket_repos()
             expected_repo_ids = []
-            for repo_name in expected_repos:
-                repo = db.get_repository(repo_name)
+            for ticket_repo_name in expected_repos:
+                repo = db.get_repository(ticket_repo_name)
                 if repo:
                     expected_repo_ids.append(repo.id)
 

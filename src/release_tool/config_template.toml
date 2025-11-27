@@ -734,6 +734,7 @@ download_media = false
 # When true: Uploads release notes to GitHub Releases
 # When false: Only generates markdown (no upload)
 # Default: false
+# CLI override: --release / --no-release
 # SECURITY: Requires GitHub token with repo write permissions
 create_github_release = false
 
@@ -742,7 +743,25 @@ create_github_release = false
 # When false: No PR is created
 # Requires: output_path to be configured
 # Default: false
+# CLI override: --pr / --no-pr
 create_pr = false
+
+# draft_release: Create GitHub releases as drafts by default
+# When true: Releases are created as drafts (unpublished)
+# When false: Releases are published immediately
+# Default: false
+# CLI override: --draft / --no-draft
+# Use case: Set to true if you want to review releases before publishing
+draft_release = false
+
+# prerelease: Mark GitHub releases as prereleases by default
+# When true: Releases are marked as prereleases
+# When false: Releases are marked as stable/final
+# Note: Automatically detected from version (e.g., "1.0.0-rc.1" → prerelease)
+# Default: false
+# CLI override: --prerelease / --no-prerelease
+# Use case: Set to true if you typically create beta/RC releases
+prerelease = false
 
 # =============================================================================
 # Pull Request Templates (for create_pr)

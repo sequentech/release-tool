@@ -412,6 +412,14 @@ class OutputConfig(BaseModel):
         default=False,
         description="Whether to create a PR with release notes"
     )
+    draft_release: bool = Field(
+        default=False,
+        description="Create GitHub releases as drafts by default"
+    )
+    prerelease: bool = Field(
+        default=False,
+        description="Mark GitHub releases as prereleases by default (auto-detected from version if not specified)"
+    )
     pr_templates: PRTemplateConfig = Field(
         default_factory=PRTemplateConfig,
         description="Templates for PR branch, title, and body"
