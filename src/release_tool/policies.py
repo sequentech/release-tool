@@ -128,7 +128,7 @@ class TicketExtractor:
             if tickets:
                 console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
             else:
-                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
 
         return tickets
 
@@ -183,7 +183,7 @@ class TicketExtractor:
             if tickets:
                 console.print(f"  [green]✅ Extracted tickets: {list(set(tickets))}[/green]")
             else:
-                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
 
         return list(set(tickets))
 
@@ -210,7 +210,7 @@ class TicketExtractor:
             if tickets:
                 console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
             else:
-                console.print(f"  [yellow]✅ Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
 
         return tickets
 
@@ -264,10 +264,10 @@ class CommitConsolidator:
             pr = prs.get(commit.pr_number) if commit.pr_number else None
             if pr:
                 if self.debug:
-                    console.print(f"  → Associated PR: #{pr.number} \"{pr.title[:50]}{'...' if len(pr.title) > 50 else ''}\"")
+                    console.print(f"  ✅ Associated PR: #{pr.number} \"{pr.title[:50]}{'...' if len(pr.title) > 50 else ''}\"")
                 pr_tickets = self.extractor.extract_from_pr(pr)
                 if self.debug:
-                    console.print(f"  → Tickets from PR: {pr_tickets if pr_tickets else '(none)'}")
+                    console.print(f"  {'✅' if pr_tickets else '→'} Tickets from PR: {pr_tickets if pr_tickets else '(none)'}")
                 tickets.extend(pr_tickets)
             elif self.debug:
                 console.print(f"  → Associated PR: (none)")
