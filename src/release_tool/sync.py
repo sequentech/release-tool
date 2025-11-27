@@ -103,10 +103,18 @@ class SyncManager:
         cutoff_source = None
         if self.config.sync.cutoff_date:
             cutoff_date = datetime.fromisoformat(self.config.sync.cutoff_date)
+            # Ensure timezone awareness (assume UTC if naive)
+            if cutoff_date.tzinfo is None:
+                from datetime import timezone
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             cutoff_source = f"configured cutoff date: {self.config.sync.cutoff_date}"
         elif last_sync:
             # Incremental sync - fetch from last sync
             cutoff_date = last_sync
+            # Ensure timezone awareness
+            if cutoff_date.tzinfo is None:
+                from datetime import timezone
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             cutoff_source = f"last sync: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
 
         if self.config.sync.show_progress:
@@ -162,10 +170,18 @@ class SyncManager:
         cutoff_source = None
         if self.config.sync.cutoff_date:
             cutoff_date = datetime.fromisoformat(self.config.sync.cutoff_date)
+            # Ensure timezone awareness (assume UTC if naive)
+            if cutoff_date.tzinfo is None:
+                from datetime import timezone
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             cutoff_source = f"configured cutoff date: {self.config.sync.cutoff_date}"
         elif last_sync:
             # Incremental sync - fetch from last sync
             cutoff_date = last_sync
+            # Ensure timezone awareness
+            if cutoff_date.tzinfo is None:
+                from datetime import timezone
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             cutoff_source = f"last sync: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
 
         if self.config.sync.show_progress:
@@ -257,166 +273,6 @@ class SyncManager:
 
         return to_fetch
 
-    def _fetch_tickets_parallel(
-        self,
-        repo_full_name: str,
-        repo_id: int,
-        ticket_numbers: List[int]
-    ) -> List[Ticket]:
-        """
-        Fetch tickets in parallel with progress updates.
-
-        Args:
-            repo_full_name: Full repository name
-            repo_id: Repository ID in database
-            ticket_numbers: List of ticket numbers to fetch
-
-        Returns:
-            List of fetched tickets
-        """
-        tickets = []
-        total = len(ticket_numbers)
-
-        if self.config.sync.show_progress:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(
-                    f"Fetching tickets from {repo_full_name}",
-                    total=total
-                )
-
-                with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                    # Submit all tasks
-                    future_to_number = {
-                        executor.submit(
-                            self.github.fetch_issue,
-                            repo_full_name,
-                            num,
-                            repo_id
-                        ): num
-                        for num in ticket_numbers
-                    }
-
-                    # Collect results as they complete
-                    for future in as_completed(future_to_number):
-                        ticket = future.result()
-                        if ticket:
-                            tickets.append(ticket)
-
-                        # Update progress
-                        progress.update(task, advance=1)
-                        completed = len([f for f in future_to_number if f.done()])
-                        progress.update(
-                            task,
-                            description=f"Fetching tickets from {repo_full_name} ({completed}/{total})"
-                        )
-        else:
-            # No progress display - just fetch in parallel
-            with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                future_to_number = {
-                    executor.submit(
-                        self.github.fetch_issue,
-                        repo_full_name,
-                        num,
-                        repo_id
-                    ): num
-                    for num in ticket_numbers
-                }
-
-                for future in as_completed(future_to_number):
-                    ticket = future.result()
-                    if ticket:
-                        tickets.append(ticket)
-
-        return tickets
-
-    def _fetch_prs_parallel(
-        self,
-        repo_full_name: str,
-        repo_id: int,
-        pr_numbers: List[int]
-    ) -> List[PullRequest]:
-        """
-        Fetch pull requests in parallel with progress updates.
-
-        Args:
-            repo_full_name: Full repository name
-            repo_id: Repository ID in database
-            pr_numbers: List of PR numbers to fetch
-
-        Returns:
-            List of fetched pull requests
-        """
-        prs = []
-        total = len(pr_numbers)
-
-        if self.config.sync.show_progress:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(
-                    f"Fetching PRs from {repo_full_name}",
-                    total=total
-                )
-
-                with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                    # Create a helper function that wraps get_pull_request with repo_id
-                    def fetch_pr_with_repo_id(num):
-                        pr = self.github.get_pull_request(repo_full_name, num)
-                        if pr:
-                            # Update repo_id
-                            pr.repo_id = repo_id
-                        return pr
-
-                    # Submit all tasks
-                    future_to_number = {
-                        executor.submit(fetch_pr_with_repo_id, num): num
-                        for num in pr_numbers
-                    }
-
-                    # Collect results as they complete
-                    for future in as_completed(future_to_number):
-                        pr = future.result()
-                        if pr:
-                            prs.append(pr)
-
-                        # Update progress
-                        progress.update(task, advance=1)
-                        completed = len([f for f in future_to_number if f.done()])
-                        progress.update(
-                            task,
-                            description=f"Fetching PRs from {repo_full_name} ({completed}/{total})"
-                        )
-        else:
-            # No progress display - just fetch in parallel
-            with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                def fetch_pr_with_repo_id(num):
-                    pr = self.github.get_pull_request(repo_full_name, num)
-                    if pr:
-                        pr.repo_id = repo_id
-                    return pr
-
-                future_to_number = {
-                    executor.submit(fetch_pr_with_repo_id, num): num
-                    for num in pr_numbers
-                }
-
-                for future in as_completed(future_to_number):
-                    pr = future.result()
-                    if pr:
-                        prs.append(pr)
-
-        return prs
-
     def _sync_git_repository(self, repo_full_name: str) -> str:
         """
         Clone or update the git repository for offline operation.
@@ -505,7 +361,10 @@ class SyncManager:
         cutoff_date: Optional[datetime]
     ) -> List[Ticket]:
         """
-        Fetch tickets with parallel API calls - fetch and filter simultaneously.
+        Fetch tickets efficiently using Core API with paginated batch fetching.
+
+        Uses GET /repos/{owner}/{repo}/issues with per_page=100 to fetch full issue data
+        in batches, then filters against existing tickets in DB.
 
         Args:
             repo_full_name: Full repository name
@@ -515,73 +374,33 @@ class SyncManager:
         Returns:
             List of fetched tickets
         """
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         try:
             existing_numbers = self.db.get_existing_ticket_numbers(repo_full_name)
 
-            # Use fast Search API to get ticket numbers
-            all_ticket_numbers = self.github.search_ticket_numbers(repo_full_name, since=cutoff_date)
+            # Fetch all issues in one pass with paginated batches (100 per request)
+            all_tickets = self.github.fetch_all_issues(repo_full_name, repo_id, since=cutoff_date)
 
             # Filter out existing
-            if self.config.sync.show_progress and all_ticket_numbers:
-                console.print(f"  [dim]Filtering {len(all_ticket_numbers)} tickets against existing {len(existing_numbers)} in database...[/dim]")
-            ticket_numbers = [num for num in all_ticket_numbers if num not in existing_numbers]
+            if self.config.sync.show_progress and all_tickets:
+                console.print(f"  [dim]Filtering {len(all_tickets)} issues against existing {len(existing_numbers)} in database...[/dim]")
+            new_tickets = [ticket for ticket in all_tickets if ticket.number not in existing_numbers]
 
-            if not ticket_numbers:
+            if not new_tickets:
+                if self.config.sync.show_progress:
+                    console.print(f"  [dim]No new tickets to sync[/dim]")
                 return []
 
             if self.config.sync.show_progress:
-                console.print(f"  [cyan]Fetching {len(ticket_numbers)} new tickets in parallel...[/cyan]")
+                console.print(f"  [cyan]Storing {len(new_tickets)} new tickets...[/cyan]")
 
-            # Fetch full ticket details in parallel
-            tickets = []
+            # Insert tickets to database
+            for ticket in new_tickets:
+                self.db.upsert_ticket(ticket)
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(
-                    "Fetching tickets...",
-                    total=len(ticket_numbers)
-                )
+            if self.config.sync.show_progress:
+                console.print(f"  [green]✓[/green] Synced {len(new_tickets)} new tickets")
 
-                with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                    # Submit all fetch tasks in parallel
-                    future_to_number = {
-                        executor.submit(
-                            self.github.fetch_issue,
-                            repo_full_name,
-                            num,
-                            repo_id
-                        ): num
-                        for num in ticket_numbers
-                    }
-
-                    # Collect and store results as they complete
-                    completed = 0
-                    for future in as_completed(future_to_number):
-                        try:
-                            ticket = future.result()
-                            if ticket:
-                                tickets.append(ticket)
-                                self.db.upsert_ticket(ticket)
-
-                            completed += 1
-                            progress.update(
-                                task,
-                                advance=1,
-                                description=f"Fetched {completed}/{len(ticket_numbers)} tickets"
-                            )
-                        except Exception as e:
-                            console.print(f"[yellow]Warning: Error fetching ticket: {e}[/yellow]")
-                            progress.update(task, advance=1)
-
-            return tickets
+            return new_tickets
 
         except Exception as e:
             console.print(f"[red]Error fetching tickets: {e}[/red]")
@@ -594,83 +413,52 @@ class SyncManager:
         cutoff_date: Optional[datetime]
     ) -> List[PullRequest]:
         """
-        Fetch PRs with parallel API calls - fetch and filter simultaneously.
+        Fetch PRs efficiently using Core API with paginated batch fetching.
+
+        Uses GET /repos/{owner}/{repo}/pulls with per_page=100 to fetch full PR data
+        in batches, then filters for merged PRs and against existing PRs in DB.
 
         Args:
             repo_full_name: Full repository name
             repo_id: Repository ID in database
-            cutoff_date: Only fetch PRs created after this date
+            cutoff_date: Only fetch PRs merged after this date
 
         Returns:
             List of fetched PRs
         """
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         try:
             existing_numbers = self.db.get_existing_pr_numbers(repo_full_name)
 
-            # Use fast Search API to get PR numbers
-            all_pr_numbers = self.github.search_pr_numbers(repo_full_name, since=cutoff_date)
+            # Fetch all PRs in one pass with paginated batches (100 per request)
+            all_prs = self.github.fetch_all_pull_requests(repo_full_name, repo_id, since=cutoff_date)
+
+            # Filter to only merged PRs and respect cutoff date
+            merged_prs = [
+                pr for pr in all_prs
+                if pr.merged_at and (cutoff_date is None or pr.merged_at >= cutoff_date)
+            ]
 
             # Filter out existing
-            if self.config.sync.show_progress and all_pr_numbers:
-                console.print(f"  [dim]Filtering {len(all_pr_numbers)} PRs against existing {len(existing_numbers)} in database...[/dim]")
-            pr_numbers = [num for num in all_pr_numbers if num not in existing_numbers]
+            if self.config.sync.show_progress and merged_prs:
+                console.print(f"  [dim]Filtering {len(merged_prs)} merged PRs against existing {len(existing_numbers)} in database...[/dim]")
+            new_prs = [pr for pr in merged_prs if pr.number not in existing_numbers]
 
-            if not pr_numbers:
+            if not new_prs:
+                if self.config.sync.show_progress:
+                    console.print(f"  [dim]No new PRs to sync[/dim]")
                 return []
 
             if self.config.sync.show_progress:
-                console.print(f"  [cyan]Fetching {len(pr_numbers)} new PRs in parallel...[/cyan]")
+                console.print(f"  [cyan]Storing {len(new_prs)} new PRs...[/cyan]")
 
-            # Fetch full PR details in parallel
-            prs = []
+            # Insert PRs to database
+            for pr in new_prs:
+                self.db.upsert_pull_request(pr)
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(
-                    "Fetching PRs...",
-                    total=len(pr_numbers)
-                )
+            if self.config.sync.show_progress:
+                console.print(f"  [green]✓[/green] Synced {len(new_prs)} new PRs")
 
-                with ThreadPoolExecutor(max_workers=self.parallel_workers) as executor:
-                    # Submit all fetch tasks in parallel
-                    future_to_number = {
-                        executor.submit(
-                            self.github.get_pull_request,
-                            repo_full_name,
-                            num
-                        ): num
-                        for num in pr_numbers
-                    }
-
-                    # Collect and store results as they complete
-                    completed = 0
-                    for future in as_completed(future_to_number):
-                        try:
-                            pr = future.result()
-                            if pr:
-                                pr.repo_id = repo_id
-                                prs.append(pr)
-                                self.db.upsert_pull_request(pr)
-
-                            completed += 1
-                            progress.update(
-                                task,
-                                advance=1,
-                                description=f"Fetched {completed}/{len(pr_numbers)} PRs"
-                            )
-                        except Exception as e:
-                            console.print(f"[yellow]Warning: Error fetching PR: {e}[/yellow]")
-                            progress.update(task, advance=1)
-
-            return prs
+            return new_prs
 
         except Exception as e:
             console.print(f"[red]Error fetching PRs: {e}[/red]")

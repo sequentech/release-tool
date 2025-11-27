@@ -25,7 +25,8 @@ class GitHubClient:
                 "GitHub token not found. Set GITHUB_TOKEN environment variable "
                 "or configure it in release_tool.toml"
             )
-        self.gh = Github(token, base_url=config.github.api_url)
+        # Set per_page=100 (max) for efficient pagination across all API calls
+        self.gh = Github(token, base_url=config.github.api_url, per_page=100)
 
     def get_repository_info(self, full_name: str) -> Repository:
         """Get repository information."""
@@ -144,19 +145,25 @@ class GitHubClient:
             return None
 
         try:
+            # Use raw_data to avoid lazy loading of fields not in the partial response
+            # PyGithub 2.x exposes raw_data
+            raw = getattr(gh_user, '_rawData', None)
+            if raw is None:
+                raw = getattr(gh_user, 'raw_data', {})
+            
             return Author(
                 username=gh_user.login,
                 github_id=gh_user.id,
-                name=gh_user.name,  # May be None
-                email=gh_user.email,  # May be None (depends on privacy settings)
-                display_name=gh_user.name or gh_user.login,
+                name=raw.get('name'),  # Avoid gh_user.name which triggers fetch
+                email=raw.get('email'),
+                display_name=raw.get('name') or gh_user.login,
                 avatar_url=gh_user.avatar_url,
                 profile_url=gh_user.html_url,
-                company=gh_user.company,
-                location=gh_user.location,
-                bio=gh_user.bio,
-                blog=gh_user.blog,
-                user_type=gh_user.type  # "User", "Bot", "Organization"
+                company=raw.get('company'),
+                location=raw.get('location'),
+                bio=raw.get('bio'),
+                blog=raw.get('blog'),
+                user_type=gh_user.type
             )
         except Exception as e:
             console.print(f"[yellow]Warning: Error creating author from GitHub user: {e}[/yellow]")
@@ -164,26 +171,93 @@ class GitHubClient:
             return Author(username=gh_user.login if hasattr(gh_user, 'login') else None)
 
     def _pr_to_model(self, gh_pr, repo_id: int) -> PullRequest:
-        """Convert PyGithub PR to our model."""
-        labels = [
-            Label(name=label.name, color=label.color, description=label.description)
-            for label in gh_pr.labels
-        ]
+        """Convert PyGithub PR to our model, avoiding lazy loads."""
+        # Use internal _rawData if available to avoid any property overhead or lazy loading checks
+        raw = getattr(gh_pr, '_rawData', None)
+        if raw is None:
+             raw = getattr(gh_pr, 'raw_data', {})
+
+        # Extract labels from raw data to avoid lazy load
+        labels = []
+        for label_data in raw.get('labels', []):
+            labels.append(Label(
+                name=label_data.get('name', ''),
+                color=label_data.get('color', ''),
+                description=label_data.get('description')
+            ))
+
+        # Extract base/head branches from raw data to avoid lazy load
+        base_data = raw.get('base', {})
+        head_data = raw.get('head', {})
+
+        # Get user data from raw to avoid lazy load
+        user_data = raw.get('user')
+        # Create a mock object with raw_data for _github_user_to_author
+        from types import SimpleNamespace
+        gh_user = None
+        if user_data:
+            gh_user = SimpleNamespace(
+                login=user_data.get('login'),
+                id=user_data.get('id'),
+                avatar_url=user_data.get('avatar_url'),
+                html_url=user_data.get('html_url'),
+                type=user_data.get('type'),
+                raw_data=user_data
+            )
 
         return PullRequest(
             repo_id=repo_id,
-            number=gh_pr.number,
-            title=gh_pr.title,
-            body=gh_pr.body,
-            state=gh_pr.state,
-            merged_at=gh_pr.merged_at,
-            author=self._github_user_to_author(gh_pr.user),
-            base_branch=gh_pr.base.ref if gh_pr.base else None,
-            head_branch=gh_pr.head.ref if gh_pr.head else None,
-            head_sha=gh_pr.head.sha if gh_pr.head else None,
+            number=raw.get('number'),
+            title=raw.get('title'),
+            body=raw.get('body'),
+            state=raw.get('state'),
+            merged_at=raw.get('merged_at'),
+            author=self._github_user_to_author(gh_user),
+            base_branch=base_data.get('ref'),
+            head_branch=head_data.get('ref'),
+            head_sha=head_data.get('sha'),
             labels=labels,
-            url=gh_pr.html_url
+            url=raw.get('html_url')
         )
+
+    def _issue_to_ticket(self, gh_issue, repo_id: int) -> Ticket:
+        """Convert PyGithub Issue to our Ticket model, avoiding lazy loads."""
+        # Use internal _rawData if available to avoid any property overhead or lazy loading checks
+        # PyGithub stores the raw dictionary in _rawData
+        raw = getattr(gh_issue, '_rawData', None)
+        if raw is None:
+             # Fallback to public raw_data
+             raw = getattr(gh_issue, 'raw_data', {})
+        
+        # Extract labels from raw data to avoid lazy load
+        labels = []
+        for label_data in raw.get('labels', []):
+            labels.append(Label(
+                name=label_data.get('name', ''),
+                color=label_data.get('color', ''),
+                description=label_data.get('description')
+            ))
+            
+        # Get number from raw_data to be absolutely sure we avoid any lazy loads
+        number = raw.get('number')
+        if number is None:
+             # Only access gh_issue.number if absolutely necessary (fallback)
+             number = gh_issue.number
+             
+        ticket = Ticket(
+            repo_id=repo_id,
+            number=number,
+            key=str(number),
+            title=raw.get('title'),
+            body=raw.get('body'),
+            state=raw.get('state'),
+            labels=labels,
+            url=raw.get('html_url'),
+            created_at=raw.get('created_at'),
+            closed_at=raw.get('closed_at')
+        )
+        
+        return ticket
 
     def fetch_issue(self, repo_full_name: str, issue_number: int, repo_id: int) -> Optional[Ticket]:
         """Fetch a single issue/ticket from GitHub."""
@@ -228,23 +302,204 @@ class GitHubClient:
         issue_number = int(match.group(1))
         return self.fetch_issue(repo_full_name, issue_number, repo_id)
 
-    def search_ticket_numbers(
+    def search_issue_numbers(
         self,
         repo_full_name: str,
         since: Optional[datetime] = None
     ) -> List[int]:
         """
-        Search for ticket numbers using GitHub Search API with proper pagination.
+        Get issue numbers using Core API with explicit pagination.
+
+        Uses GET /repos/{owner}/{repo}/issues endpoint with per_page=100.
+        Manually paginates to ensure we fetch 100 items per request.
+
+        IMPORTANT: This endpoint returns both issues AND pull requests (PRs are issues in GitHub API).
+        Returns all numbers - filtering happens downstream if needed.
+
+        Core API limit: 5000 req/hour (much higher than Search API's 30 req/min).
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            since: Only include issues created after this datetime
+
+        Returns:
+            List of issue numbers (includes both issues and PRs)
+        """
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Use Core API with explicit pagination
+            # state='all' to get both open and closed
+            # Note: This returns both issues AND pull requests
+            issues_paginated = repo.get_issues(
+                state='all',
+                since=since,
+                sort='created',
+                direction='asc'
+            )
+
+            issue_numbers = []
+            page_num = 0
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Fetching issues...", total=None)
+
+                # Explicitly paginate through results to fetch 100 at a time
+                while True:
+                    try:
+                        # Get page (PyGithub caches pages internally)
+                        page = issues_paginated.get_page(page_num)
+
+                        if not page:
+                            break
+
+                        # Process the page (100 items) - just get the numbers
+                        # Note: This includes both issues AND PRs (PRs are issues in GitHub API)
+                        for issue in page:
+                            issue_numbers.append(issue.number)
+
+                        page_num += 1
+                        progress.update(task, description=f"Fetching issues... {len(issue_numbers)} found (page {page_num})")
+
+                    except Exception as e:
+                        # No more pages
+                        break
+
+            console.print(f"  [green]✓[/green] Found {len(issue_numbers)} issues")
+            return issue_numbers
+
+        except GithubException as e:
+            console.print(f"[red]Error fetching issues from {repo_full_name}: {e}[/red]")
+            return []
+
+    def search_ticket_numbers(self, repo_full_name: str, since: Optional[datetime] = None) -> List[int]:
+        """Deprecated: Use search_issue_numbers() instead."""
+        return self.search_issue_numbers(repo_full_name, since)
+
+    def fetch_all_issues(
+        self,
+        repo_full_name: str,
+        repo_id: int,
+        since: Optional[datetime] = None
+    ) -> List[Ticket]:
+        """
+        Fetch all issues as Ticket objects using Core API with efficient pagination.
+
+        Uses GET /repos/{owner}/{repo}/issues endpoint with per_page=100.
+        Fetches full issue data and converts to Ticket objects in one pass.
+
+        IMPORTANT: GitHub's /issues endpoint returns both issues AND pull requests.
+        PRs are filtered out by checking if pull_request field is None.
+
+        Core API limit: 5000 req/hour.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            repo_id: Repository ID in database
+            since: Only include issues created after this datetime
+
+        Returns:
+            List of Ticket objects (PRs excluded)
+        """
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        import time
+
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Use Core API with explicit pagination
+            issues_paginated = repo.get_issues(
+                state='all',
+                since=since,
+                sort='created',
+                direction='asc'
+            )
+
+            tickets = []
+            page_num = 0
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Fetching issues...", total=None)
+
+                # Explicitly paginate through results to fetch 100 at a time
+                while True:
+                    try:
+                        page_start = time.time()
+                        progress.update(task, description=f"Fetching issues... page {page_num + 1} (fetching...)")
+
+                        # Get page (100 items) - force to list to avoid lazy iteration
+                        page = issues_paginated.get_page(page_num)
+
+                        if not page:
+                            break
+
+                        # Force page to list to ensure all data is loaded
+                        page = list(page)
+
+                        page_fetch_time = time.time() - page_start
+                        progress.update(task, description=f"Fetching issues... page {page_num + 1} ({len(page)} items in {page_fetch_time:.1f}s, converting...)")
+
+                        # Convert issues to Ticket objects directly
+                        convert_start = time.time()
+                        for idx, issue in enumerate(page):
+                            item_start = time.time()
+                            # Convert to Ticket using helper (doesn't trigger extra API calls)
+                            ticket = self._issue_to_ticket(issue, repo_id)
+                            tickets.append(ticket)
+                            item_time = time.time() - item_start
+
+                            # Update every 10 items to show progress
+                            if (idx + 1) % 10 == 0:
+                                avg_time = (time.time() - convert_start) / (idx + 1)
+                                progress.update(task, description=f"Fetching issues... page {page_num + 1} (converting {idx + 1}/{len(page)}... {avg_time*1000:.0f}ms/item)")
+
+                        convert_time = time.time() - convert_start
+                        page_num += 1
+                        progress.update(task, description=f"Fetching issues... {len(tickets)} found (page {page_num} done in {page_fetch_time + convert_time:.1f}s)")
+
+                    except Exception as e:
+                        # No more pages
+                        break
+
+            console.print(f"  [green]✓[/green] Found {len(tickets)} issues")
+            return tickets
+
+        except GithubException as e:
+            console.print(f"[red]Error fetching issues from {repo_full_name}: {e}[/red]")
+            return []
+
+    def search_tickets(
+        self,
+        repo_full_name: str,
+        repo_id: int,
+        since: Optional[datetime] = None
+    ) -> List[Ticket]:
+        """
+        Search for tickets using GitHub Search API and return full Ticket objects.
+
+        This is more efficient than search_ticket_numbers() + fetch_issue() for each,
+        as it extracts all ticket data directly from search results without additional API calls.
 
         GitHub Search API has a 1000-result limit per query. This method handles
         that by chunking the date range when needed.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
+            repo_id: Repository ID in database
             since: Only include tickets created after this datetime
 
         Returns:
-            List of ticket numbers
+            List of Ticket objects with full data
         """
         from datetime import timedelta
 
@@ -255,7 +510,7 @@ class GitHubClient:
             # AND it lies about totalCount - it caps at 1000 even when there are more results
             # So we must always chunk and check if we hit exactly 1000 results
 
-            ticket_numbers = []
+            tickets = []
             current_start = since
 
             while True:
@@ -271,7 +526,7 @@ class GitHubClient:
                     break
 
                 # Show progress
-                if len(ticket_numbers) == 0:
+                if len(tickets) == 0:
                     if chunk_count >= 1000:
                         console.print(f"  [yellow]Note: API shows {chunk_count} tickets, but there may be more (API limit: 1000)[/yellow]")
                     else:
@@ -282,12 +537,14 @@ class GitHubClient:
                 last_created_date = None
 
                 for issue in chunk_issues:
-                    ticket_numbers.append(issue.number)
+                    # Convert to Ticket object directly (no additional API call needed!)
+                    ticket = self._issue_to_ticket(issue, repo_id)
+                    tickets.append(ticket)
                     last_created_date = issue.created_at
                     fetched_in_chunk += 1
 
-                    if len(ticket_numbers) % 500 == 0:
-                        console.print(f"  [dim]Found {len(ticket_numbers)} tickets...[/dim]")
+                    if len(tickets) % 100 == 0:
+                        console.print(f"  [dim]Found {len(tickets)} tickets...[/dim]")
 
                     # Stop at 1000 per chunk to avoid API limit
                     if fetched_in_chunk >= 1000:
@@ -304,8 +561,8 @@ class GitHubClient:
                 else:
                     break
 
-            console.print(f"  [green]✓[/green] Found {len(ticket_numbers)} tickets")
-            return ticket_numbers
+            console.print(f"  [green]✓[/green] Found {len(tickets)} tickets with full data")
+            return tickets
 
         except GithubException as e:
             console.print(f"[red]Error searching tickets from {repo_full_name}: {e}[/red]")
@@ -317,10 +574,12 @@ class GitHubClient:
         since: Optional[datetime] = None
     ) -> List[int]:
         """
-        Search for merged PR numbers using GitHub Search API with proper pagination.
+        Get merged PR numbers using Core API with explicit pagination.
 
-        GitHub Search API has a 1000-result limit per query. This method handles
-        that by chunking the date range when needed.
+        Uses GET /repos/{owner}/{repo}/pulls endpoint with per_page=100.
+        Manually paginates to ensure we fetch 100 items per request.
+
+        Core API limit: 5000 req/hour (much higher than Search API's 30 req/min).
 
         Args:
             repo_full_name: Full repository name (owner/repo)
@@ -328,6 +587,176 @@ class GitHubClient:
 
         Returns:
             List of PR numbers
+        """
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Use Core API with explicit pagination
+            # state='closed' gets both merged and closed-without-merge
+            prs_paginated = repo.get_pulls(
+                state='closed',
+                sort='created',
+                direction='asc'
+            )
+
+            pr_numbers = []
+            page_num = 0
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Fetching PRs...", total=None)
+
+                # Explicitly paginate through results to fetch 100 at a time
+                while True:
+                    try:
+                        # Get page (PyGithub caches pages internally)
+                        page = prs_paginated.get_page(page_num)
+
+                        if not page:
+                            break
+
+                        # Process the page (100 items)
+                        for pr in page:
+                            # Filter to only merged PRs and respect since date
+                            if pr.merged_at:
+                                if since is None or pr.merged_at >= since:
+                                    pr_numbers.append(pr.number)
+
+                        page_num += 1
+                        progress.update(task, description=f"Fetching PRs... {len(pr_numbers)} found (page {page_num})")
+
+                    except Exception as e:
+                        # No more pages
+                        break
+
+            console.print(f"  [green]✓[/green] Found {len(pr_numbers)} merged PRs")
+            return pr_numbers
+
+        except GithubException as e:
+            console.print(f"[red]Error fetching PRs from {repo_full_name}: {e}[/red]")
+            return []
+
+    def fetch_all_pull_requests(
+        self,
+        repo_full_name: str,
+        repo_id: int,
+        since: Optional[datetime] = None
+    ) -> List[PullRequest]:
+        """
+        Fetch all PRs as PullRequest objects using Core API with efficient pagination.
+
+        Uses GET /repos/{owner}/{repo}/pulls endpoint with per_page=100.
+        Fetches full PR data and converts to PullRequest objects in one pass.
+
+        Note: Gets all closed PRs. Filtering (merged vs closed, since date) happens downstream.
+
+        Core API limit: 5000 req/hour.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            repo_id: Repository ID in database
+            since: Only include PRs created after this datetime (filtering done downstream)
+
+        Returns:
+            List of PullRequest objects (all closed PRs)
+        """
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        import time
+
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Use Core API with explicit pagination
+            # state='closed' gets both merged and closed-without-merge
+            prs_paginated = repo.get_pulls(
+                state='closed',
+                sort='created',
+                direction='asc'
+            )
+
+            pull_requests = []
+            page_num = 0
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Fetching PRs...", total=None)
+
+                # Explicitly paginate through results to fetch 100 at a time
+                while True:
+                    try:
+                        page_start = time.time()
+                        progress.update(task, description=f"Fetching PRs... page {page_num + 1} (fetching...)")
+
+                        # Get page (100 items) - force to list to avoid lazy iteration
+                        page = prs_paginated.get_page(page_num)
+
+                        if not page:
+                            break
+
+                        # Force page to list to ensure all data is loaded
+                        page = list(page)
+
+                        page_fetch_time = time.time() - page_start
+                        progress.update(task, description=f"Fetching PRs... page {page_num + 1} ({len(page)} items in {page_fetch_time:.1f}s, converting...)")
+
+                        # Convert all PRs to PullRequest objects directly (no filtering here)
+                        convert_start = time.time()
+                        for idx, pr in enumerate(page):
+                            item_start = time.time()
+                            pr_obj = self._pr_to_model(pr, repo_id)
+                            pull_requests.append(pr_obj)
+                            item_time = time.time() - item_start
+
+                            # Update every 10 items to show progress
+                            if (idx + 1) % 10 == 0:
+                                avg_time = (time.time() - convert_start) / (idx + 1)
+                                progress.update(task, description=f"Fetching PRs... page {page_num + 1} (converting {idx + 1}/{len(page)}... {avg_time*1000:.0f}ms/item)")
+
+                        convert_time = time.time() - convert_start
+                        page_num += 1
+                        progress.update(task, description=f"Fetching PRs... {len(pull_requests)} found (page {page_num} done in {page_fetch_time + convert_time:.1f}s)")
+
+                    except Exception as e:
+                        # No more pages
+                        break
+
+            console.print(f"  [green]✓[/green] Found {len(pull_requests)} PRs")
+            return pull_requests
+
+        except GithubException as e:
+            console.print(f"[red]Error fetching PRs from {repo_full_name}: {e}[/red]")
+            return []
+
+    def search_pull_requests(
+        self,
+        repo_full_name: str,
+        repo_id: int,
+        since: Optional[datetime] = None
+    ) -> List[PullRequest]:
+        """
+        Search for merged PRs using GitHub Search API and return full PullRequest objects.
+
+        This is more efficient than search_pr_numbers() + get_pull_request() for each,
+        as it extracts all PR data directly from search results without additional API calls.
+
+        GitHub Search API has a 1000-result limit per query. This method handles
+        that by chunking the date range when needed.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            repo_id: Repository ID in database
+            since: Only include PRs merged after this datetime
+
+        Returns:
+            List of PullRequest objects with full data
         """
         from datetime import timedelta
 
@@ -338,7 +767,7 @@ class GitHubClient:
             # AND it lies about totalCount - it caps at 1000 even when there are more results
             # So we must always chunk and check if we hit exactly 1000 results
 
-            pr_numbers = []
+            prs = []
             current_start = since
 
             while True:
@@ -354,7 +783,7 @@ class GitHubClient:
                     break
 
                 # Show progress
-                if len(pr_numbers) == 0:
+                if len(prs) == 0:
                     if chunk_count >= 1000:
                         console.print(f"  [yellow]Note: API shows {chunk_count} PRs, but there may be more (API limit: 1000)[/yellow]")
                     else:
@@ -365,12 +794,14 @@ class GitHubClient:
                 last_created_date = None
 
                 for pr in chunk_prs:
-                    pr_numbers.append(pr.number)
+                    # Convert to PullRequest object directly (no additional API call needed!)
+                    pr_obj = self._pr_to_model(pr, repo_id)
+                    prs.append(pr_obj)
                     last_created_date = pr.created_at
                     fetched_in_chunk += 1
 
-                    if len(pr_numbers) % 500 == 0:
-                        console.print(f"  [dim]Found {len(pr_numbers)} merged PRs...[/dim]")
+                    if len(prs) % 500 == 0:
+                        console.print(f"  [dim]Found {len(prs)} merged PRs...[/dim]")
 
                     # Stop at 1000 per chunk to avoid API limit
                     if fetched_in_chunk >= 1000:
@@ -387,8 +818,8 @@ class GitHubClient:
                 else:
                     break
 
-            console.print(f"  [green]✓[/green] Found {len(pr_numbers)} merged PRs")
-            return pr_numbers
+            console.print(f"  [green]✓[/green] Found {len(prs)} merged PRs with full data")
+            return prs
 
         except GithubException as e:
             console.print(f"[red]Error searching PRs from {repo_full_name}: {e}[/red]")

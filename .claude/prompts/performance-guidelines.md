@@ -63,7 +63,86 @@ issue_numbers = [issue.number for issue in issues]
 - Search API: Paginated results = 1000 items = ~10 calls (100 per page)
 - **Speed improvement: 10-100x faster**
 
-## 3. Progress Feedback ALWAYS
+## 3. CRITICAL: Use PyGithub raw_data (No Lazy Loading)
+
+### Rule: NEVER Access PyGithub Object Attributes Directly in Bulk Operations
+
+**CRITICAL PERFORMANCE RULE**: During bulk sync operations (issues, PRs, commits, etc.), accessing PyGithub object attributes directly triggers **individual API calls** for each attribute not in the partial response.
+
+**Bad** - Direct attribute access (NEVER do this in bulk operations):
+```python
+def _issue_to_ticket(self, gh_issue, repo_id):
+    return Ticket(
+        number=gh_issue.number,
+        title=gh_issue.title,        # ❌ LAZY LOAD - triggers API call!
+        body=gh_issue.body,           # ❌ LAZY LOAD - triggers API call!
+        state=gh_issue.state,         # ❌ LAZY LOAD - triggers API call!
+        url=gh_issue.html_url,        # ❌ LAZY LOAD - triggers API call!
+        created_at=gh_issue.created_at  # ❌ LAZY LOAD - triggers API call!
+    )
+# Result: Converting 100 issues = 500+ API calls = 2 MINUTES!
+```
+
+**Good** - Use raw_data dictionary (ALWAYS do this):
+```python
+def _issue_to_ticket(self, gh_issue, repo_id):
+    # Use raw_data to avoid lazy loading
+    raw = getattr(gh_issue, 'raw_data', {})
+
+    return Ticket(
+        number=gh_issue.number,       # ✅ Safe - always in partial response
+        title=raw.get('title'),       # ✅ No API call - from raw_data
+        body=raw.get('body'),         # ✅ No API call - from raw_data
+        state=raw.get('state'),       # ✅ No API call - from raw_data
+        url=raw.get('html_url'),      # ✅ No API call - from raw_data
+        created_at=raw.get('created_at')  # ✅ No API call - from raw_data
+    )
+# Result: Converting 100 issues = 0 API calls = INSTANT!
+```
+
+### Applies To ALL PyGithub Objects
+- **Issues**: `title`, `body`, `state`, `html_url`, `created_at`, `closed_at`, `labels`
+- **Pull Requests**: `title`, `body`, `state`, `merged_at`, `base`, `head`, `labels`, `user`
+- **Commits**: `message`, `author`, `committer`, `parents`
+- **Labels**: `name`, `color`, `description`
+- **Milestones**: `title`, `description`, `state`, `due_on`
+- **Users**: `name`, `email`, `company`, `location`, `bio`, `blog`
+
+### Extracting Nested Objects from raw_data
+```python
+# Labels - extract from raw_data list
+raw = getattr(gh_pr, 'raw_data', {})
+labels = []
+for label_data in raw.get('labels', []):
+    labels.append(Label(
+        name=label_data.get('name', ''),
+        color=label_data.get('color', ''),
+        description=label_data.get('description')
+    ))
+
+# Nested objects (base/head for PRs)
+base_data = raw.get('base', {})
+head_data = raw.get('head', {})
+base_branch = base_data.get('ref')
+head_sha = head_data.get('sha')
+
+# User objects - create mock with raw_data
+user_data = raw.get('user')
+if user_data:
+    from types import SimpleNamespace
+    gh_user = SimpleNamespace(
+        login=user_data.get('login'),
+        id=user_data.get('id'),
+        raw_data=user_data
+    )
+```
+
+### Performance Impact
+- **Without raw_data**: 100 items = 500+ API calls = 2+ minutes
+- **With raw_data**: 100 items = 0 extra API calls = <1 second
+- **Speed improvement: 100-1000x faster**
+
+## 4. Progress Feedback ALWAYS
 
 ### Rule: Never Leave User Waiting >2 Seconds Without Feedback
 
