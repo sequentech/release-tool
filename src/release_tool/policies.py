@@ -673,40 +673,53 @@ class ReleaseNoteGenerator:
         self,
         grouped_notes: Dict[str, List[ReleaseNote]],
         version: str,
-        output_path: Optional[str] = None
-    ) -> str:
+        release_output_path: Optional[str] = None,
+        doc_output_path: Optional[str] = None
+    ):
         """
         Format release notes as markdown.
 
         Args:
             grouped_notes: Release notes grouped by category
             version: Version string
-            output_path: Optional output file path (for media processing)
+            release_output_path: Optional GitHub release notes output file path (for media processing)
+            doc_output_path: Optional Docusaurus output file path (for media processing)
 
         Returns:
-            Formatted markdown string
+            If doc_output_template is configured: tuple of (release_notes, doc_notes)
+            Otherwise: single release notes string
         """
         from jinja2 import Template
         from .media_utils import MediaDownloader
 
-        # Initialize media downloader if enabled
+        # Initialize media downloader if enabled (use release_output_path for media)
         media_downloader = None
-        if self.config.output.download_media and output_path:
+        if self.config.output.download_media and release_output_path:
             media_downloader = MediaDownloader(
                 self.config.output.assets_path,
                 download_enabled=True
             )
 
-        # If output_template is configured, use master template approach
-        if self.config.release_notes.output_template:
-            return self._format_with_master_template(
-                grouped_notes, version, output_path, media_downloader
+        # If release_output_template is configured, use master template approach
+        if self.config.release_notes.release_output_template:
+            release_notes = self._format_with_master_template(
+                grouped_notes, version, release_output_path, media_downloader
+            )
+        else:
+            # Otherwise, use legacy approach for backward compatibility
+            release_notes = self._format_with_legacy_layout(
+                grouped_notes, version, release_output_path, media_downloader
             )
 
-        # Otherwise, use legacy approach for backward compatibility
-        return self._format_with_legacy_layout(
-            grouped_notes, version, output_path, media_downloader
-        )
+        # If doc_output_template is configured, generate Docusaurus version as well
+        if self.config.release_notes.doc_output_template:
+            doc_notes = self._format_with_doc_template(
+                grouped_notes, version, doc_output_path, media_downloader, release_notes
+            )
+            return (release_notes, doc_notes)
+
+        # Return just release notes if no doc template
+        return release_notes
 
     def _format_with_master_template(
         self,
@@ -715,7 +728,7 @@ class ReleaseNoteGenerator:
         output_path: Optional[str],
         media_downloader
     ) -> str:
-        """Format using the master output_template."""
+        """Format using the master release_output_template."""
         from jinja2 import Template
 
         # Create entry template for sub-rendering
@@ -762,13 +775,91 @@ class ReleaseNoteGenerator:
         title = title_template.render(version=version)
 
         # Render master template
-        master_template = Template(self.config.release_notes.output_template)
+        master_template = Template(self.config.release_notes.release_output_template)
         output = master_template.render(
             version=version,
             title=title,
             categories=categories_data,
             all_notes=all_notes_data,
             render_entry=render_entry
+        )
+
+        # Process HTML-like whitespace
+        output = self._process_html_like_whitespace(output)
+
+        # Replace &nbsp; markers with actual spaces (done at the very end)
+        output = output.replace('<NBSP_MARKER>', ' ')
+
+        return output
+
+    def _format_with_doc_template(
+        self,
+        grouped_notes: Dict[str, List[ReleaseNote]],
+        version: str,
+        output_path: Optional[str],
+        media_downloader,
+        release_notes: str
+    ) -> str:
+        """Format using the doc_output_template with render_release_notes() function."""
+        from jinja2 import Template
+
+        # Create entry template for sub-rendering
+        entry_template = Template(self.config.release_notes.entry_template)
+
+        # Create a render_entry function
+        def render_entry(note_dict: Dict[str, Any]) -> str:
+            """Render a single entry using the entry_template."""
+            rendered = entry_template.render(**note_dict)
+            return self._process_html_like_whitespace(rendered)
+
+        # Create a render_release_notes function that returns the already-rendered release notes
+        def render_release_notes() -> str:
+            """Render the GitHub release notes (already computed)."""
+            return release_notes
+
+        # Prepare all notes with processed data
+        categories_data = []
+        all_notes_data = []
+
+        for category_name in self.config.get_ordered_categories():
+            notes = grouped_notes.get(category_name, [])
+            if not notes:
+                continue
+
+            notes_data = []
+            for note in notes:
+                note_dict = self._prepare_note_for_template(
+                    note, version, output_path, media_downloader
+                )
+                notes_data.append(note_dict)
+                all_notes_data.append(note_dict)
+
+            # Find category config for alias
+            category_alias = None
+            for cat_config in self.config.release_notes.categories:
+                if cat_config.name == category_name:
+                    category_alias = cat_config.alias
+                    break
+
+            categories_data.append({
+                'name': category_name,
+                'alias': category_alias,
+                'notes': notes_data
+            })
+
+        # Render title
+        title_template = Template(self.config.release_notes.title_template)
+        title = title_template.render(version=version)
+
+        # Render doc template
+        doc_template = Template(self.config.release_notes.doc_output_template)
+        output = doc_template.render(
+            version=version,
+            title=title,
+            categories=categories_data,
+            all_notes=all_notes_data,
+            render_entry=render_entry,
+            render_release_notes=render_release_notes
         )
 
         # Process HTML-like whitespace

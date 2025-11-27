@@ -17,7 +17,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.3"  # Latest config version
+    CURRENT_VERSION = "1.4"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -219,6 +219,17 @@ class MigrationManager:
                 "  • BREAKING: Requires database migration to strip '#' from existing keys\n"
                 "  • Display still shows '#' prefix for user-friendly output\n"
                 "  • URL truncation fixed in tickets command"
+            ),
+            ("1.3", "1.4"): (
+                "Version 1.4 adds:\n"
+                "  • Dual template support: separate templates for GitHub and Docusaurus\n"
+                "  • output_template renamed to release_output_template (GitHub release notes)\n"
+                "  • output_path renamed to release_output_path (GitHub release notes file)\n"
+                "  • New doc_output_template: wraps GitHub notes with Docusaurus frontmatter\n"
+                "  • New doc_output_path: path for Docusaurus release notes file\n"
+                "  • doc_output_template can use render_release_notes() to embed GitHub notes\n"
+                "  • generate command creates both files when both templates configured\n"
+                "  • Automatic config migration preserves your customizations"
             ),
         }
 

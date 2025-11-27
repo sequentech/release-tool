@@ -1,4 +1,4 @@
-"""Tests for output_template master template functionality."""
+"""Tests for release_output_template master template functionality."""
 
 import pytest
 from datetime import datetime
@@ -8,8 +8,8 @@ from release_tool.models import ReleaseNote, Author
 
 
 @pytest.fixture
-def test_config_with_output_template():
-    """Create a test configuration with output_template."""
+def test_config_with_release_output_template():
+    """Create a test configuration with release_output_template."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -23,7 +23,7 @@ def test_config_with_output_template():
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
                 {"name": "Documentation", "labels": ["docs"], "order": 3},
             ],
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 
 {% for category in categories %}
 ## {{ category.name }}
@@ -52,7 +52,7 @@ def test_config_flat_list():
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
                 {"name": "Documentation", "labels": ["docs"], "order": 3},
             ],
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 
 {% for note in all_notes %}
 {{ render_entry(note) }}
@@ -77,7 +77,7 @@ def test_config_with_migrations():
                 {"name": "Features", "labels": ["feature"], "order": 1},
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
             ],
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 
 ## Changes
 {% for note in all_notes %}
@@ -130,9 +130,9 @@ def sample_notes():
     ]
 
 
-def test_output_template_with_categories(test_config_with_output_template, sample_notes):
-    """Test output_template with category iteration."""
-    generator = ReleaseNoteGenerator(test_config_with_output_template)
+def test_release_output_template_with_categories(test_config_with_release_output_template, sample_notes):
+    """Test release_output_template with category iteration."""
+    generator = ReleaseNoteGenerator(test_config_with_release_output_template)
     grouped = generator.group_by_category(sample_notes)
 
     output = generator.format_markdown(grouped, "1.0.0")
@@ -146,8 +146,8 @@ def test_output_template_with_categories(test_config_with_output_template, sampl
     assert "Update docs" in output
 
 
-def test_output_template_flat_list(test_config_flat_list, sample_notes):
-    """Test output_template with flat list (no categories)."""
+def test_release_output_template_flat_list(test_config_flat_list, sample_notes):
+    """Test release_output_template with flat list (no categories)."""
     generator = ReleaseNoteGenerator(test_config_flat_list)
     grouped = generator.group_by_category(sample_notes)
 
@@ -163,8 +163,8 @@ def test_output_template_flat_list(test_config_flat_list, sample_notes):
     assert "Update docs" in output
 
 
-def test_output_template_with_migrations(test_config_with_migrations, sample_notes):
-    """Test output_template with separate migrations section."""
+def test_release_output_template_with_migrations(test_config_with_migrations, sample_notes):
+    """Test release_output_template with separate migrations section."""
     generator = ReleaseNoteGenerator(test_config_with_migrations)
     grouped = generator.group_by_category(sample_notes)
 
@@ -180,8 +180,8 @@ def test_output_template_with_migrations(test_config_with_migrations, sample_not
     assert "### Add new feature" not in output
 
 
-def test_legacy_format_without_output_template():
-    """Test that legacy format still works when output_template is not set."""
+def test_legacy_format_without_release_output_template():
+    """Test that legacy format still works when release_output_template is not set."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -206,7 +206,7 @@ def test_legacy_format_without_output_template():
     grouped = generator.group_by_category(notes)
     output = generator.format_markdown(grouped, "1.0.0")
 
-    # Now uses default output_template (not legacy)
+    # Now uses default release_output_template (not legacy)
     assert "# Release 1.0.0" in output
     assert "🚀 Features" in output
     assert "Test change" in output
@@ -227,7 +227,7 @@ def test_render_entry_includes_all_fields():
             ],
             "entry_template": """- {{ title }} by {{ authors[0].mention }}
 {% if migration_notes %}Migration: {{ migration_notes }}{% endif %}""",
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 {% for note in all_notes %}
 {{ render_entry(note) }}
 {% endfor %}"""
@@ -254,8 +254,8 @@ def test_render_entry_includes_all_fields():
     assert "Migration: Run migration script" in output
 
 
-def test_html_whitespace_processing_in_output_template():
-    """Test that HTML-like whitespace processing works in output_template."""
+def test_html_whitespace_processing_in_release_output_template():
+    """Test that HTML-like whitespace processing works in release_output_template."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -264,7 +264,7 @@ def test_html_whitespace_processing_in_output_template():
             "token": "test_token"
         },
         "release_notes": {
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 
 Test with    multiple   spaces
 and<br>line break"""
@@ -293,7 +293,7 @@ def test_nbsp_entity_preservation():
             "token": "test_token"
         },
         "release_notes": {
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 
 Test&nbsp;&nbsp;two&nbsp;spaces
 Normal    spaces   collapse
@@ -329,7 +329,7 @@ def test_nbsp_in_entry_template():
                 {"name": "Features", "labels": ["feature"], "order": 1},
             ],
             "entry_template": """- {{ title }}<br>&nbsp;&nbsp;by {{ authors[0].mention }}""",
-            "output_template": """# {{ title }}
+            "release_output_template": """# {{ title }}
 {% for note in all_notes %}
 {{ render_entry(note) }}
 {% endfor %}"""

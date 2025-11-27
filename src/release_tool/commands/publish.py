@@ -73,7 +73,7 @@ def publish(ctx, version: str, notes_file: Optional[str], create_release: bool,
             console.print(f"[green]✓ GitHub release created successfully[/green]")
             console.print(f"[blue]→ https://github.com/{repo_name}/releases/tag/v{version}[/blue]")
 
-        # Create PR
+        # Create PR or commit doc file
         if create_pr:
             if not notes_file:
                 console.print("[red]Error: --notes-file required when creating PR[/red]")
@@ -102,6 +102,23 @@ def publish(ctx, version: str, notes_file: Optional[str], create_release: bool,
                 pr_body
             )
             console.print(f"[green]✓ Pull request created successfully[/green]")
+
+        # Commit Docusaurus file if it exists and is configured
+        if config.output.doc_output_path:
+            doc_path = config.output.doc_output_path.format(
+                version=version,
+                major=str(target_version.major),
+                minor=str(target_version.minor),
+                patch=str(target_version.patch)
+            )
+            doc_file = Path(doc_path)
+
+            if doc_file.exists():
+                console.print(f"[blue]Docusaurus file found at {doc_file}[/blue]")
+                console.print(f"[dim]Note: You may want to commit this file to your repository.[/dim]")
+                console.print(f"[dim]Example: git add {doc_path} && git commit -m \"Add release notes for {version}\"[/dim]")
+            else:
+                console.print(f"[dim]No Docusaurus file found at {doc_path}[/dim]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")

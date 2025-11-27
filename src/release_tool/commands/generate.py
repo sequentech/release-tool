@@ -509,13 +509,47 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         for note in notes
                     ]
                 formatted_output = json.dumps(json_output, indent=2)
+                doc_formatted_output = None
             else:
-                # Format markdown with media processing if output path is available
-                formatted_output = note_generator.format_markdown(
+                # Determine release_output_path and doc_output_path
+                release_output_path = output
+                doc_output_path = None
+
+                # If no explicit output provided, use config templates
+                if not release_output_path:
+                    # Build default draft path from config template
+                    draft_template = config.output.draft_output_path
+                    release_output_path = draft_template.format(
+                        repo=repo_name.replace('/', '-'),  # Sanitize repo name for filesystem
+                        version=version,
+                        major=target_version.major,
+                        minor=target_version.minor,
+                        patch=target_version.patch
+                    )
+
+                # Compute doc_output_path if configured
+                if config.output.doc_output_path and config.release_notes.doc_output_template:
+                    doc_output_path = config.output.doc_output_path.format(
+                        version=version,
+                        major=target_version.major,
+                        minor=target_version.minor,
+                        patch=target_version.patch
+                    )
+
+                # Format markdown with media processing
+                result = note_generator.format_markdown(
                     grouped_notes,
                     version,
-                    output_path=output
+                    release_output_path=release_output_path,
+                    doc_output_path=doc_output_path
                 )
+
+                # Handle return value (tuple or single string)
+                if isinstance(result, tuple):
+                    formatted_output, doc_formatted_output = result
+                else:
+                    formatted_output = result
+                    doc_formatted_output = None
 
             # Output handling
             if dry_run:
@@ -525,26 +559,26 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(formatted_output)
                 console.print(f"\n[yellow]{'='*80}[/yellow]")
                 console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
+                if doc_formatted_output:
+                    console.print(f"[yellow](Docusaurus output would also be generated but is not shown in dry-run)[/yellow]")
                 console.print(f"[yellow]{'='*80}[/yellow]\n")
             else:
-                # Determine output path: use provided path or default to draft cache
-                if not output:
-                    # Build default draft path from config template
-                    draft_template = config.output.draft_output_path
-                    output = draft_template.format(
-                        repo=repo_name.replace('/', '-'),  # Sanitize repo name for filesystem
-                        version=version,
-                        major=target_version.major,
-                        minor=target_version.minor,
-                        patch=target_version.patch
-                    )
-
-                output_path_obj = Path(output)
-                output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                output_path_obj.write_text(formatted_output)
+                # Write release notes file
+                release_path_obj = Path(release_output_path)
+                release_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                release_path_obj.write_text(formatted_output)
                 console.print(f"[green]✓ Release notes written to:[/green]")
-                console.print(f"[green]  {output_path_obj.absolute()}[/green]")
-                console.print(f"[blue]→ Review and edit the file, then use 'release-tool publish {version} -f {output}' to upload to GitHub[/blue]")
+                console.print(f"[green]  {release_path_obj.absolute()}[/green]")
+
+                # Write doc output file if configured
+                if doc_formatted_output and doc_output_path:
+                    doc_path_obj = Path(doc_output_path)
+                    doc_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    doc_path_obj.write_text(doc_formatted_output)
+                    console.print(f"[green]✓ Docusaurus release notes written to:[/green]")
+                    console.print(f"[green]  {doc_path_obj.absolute()}[/green]")
+
+                console.print(f"[blue]→ Review and edit the files, then use 'release-tool publish {version} -f {release_output_path}' to upload to GitHub[/blue]")
 
         finally:
             db.close()

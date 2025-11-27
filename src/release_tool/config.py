@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import tomli
 import tomlkit
 
@@ -249,7 +249,7 @@ class ReleaseNoteConfig(BaseModel):
         ),
         description="Jinja2 template for each release note entry (used as sub-template in output_template)"
     )
-    output_template: Optional[str] = Field(
+    release_output_template: Optional[str] = Field(
         default=(
             "# {{ title }}\n"
             "\n"
@@ -306,11 +306,19 @@ class ReleaseNoteConfig(BaseModel):
             "{% endfor %}\n"
             "{% endfor %}"
         ),
-        description="Master Jinja2 template for entire release notes output. "
+        description="Master Jinja2 template for GitHub release notes output. "
                     "Available variables: version, title, categories (with 'alias' field), "
                     "all_notes, render_entry (function to render entry_template). "
                     "Note variables: title, url (prioritizes ticket_url over pr_url), ticket_url, pr_url, "
                     "short_link (#1234), short_repo_link (owner/repo#1234), pr_numbers, authors, description, etc."
+    )
+    doc_output_template: Optional[str] = Field(
+        default=None,
+        description="Jinja2 template for Docusaurus/documentation release notes output. "
+                    "Wraps the GitHub release notes with documentation-specific formatting (e.g., frontmatter). "
+                    "Available variables: version, title, categories, all_notes, render_entry, "
+                    "render_release_notes (function to render release_output_template). "
+                    "Example: '---\\nid: release-{{version}}\\ntitle: {{title}}\\n---\\n{{ render_release_notes() }}'"
     )
 
 
@@ -375,9 +383,14 @@ class DatabaseConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output configuration for release notes."""
-    output_path: str = Field(
+    release_output_path: str = Field(
         default="docs/releases/{version}.md",
-        description="File path template for release notes (supports {version}, {major}, {minor}, {patch})"
+        description="File path template for GitHub release notes (supports {version}, {major}, {minor}, {patch})"
+    )
+    doc_output_path: Optional[str] = Field(
+        default=None,
+        description="File path template for Docusaurus/documentation release notes (supports {version}, {major}, {minor}, {patch}). "
+                    "If set, doc_output_template must also be configured."
     )
     draft_output_path: str = Field(
         default=".release_tool_cache/draft-releases/{repo}/{version}.md",
@@ -421,6 +434,16 @@ class Config(BaseModel):
     branch_policy: BranchPolicyConfig = Field(default_factory=BranchPolicyConfig)
     release_notes: ReleaseNoteConfig = Field(default_factory=ReleaseNoteConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+
+    @model_validator(mode='after')
+    def validate_doc_output(self):
+        """Validate that doc_output_path requires doc_output_template."""
+        if self.output.doc_output_path and not self.release_notes.doc_output_template:
+            raise ValueError(
+                "doc_output_path is configured but doc_output_template is not set. "
+                "Both must be configured together for Docusaurus output."
+            )
+        return self
 
     @classmethod
     def from_file(cls, config_path: str, auto_upgrade: bool = False) -> "Config":
