@@ -430,10 +430,26 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
             # Determine comparison version and get commits
             from_ver = SemanticVersion.parse(from_version) if from_version else None
+
+            # Determine head_ref for commit range
+            # If we are creating a new branch, the head is the source branch
+            # If we are using an existing branch, the head is that branch
+            if should_create_branch:
+                head_ref = source_branch
+            else:
+                head_ref = release_branch
+                
+            # If the branch exists remotely but not locally, we might need to prefix with origin/
+            # However, git_ops usually handles local branches. 
+            # If we are in dry-run and the branch exists only on remote, we should use origin/branch
+            if not should_create_branch and not git_ops.branch_exists(head_ref) and git_ops.branch_exists(head_ref, remote=True):
+                head_ref = f"origin/{head_ref}"
+
             comparison_version, commits = get_release_commit_range(
                 git_ops,
                 target_version,
-                from_ver
+                from_ver,
+                head_ref=head_ref
             )
 
             if comparison_version:

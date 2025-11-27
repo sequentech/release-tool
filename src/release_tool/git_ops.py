@@ -383,10 +383,17 @@ def find_comparison_version(
 def get_release_commit_range(
     git_ops: GitOperations,
     target_version: SemanticVersion,
-    from_version: Optional[SemanticVersion] = None
+    from_version: Optional[SemanticVersion] = None,
+    head_ref: str = "HEAD"
 ) -> Tuple[Optional[SemanticVersion], List[GitCommit]]:
     """
     Get the commit range for a release.
+
+    Args:
+        git_ops: GitOperations instance
+        target_version: The version being released
+        from_version: Optional starting version (calculated if None)
+        head_ref: Reference to use as the end of the range (default: HEAD)
 
     Returns: (comparison_version, commits)
     """
@@ -405,8 +412,8 @@ def get_release_commit_range(
                 # Get commits from beginning to target
                 commits = list(git_ops.repo.iter_commits(tag))
             else:
-                # Target tag doesn't exist yet, get all commits
-                commits = list(git_ops.repo.iter_commits())
+                # Target tag doesn't exist yet, get all commits up to head_ref
+                commits = list(git_ops.repo.iter_commits(head_ref))
             return None, commits
         except Exception:
             return None, []
@@ -415,9 +422,9 @@ def get_release_commit_range(
         commits = git_ops.get_commits_for_version_range(comparison_version, target_version)
         return comparison_version, commits
     except ValueError:
-        # Target version tag doesn't exist yet, compare from comparison to HEAD
+        # Target version tag doesn't exist yet, compare from comparison to head_ref
         from_tag = git_ops._find_tag_for_version(comparison_version)
         if from_tag:
-            commits = git_ops.get_commits_between_refs(from_tag, "HEAD")
+            commits = git_ops.get_commits_between_refs(from_tag, head_ref)
             return comparison_version, commits
         return comparison_version, []
