@@ -10,8 +10,90 @@ from ..config import Config
 from ..db import Database
 from ..github_utils import GitHubClient
 from ..models import SemanticVersion
+from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError
 
 console = Console()
+
+
+def _get_issues_repo(config: Config) -> str:
+    """
+    Get the issues repository from config.
+
+    Returns the first ticket_repos entry if available, otherwise falls back to code_repo.
+    """
+    if config.repository.ticket_repos and len(config.repository.ticket_repos) > 0:
+        return config.repository.ticket_repos[0]
+    return config.repository.code_repo
+
+
+def _create_release_ticket(
+    config: Config,
+    github_client: GitHubClient,
+    template_context: dict,
+    dry_run: bool = False,
+    debug: bool = False
+) -> Optional[dict]:
+    """
+    Create a GitHub issue for tracking the release.
+
+    Args:
+        config: Configuration object
+        github_client: GitHub client instance
+        template_context: Template context for rendering ticket templates
+        dry_run: If True, only show what would be created
+        debug: If True, show verbose output
+
+    Returns:
+        Dictionary with 'number' and 'url' keys if created, None otherwise
+    """
+    if not config.output.create_ticket:
+        if debug:
+            console.print("[dim]Ticket creation disabled (create_ticket=false)[/dim]")
+        return None
+
+    issues_repo = _get_issues_repo(config)
+
+    # Render ticket templates
+    try:
+        title = render_template(
+            config.output.ticket_templates.title_template,
+            template_context
+        )
+        body = render_template(
+            config.output.ticket_templates.body_template,
+            template_context
+        )
+    except TemplateError as e:
+        console.print(f"[red]Error rendering ticket template: {e}[/red]")
+        return None
+
+    if dry_run or debug:
+        console.print("\n[cyan]Release Tracking Ticket:[/cyan]")
+        console.print(f"  Repository: {issues_repo}")
+        console.print(f"  Title: {title}")
+        console.print(f"  Labels: {', '.join(config.output.ticket_templates.labels)}")
+
+    if debug:
+        console.print(f"\n[dim]Body:[/dim]")
+        console.print(f"[dim]{'─' * 60}[/dim]")
+        console.print(f"[dim]{body}[/dim]")
+        console.print(f"[dim]{'─' * 60}[/dim]\n")
+
+    if dry_run:
+        return {'number': 'XXXX', 'url': f'https://github.com/{issues_repo}/issues/XXXX'}
+
+    # Create the issue
+    if debug:
+        console.print(f"[cyan]Creating ticket in {issues_repo}...[/cyan]")
+
+    result = github_client.create_issue(
+        repo_full_name=issues_repo,
+        title=title,
+        body=body,
+        labels=config.output.ticket_templates.labels
+    )
+
+    return result
 
 
 def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -> list[Path]:
@@ -28,21 +110,23 @@ def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -
     template = config.output.draft_output_path
 
     # Create a glob pattern that matches ALL repos and versions
-    # We replace placeholders with * to match any value
+    # We replace Jinja2 placeholders {{variable}} with * to match any value
     if version_filter:
         # If filtering by version, keep the version in the pattern
-        glob_pattern = template.replace("{repo}", "*")\
-                               .replace("{version}", version_filter)\
-                               .replace("{major}", "*")\
-                               .replace("{minor}", "*")\
-                               .replace("{patch}", "*")
+        glob_pattern = template.replace("{{code_repo}}", "*")\
+                               .replace("{{issue_repo}}", "*")\
+                               .replace("{{version}}", version_filter)\
+                               .replace("{{major}}", "*")\
+                               .replace("{{minor}}", "*")\
+                               .replace("{{patch}}", "*")
     else:
         # Match all versions
-        glob_pattern = template.replace("{repo}", "*")\
-                               .replace("{version}", "*")\
-                               .replace("{major}", "*")\
-                               .replace("{minor}", "*")\
-                               .replace("{patch}", "*")
+        glob_pattern = template.replace("{{code_repo}}", "*")\
+                               .replace("{{issue_repo}}", "*")\
+                               .replace("{{version}}", "*")\
+                               .replace("{{major}}", "*")\
+                               .replace("{{minor}}", "*")\
+                               .replace("{{patch}}", "*")
 
     # Use glob on the current directory to find all matching files
     draft_files = list(Path('.').glob(glob_pattern))
@@ -271,14 +355,12 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 sys.exit(1)
 
         if debug:
-            # Show preview of release notes
+            # Show full release notes in debug mode
             if release_notes:
-                preview_length = 300
-                preview = release_notes[:preview_length]
-                if len(release_notes) > preview_length:
-                    preview += "\n[... truncated ...]"
-                console.print(f"\n[dim]Preview:[/dim]")
-                console.print(f"[dim]{preview}[/dim]")
+                console.print(f"\n[bold]Full Release Notes Content:[/bold]")
+                console.print(f"[dim]{'─' * 60}[/dim]")
+                console.print(release_notes)
+                console.print(f"[dim]{'─' * 60}[/dim]")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
         # Initialize GitHub client (only if not dry-run)
@@ -343,14 +425,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print("[yellow]Warning: No release notes available, skipping PR creation.[/yellow]")
                 console.print("[dim]Tip: Generate release notes first or specify with --notes-file[/dim]")
             else:
-                # Format PR templates
-                version_parts = {
-                    'version': version,
-                    'major': str(target_version.major),
-                    'minor': str(target_version.minor),
-                    'patch': str(target_version.patch)
-                }
-
+                # Build template context with all available variables
                 # Try to count changes from release notes for PR body template
                 num_changes = 0
                 num_categories = 0
@@ -361,22 +436,94 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     # Count category headers (lines starting with ###)
                     num_categories = sum(1 for line in lines if line.strip().startswith('###'))
 
-                version_parts.update({
+                # Build initial template context
+                issues_repo = _get_issues_repo(config)
+
+                template_context = {
+                    'code_repo': config.repository.code_repo.replace('/', '-'),
+                    'issue_repo': issues_repo,
+                    'version': version,
+                    'major': str(target_version.major),
+                    'minor': str(target_version.minor),
+                    'patch': str(target_version.patch),
                     'num_changes': num_changes if num_changes > 0 else 'several',
-                    'num_categories': num_categories if num_categories > 0 else 'multiple'
-                })
+                    'num_categories': num_categories if num_categories > 0 else 'multiple',
+                    'target_branch': config.output.pr_target_branch
+                }
 
-                branch_name = config.output.pr_templates.branch_template.format(**version_parts)
-                pr_title = config.output.pr_templates.title_template.format(**version_parts)
+                # Create release tracking ticket if enabled
+                ticket_result = _create_release_ticket(
+                    config=config,
+                    github_client=github_client if not dry_run else None,
+                    template_context=template_context,
+                    dry_run=dry_run,
+                    debug=debug
+                )
 
-                # Use safe formatting for PR body in case template has other variables
-                try:
-                    pr_body = config.output.pr_templates.body_template.format(**version_parts)
-                except KeyError as e:
-                    # If template has variables we don't provide, use a simpler default
+                # Add ticket variables to context if ticket was created
+                if ticket_result:
+                    template_context.update({
+                        'issue_number': ticket_result['number'],
+                        'issue_link': ticket_result['url']
+                    })
+
                     if debug:
-                        console.print(f"[dim]Warning: PR body template has unsupported variable {e}, using simplified body[/dim]")
-                    pr_body = f"Automated release notes for version {version}."
+                        console.print("\n[bold cyan]Debug Mode: Ticket Information[/bold cyan]")
+                        console.print("[dim]" + "=" * 60 + "[/dim]")
+                        console.print(f"[dim]Ticket created:[/dim] Yes")
+                        console.print(f"[dim]Issue number:[/dim] {ticket_result['number']}")
+                        console.print(f"[dim]Issue URL:[/dim] {ticket_result['url']}")
+                        console.print(f"[dim]Repository:[/dim] {_get_issues_repo(config)}")
+                        console.print(f"\n[dim]Template variables now available:[/dim]")
+                        for var in sorted(template_context.keys()):
+                            console.print(f"[dim]  • {{{{{var}}}}}: {template_context[var]}[/dim]")
+                        console.print("[dim]" + "=" * 60 + "[/dim]\n")
+                elif debug:
+                    console.print("\n[bold cyan]Debug Mode: Ticket Information[/bold cyan]")
+                    console.print("[dim]" + "=" * 60 + "[/dim]")
+                    console.print(f"[dim]Ticket creation:[/dim] {'Disabled (create_ticket=false)' if not config.output.create_ticket else 'Failed or dry-run'}")
+                    console.print(f"\n[dim]Template variables available (without ticket):[/dim]")
+                    for var in sorted(template_context.keys()):
+                        console.print(f"[dim]  • {{{{{{var}}}}}}: {template_context[var]}[/dim]")
+                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
+
+                # Define which variables are available
+                available_vars = set(template_context.keys())
+                ticket_vars = {'issue_number', 'issue_link'}
+
+                # Validate templates don't use ticket variables when they're not available
+                # (either because create_ticket=false or ticket creation failed)
+                if not ticket_result:
+                    # Check each template for ticket variables
+                    for template_name, template_str in [
+                        ('branch_template', config.output.pr_templates.branch_template),
+                        ('title_template', config.output.pr_templates.title_template),
+                        ('body_template', config.output.pr_templates.body_template)
+                    ]:
+                        try:
+                            used_vars = get_template_variables(template_str)
+                            invalid_vars = used_vars & ticket_vars
+                            if invalid_vars:
+                                console.print(
+                                    f"[red]Error: PR {template_name} uses ticket variables "
+                                    f"({', '.join(sorted(invalid_vars))}) but create_ticket is disabled[/red]"
+                                )
+                                console.print("[yellow]Either enable create_ticket in config or update the template.[/yellow]")
+                                sys.exit(1)
+                        except TemplateError as e:
+                            console.print(f"[red]Error in PR {template_name}: {e}[/red]")
+                            sys.exit(1)
+
+                # Render templates using Jinja2
+                try:
+                    branch_name = render_template(config.output.pr_templates.branch_template, template_context)
+                    pr_title = render_template(config.output.pr_templates.title_template, template_context)
+                    pr_body = render_template(config.output.pr_templates.body_template, template_context)
+                except TemplateError as e:
+                    console.print(f"[red]Error rendering PR template: {e}[/red]")
+                    if debug:
+                        raise
+                    sys.exit(1)
 
                 if debug:
                     console.print("\n[bold cyan]Debug Mode: Pull Request Details[/bold cyan]")
@@ -414,23 +561,31 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
 
         # Handle Docusaurus file if configured
         if config.output.doc_output_path:
-            doc_path = config.output.doc_output_path.format(
-                version=version,
-                major=str(target_version.major),
-                minor=str(target_version.minor),
-                patch=str(target_version.patch)
-            )
+            template_context = {
+                'version': version,
+                'major': str(target_version.major),
+                'minor': str(target_version.minor),
+                'patch': str(target_version.patch)
+            }
+            try:
+                doc_path = render_template(config.output.doc_output_path, template_context)
+            except TemplateError as e:
+                console.print(f"[red]Error rendering doc_output_path template: {e}[/red]")
+                if debug:
+                    raise
+                sys.exit(1)
             doc_file = Path(doc_path)
 
             if debug:
-                console.print("\n[bold cyan]Debug Mode: Docusaurus Documentation[/bold cyan]")
+                console.print("\n[bold cyan]Debug Mode: Documentation Release Notes[/bold cyan]")
                 console.print("[dim]" + "=" * 60 + "[/dim]")
-                console.print(f"[dim]Configured path template:[/dim] {config.output.doc_output_path}")
+                console.print(f"[dim]Doc template configured:[/dim] {config.release_notes.doc_output_template is not None}")
+                console.print(f"[dim]Doc path template:[/dim] {config.output.doc_output_path}")
                 console.print(f"[dim]Resolved path:[/dim] {doc_path}")
                 console.print(f"[dim]File exists:[/dim] {doc_file.exists()}")
 
             if doc_file.exists():
-                # Read doc file content for preview in debug mode
+                # Read doc file content for debug mode
                 doc_content = None
                 if debug:
                     try:
@@ -439,14 +594,12 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     except Exception as e:
                         console.print(f"[dim]Error reading file:[/dim] {e}")
 
-                # Show preview in debug mode
+                # Show full content in debug mode
                 if debug and doc_content:
-                    preview_length = 400
-                    preview = doc_content[:preview_length]
-                    if len(doc_content) > preview_length:
-                        preview += "\n[... truncated ...]"
-                    console.print(f"\n[dim]Content preview:[/dim]")
-                    console.print(f"[dim]{preview}[/dim]")
+                    console.print(f"\n[bold]Full Documentation Release Notes Content:[/bold]")
+                    console.print(f"[dim]{'─' * 60}[/dim]")
+                    console.print(doc_content)
+                    console.print(f"[dim]{'─' * 60}[/dim]")
                     console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
                 if dry_run:

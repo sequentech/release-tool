@@ -7,6 +7,7 @@ from typing import Optional, Dict, Tuple
 from urllib.parse import urlparse
 import requests
 from rich.console import Console
+from .template_utils import render_template, TemplateError
 
 console = Console()
 
@@ -93,8 +94,14 @@ class MediaDownloader:
             # Parse version for path substitution
             version_parts = self._parse_version(version)
 
-            # Create assets directory
-            assets_dir = Path(self.assets_path.format(**version_parts))
+            # Create assets directory using Jinja2 template
+            try:
+                assets_path_rendered = render_template(self.assets_path, version_parts)
+                assets_dir = Path(assets_path_rendered)
+            except TemplateError as e:
+                console.print(f"[red]Error rendering assets_path template: {e}[/red]")
+                return None
+
             assets_dir.mkdir(parents=True, exist_ok=True)
 
             # Generate filename from URL

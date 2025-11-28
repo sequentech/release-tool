@@ -245,14 +245,14 @@ tag_prefix = "v"
 # =============================================================================
 # Controls how release branches are created and managed
 [branch_policy]
-# release_branch_template: Template for release branch names
-# Use {major}, {minor}, {patch} as placeholders
+# release_branch_template: Template for release branch names (Jinja2 syntax)
+# Use {{major}}, {{minor}}, {{patch}} as placeholders
 # Examples:
-#   - "release/{major}.{minor}" → "release/9.1"
-#   - "rel-{major}.{minor}.x" → "rel-9.1.x"
-#   - "v{major}.{minor}" → "v9.1"
-# Default: "release/{major}.{minor}"
-release_branch_template = "release/{major}.{minor}"
+#   - "release/{{major}}.{{minor}}" → "release/9.1"
+#   - "rel-{{major}}.{{minor}}.x" → "rel-9.1.x"
+#   - "v{{major}}.{{minor}}" → "v9.1"
+# Default: "release/{{major}}.{{minor}}"
+release_branch_template = "release/{{major}}.{{minor}}"
 
 # default_branch: The default branch for new major versions
 # New major versions (e.g., 9.0.0 when coming from 8.x.x) will branch from this
@@ -645,83 +645,83 @@ alias = "other"
 # =============================================================================
 
 [output]
-# release_output_path: Path template for GitHub release notes file
+# release_output_path: Path template for GitHub release notes file (Jinja2 syntax)
 # This file will be created/updated when using the generate command
 # Used for creating GitHub releases via the publish command
 #
 # Available variables for path substitution:
-#   - {version}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
-#   - {major}: Major version number only (e.g., "1")
-#   - {minor}: Minor version number only (e.g., "2")
-#   - {patch}: Patch version number only (e.g., "3")
+#   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
+#   - {{major}}: Major version number only (e.g., "1")
+#   - {{minor}}: Minor version number only (e.g., "2")
+#   - {{patch}}: Patch version number only (e.g., "3")
 #
 # Path template examples:
 #   - "CHANGELOG.md": Single changelog file (appends/overwrites)
-#   - "docs/releases/{version}.md": Separate file per version
-#   - "releases/{major}.{minor}/{patch}.md": Organized by major.minor
-#   - "docs/{major}.x.md": One file per major version
-#   - "website/releases/v{version}.md": With prefix
+#   - "docs/releases/{{version}}.md": Separate file per version
+#   - "releases/{{major}}.{{minor}}/{{patch}}.md": Organized by major.minor
+#   - "docs/{{major}}.x.md": One file per major version
+#   - "website/releases/v{{version}}.md": With prefix
 #
-# Default: "docs/releases/{version}.md"
-release_output_path = "docs/releases/{version}.md"
+# Default: "docs/releases/{{version}}.md"
+release_output_path = "docs/releases/{{version}}.md"
 
-# doc_output_path: Path template for Docusaurus/documentation release notes file
+# doc_output_path: Path template for Docusaurus/documentation release notes file (Jinja2 syntax)
 # This file will be created alongside the GitHub release notes when doc_output_template is configured
 # Used for generating documentation that can be committed to your docs site
 #
 # Available variables for path substitution (same as release_output_path):
-#   - {version}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
-#   - {major}: Major version number only (e.g., "1")
-#   - {minor}: Minor version number only (e.g., "2")
-#   - {patch}: Patch version number only (e.g., "3")
+#   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
+#   - {{major}}: Major version number only (e.g., "1")
+#   - {{minor}}: Minor version number only (e.g., "2")
+#   - {{patch}}: Patch version number only (e.g., "3")
 #
 # Path template examples:
-#   - "docs/docusaurus/docs/releases/release-{major}.{minor}/release-{major}.{minor}.{patch}.md"
-#   - "website/docs/releases/{version}.md"
-#   - "docs/releases/v{major}.{minor}.{patch}.md"
+#   - "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
+#   - "website/docs/releases/{{version}}.md"
+#   - "docs/releases/v{{major}}.{{minor}}.{{patch}}.md"
 #
 # Default: None (disabled - only GitHub release notes are generated)
 # Uncomment to enable Docusaurus output (requires doc_output_template to be set)
-# doc_output_path = "docs/docusaurus/docs/releases/release-{major}.{minor}/release-{major}.{minor}.{patch}.md"
+# doc_output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
 
-# draft_output_path: Path template for draft release notes (generate command)
+# draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
 # This is where 'generate' command saves files by default (when --output not specified)
 # Files are saved here for review/editing before publishing to GitHub
 #
 # Available variables:
-#   - {repo}: Repository name (e.g., "owner-repo")
-#   - {version}: Full version string
-#   - {major}: Major version number
-#   - {minor}: Minor version number
-#   - {patch}: Patch version number
+#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
+#   - {{version}}: Full version string
+#   - {{major}}: Major version number
+#   - {{minor}}: Minor version number
+#   - {{patch}}: Patch version number
 #
 # Examples:
-#   - ".release_tool_cache/draft-releases/{repo}/{version}.md": Organized by repo and version
-#   - "drafts/{major}.{minor}.{patch}.md": Simple draft folder
-#   - "/tmp/releases/{repo}-{version}.md": Temporary location
+#   - ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md": Organized by repo and version (DEFAULT)
+#   - "drafts/{{major}}.{{minor}}.{{patch}}.md": Simple draft folder
+#   - "/tmp/releases/{{code_repo}}-{{version}}.md": Temporary location
 #
-# Default: ".release_tool_cache/draft-releases/{repo}/{version}.md"
-draft_output_path = ".release_tool_cache/draft-releases/{repo}/{version}.md"
+# Default: ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md"
 
-# assets_path: Path template for downloaded media assets (images, videos)
+# assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
 # Images and videos referenced in ticket descriptions will be downloaded here
 # and references will be updated to use local paths in the release notes
 # This is useful for Docusaurus and other static site generators
 #
 # Available variables (same as output_path):
-#   - {version}: Full version string
-#   - {major}: Major version number
-#   - {minor}: Minor version number
-#   - {patch}: Patch version number
+#   - {{version}}: Full version string
+#   - {{major}}: Major version number
+#   - {{minor}}: Minor version number
+#   - {{patch}}: Patch version number
 #
 # Path must be relative to output_path for correct markdown references
 # Examples:
-#   - "docs/releases/assets/{version}": Organized by version
-#   - "static/img/releases/{major}.{minor}": Shared across patches
-#   - "assets/{version}": Simple structure
+#   - "docs/releases/assets/{{version}}": Organized by version
+#   - "static/img/releases/{{major}}.{{minor}}": Shared across patches
+#   - "assets/{{version}}": Simple structure
 #
-# Default: "docs/releases/assets/{version}"
-assets_path = "docs/docusaurus/docs/releases/release-{major}.{minor}/assets"
+# Default: "docs/releases/assets/{{version}}"
+assets_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/assets"
 
 # download_media: Download images and videos from ticket descriptions
 # When true: Downloads media files and updates references to local paths
@@ -767,60 +767,110 @@ draft_release = true
 #   - false: For projects that only do stable releases
 prerelease = "auto"
 
+# create_ticket: Whether to create a tracking issue for the release
+# When true, a GitHub issue will be created automatically and PR templates can use
+# {{issue_repo}}, {{issue_number}}, and {{issue_link}} variables
+# Default: true
+# Use case: Set to false if you don't want to track releases with GitHub issues
+create_ticket = true
+
+# =============================================================================
+# Release Tracking Ticket Templates (for create_ticket)
+# =============================================================================
+[output.ticket_templates]
+# title_template: Template for the ticket title
+# Available variables:
+#   - {{version}}: Full version string (e.g., "1.2.3")
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{num_changes}}, {{num_categories}}: Release notes statistics
+#
+# Examples:
+#   - "Release {{version}}": Simple format (DEFAULT)
+#   - "Release v{{version}} - {{num_changes}} changes": With stats
+#
+# Default: "Release {{version}}"
+title_template = "Release {{version}}"
+
+# body_template: Template for the ticket description (supports multi-line)
+# Available variables: Same as title_template
+#
+# Default: Simple tracking message
+body_template = '''Tracking issue for release {{version}}.
+
+This issue tracks the creation and publication of release notes for version {{version}}.'''
+
+# labels: Labels to apply to the release tracking ticket
+# Default: ["release", "documentation"]
+labels = ["release", "documentation"]
+
 # =============================================================================
 # Pull Request Templates (for create_pr)
 # =============================================================================
 [output.pr_templates]
+# ALL TEMPLATES USE JINJA2 SYNTAX: {{ variable_name }}
+#
 # branch_template: Template for the PR branch name
-# Available variables:
-#   - {version}: Full version string (e.g., "1.2.3")
-#   - {major}, {minor}, {patch}: Version components
+# Available variables (always):
+#   - {{version}}: Full version string (e.g., "1.2.3")
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
+#   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
+#   - {{target_branch}}: Target branch for PR (from pr_target_branch)
+#
+# Available variables (only when create_ticket=true and ticket was created):
+#   - {{issue_number}}: Auto-generated issue number
+#   - {{issue_link}}: Auto-generated issue URL
 #
 # Examples:
-#   - "release-notes-{version}": Default format
-#   - "docs/release-{major}.{minor}.{patch}": Structured branch
-#   - "chore/update-changelog-{version}": With prefix
+#   - "release-notes-{{version}}": Simple format
+#   - "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}": With issue tracking (DEFAULT)
+#   - "docs/release-{{major}}.{{minor}}.{{patch}}": Structured branch
+#   - "chore/update-changelog-{{version}}": With prefix
 #
-# Default: "release-notes-{version}"
-branch_template = "release-notes-{version}"
+# Default: "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}"
+branch_template = "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}"
 
 # title_template: Template for the PR title
-# Available variables:
-#   - {version}: Full version string
-#   - {major}, {minor}, {patch}: Version components
-#   - {num_changes}: Number of changes in release notes (integer)
-#   - {num_categories}: Number of non-empty categories (integer)
+# Available variables (always):
+#   - {{version}}: Full version string
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{num_changes}}: Number of changes in release notes
+#   - {{num_categories}}: Number of categories
+#   - {{code_repo}}, {{issue_repo}}: Repository names
+#
+# Available variables (only when create_ticket=true and ticket was created):
+#   - {{issue_number}}, {{issue_link}}: Ticket information
 #
 # Examples:
-#   - "Release notes for {version}": Simple title
-#   - "docs: Add release notes for v{version}": Conventional commits
-#   - "Release {version} with {num_changes} changes": With counts
+#   - "Release notes for {{version}}": Simple title (DEFAULT)
+#   - "docs: Add release notes for v{{version}}": Conventional commits
+#   - "Release {{version}} with {{num_changes}} changes": With counts
 #
-# Default: "Release notes for {version}"
-title_template = "Release notes for {version}"
+# Default: "Release notes for {{version}}"
+title_template = "Release notes for {{version}}"
 
-# body_template: Template for the PR description
-# Available variables (same as title_template):
-#   - {version}: Full version string
-#   - {major}, {minor}, {patch}: Version components
-#   - {num_changes}: Number of changes
-#   - {num_categories}: Number of categories
+# body_template: Template for the PR description (supports multi-line)
+# Available variables: Same as title_template
 #
 # Examples:
 #   - Simple:
-#     body_template = "Automated release notes for version {version}."
+#     body_template = "Automated release notes for version {{version}}."
 #
-#   - Detailed (DEFAULT) - use triple quotes for multi-line:
-#     body_template = '''Automated release notes for version {version}.
+#   - With issue tracking (DEFAULT) - use triple quotes for multi-line:
+#     body_template = '''Parent issue: {{issue_link}}
+#
+#     Automated release notes for version {{version}}.
 #
 #     ## Summary
-#     This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.'''
+#     This PR adds release notes for {{version}} with {{num_changes}} changes across {{num_categories}} categories.'''
 #
-# Default: Multi-line summary with change counts (TOML multi-line string)
-body_template = '''Automated release notes for version {version}.
+# Default: Multi-line with issue link and summary
+body_template = '''Parent issue: {{issue_link}}
+
+Automated release notes for version {{version}}.
 
 ## Summary
-This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.'''
+This PR adds release notes for {{version}} with {{num_changes}} changes across {{num_categories}} categories.'''
 
 # pr_target_branch: Target branch for the release notes PR
 # The branch where the PR will be merged

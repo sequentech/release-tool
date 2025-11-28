@@ -82,7 +82,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main"
         )
 
@@ -101,7 +101,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main",
             branch_from_previous=True
         )
@@ -121,7 +121,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main",
             branch_from_previous=True
         )
@@ -138,7 +138,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main"
         )
 
@@ -157,7 +157,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main",
             branch_from_previous=False
         )
@@ -174,7 +174,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="rel-{major}.{minor}.x",
+            branch_template="rel-{{major}}.{{minor}}.x",
             default_branch="develop"
         )
 
@@ -193,7 +193,7 @@ class TestReleaseBranchStrategy:
 
         branch, source, should_create = determine_release_branch_strategy(
             version, git_ops, available,
-            branch_template="release/{major}.{minor}",
+            branch_template="release/{{major}}.{{minor}}",
             default_branch="main"
         )
 

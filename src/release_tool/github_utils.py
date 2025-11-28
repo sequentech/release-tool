@@ -948,6 +948,54 @@ class GitHubClient:
             console.print(f"[red]Error creating release: {e}[/red]")
             return None
 
+    def create_issue(
+        self,
+        repo_full_name: str,
+        title: str,
+        body: str,
+        labels: Optional[List[str]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Create a GitHub issue.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            title: Issue title
+            body: Issue body/description
+            labels: List of label names to apply
+
+        Returns:
+            Dictionary with 'number' and 'url' keys if successful, None otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Get label objects if labels specified
+            label_objects = []
+            if labels:
+                for label_name in labels:
+                    try:
+                        label = repo.get_label(label_name)
+                        label_objects.append(label)
+                    except GithubException:
+                        # Label doesn't exist, skip it or create it
+                        console.print(f"[yellow]Warning: Label '{label_name}' not found in {repo_full_name}, skipping[/yellow]")
+
+            # Create the issue
+            issue = repo.create_issue(
+                title=title,
+                body=body,
+                labels=label_objects if label_objects else []
+            )
+
+            console.print(f"[green]Created issue #{issue.number}: {issue.html_url}[/green]")
+            return {
+                'number': str(issue.number),
+                'url': issue.html_url
+            }
+        except GithubException as e:
+            console.print(f"[red]Error creating issue: {e}[/red]")
+            return None
+
     def create_pr_for_release_notes(
         self,
         repo_full_name: str,

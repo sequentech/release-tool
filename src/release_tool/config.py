@@ -70,18 +70,37 @@ class CategoryConfig(BaseModel):
 class PRTemplateConfig(BaseModel):
     """Pull request template configuration for release notes."""
     branch_template: str = Field(
-        default="release-notes-{version}",
-        description="Branch name template for release notes PR"
+        default="docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}",
+        description="Branch name template for release notes PR (Jinja2 syntax)"
     )
     title_template: str = Field(
-        default="Release notes for {version}",
-        description="PR title template"
+        default="Release notes for {{version}}",
+        description="PR title template (Jinja2 syntax)"
     )
     body_template: str = Field(
-        default="Automated release notes for version {version}.\n\n"
+        default="Parent issue: {{issue_link}}\n\n"
+                "Automated release notes for version {{version}}.\n\n"
                 "## Summary\n"
-                "This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.",
-        description="PR body template"
+                "This PR adds release notes for {{version}} with {{num_changes}} changes across {{num_categories}} categories.",
+        description="PR body template (Jinja2 syntax)"
+    )
+
+
+class TicketTemplateConfig(BaseModel):
+    """Ticket template configuration for release tracking."""
+    title_template: str = Field(
+        default="Release {{version}}",
+        description="Ticket title template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}"
+    )
+    body_template: str = Field(
+        default="Tracking issue for release {{version}}.\n\n"
+                "This issue tracks the creation and publication of release notes for version {{version}}.",
+        description="Ticket body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
+                    "{{num_changes}}, {{num_categories}}"
+    )
+    labels: List[str] = Field(
+        default_factory=lambda: ["release", "documentation"],
+        description="Labels to apply to the release tracking ticket"
     )
 
 
@@ -393,8 +412,8 @@ class OutputConfig(BaseModel):
                     "If set, doc_output_template must also be configured."
     )
     draft_output_path: str = Field(
-        default=".release_tool_cache/draft-releases/{repo}/{version}.md",
-        description="File path template for draft release notes (supports {repo}, {version}, {major}, {minor}, {patch})"
+        default=".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md",
+        description="File path template for draft release notes (supports {{code_repo}}, {{version}}, {{major}}, {{minor}}, {{patch}})"
     )
     assets_path: str = Field(
         default="docs/releases/assets/{version}",
@@ -419,6 +438,15 @@ class OutputConfig(BaseModel):
     prerelease: Union[bool, Literal["auto"]] = Field(
         default="auto",
         description="Mark GitHub releases as prereleases. Options: 'auto' (detect from version), true, false"
+    )
+    create_ticket: bool = Field(
+        default=True,
+        description="Whether to create a tracking issue for the release. "
+                    "When true, a GitHub issue will be created and PR templates can use {{issue_repo}}, {{issue_number}}, and {{issue_link}} variables."
+    )
+    ticket_templates: TicketTemplateConfig = Field(
+        default_factory=TicketTemplateConfig,
+        description="Templates for release tracking ticket (title, body, labels)"
     )
     pr_templates: PRTemplateConfig = Field(
         default_factory=PRTemplateConfig,

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from git import Repo, Commit as GitCommit
 from .models import Commit, SemanticVersion
+from .template_utils import render_template, TemplateError
 
 
 class GitOperations:
@@ -276,12 +277,18 @@ def determine_release_branch_strategy(
     Returns:
         Tuple of (release_branch_name, source_branch, should_create_branch)
     """
-    # Format release branch name
-    release_branch = branch_template.format(
-        major=version.major,
-        minor=version.minor,
-        patch=version.patch
-    )
+    # Format release branch name using Jinja2 template
+    template_context = {
+        'major': str(version.major),
+        'minor': str(version.minor),
+        'patch': str(version.patch)
+    }
+    try:
+        release_branch = render_template(branch_template, template_context)
+    except TemplateError as e:
+        # Fall back to simple string if template rendering fails
+        # This maintains backwards compatibility
+        release_branch = f"release/{version.major}.{version.minor}"
 
     # Check if this branch already exists
     branch_exists = git_ops.branch_exists(release_branch) or git_ops.branch_exists(release_branch, remote=True)

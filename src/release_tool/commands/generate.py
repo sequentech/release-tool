@@ -9,6 +9,7 @@ from ..db import Database
 from ..github_utils import GitHubClient
 from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy
 from ..models import SemanticVersion
+from ..template_utils import render_template, TemplateError
 from ..policies import (
     TicketExtractor,
     CommitConsolidator,
@@ -19,6 +20,18 @@ from ..policies import (
 )
 
 console = Console()
+
+
+def _get_issues_repo(config: Config) -> str:
+    """
+    Get the issues repository from config.
+
+    Returns the first ticket_repos entry if available, otherwise falls back to code_repo.
+    """
+    if config.repository.ticket_repos and len(config.repository.ticket_repos) > 0:
+        return config.repository.ticket_repos[0]
+    return config.repository.code_repo
+
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version', required=False)
@@ -518,23 +531,35 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 # If no explicit output provided, use config templates
                 if not release_output_path:
                     # Build default draft path from config template
-                    draft_template = config.output.draft_output_path
-                    release_output_path = draft_template.format(
-                        repo=repo_name.replace('/', '-'),  # Sanitize repo name for filesystem
-                        version=version,
-                        major=target_version.major,
-                        minor=target_version.minor,
-                        patch=target_version.patch
-                    )
+                    template_context = {
+                        'code_repo': repo_name.replace('/', '-'),  # Sanitized for filesystem
+                        'issue_repo': _get_issues_repo(config),    # First ticket_repos or code_repo
+                        'version': version,
+                        'major': str(target_version.major),
+                        'minor': str(target_version.minor),
+                        'patch': str(target_version.patch)
+                    }
+                    try:
+                        release_output_path = render_template(config.output.draft_output_path, template_context)
+                    except TemplateError as e:
+                        console.print(f"[red]Error rendering draft_output_path template: {e}[/red]")
+                        sys.exit(1)
 
                 # Compute doc_output_path if configured
                 if config.output.doc_output_path and config.release_notes.doc_output_template:
-                    doc_output_path = config.output.doc_output_path.format(
-                        version=version,
-                        major=target_version.major,
-                        minor=target_version.minor,
-                        patch=target_version.patch
-                    )
+                    template_context = {
+                        'code_repo': repo_name.replace('/', '-'),
+                        'issue_repo': _get_issues_repo(config),
+                        'version': version,
+                        'major': str(target_version.major),
+                        'minor': str(target_version.minor),
+                        'patch': str(target_version.patch)
+                    }
+                    try:
+                        doc_output_path = render_template(config.output.doc_output_path, template_context)
+                    except TemplateError as e:
+                        console.print(f"[red]Error rendering doc_output_path template: {e}[/red]")
+                        sys.exit(1)
 
                 # Format markdown with media processing
                 result = note_generator.format_markdown(

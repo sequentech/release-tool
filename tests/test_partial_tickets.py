@@ -8,7 +8,7 @@ from datetime import datetime
 from release_tool.policies import PartialTicketMatch, PartialTicketReason
 from release_tool.config import Config, PolicyAction
 from release_tool.models import Author, Commit, PullRequest, ConsolidatedChange
-from release_tool.main import _handle_partial_tickets, _get_extraction_source
+from release_tool.commands.generate import _handle_partial_tickets, _get_extraction_source
 
 
 @pytest.fixture
@@ -225,7 +225,7 @@ class TestHandlePartialTickets:
         ]
 
         # Should not raise, should not print
-        _handle_partial_tickets(partials, test_config_ignore, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_ignore, debug=False)
 
         # No exception raised means success
         assert True
@@ -244,7 +244,7 @@ class TestHandlePartialTickets:
             )
         ]
 
-        _handle_partial_tickets(partials, test_config_warn, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_warn, debug=False)
 
         # Capture should include warning about partial matches
         # Note: Using rich Console means we can't easily capture output in tests
@@ -263,9 +263,9 @@ class TestHandlePartialTickets:
         ]
 
         with pytest.raises(RuntimeError) as exc_info:
-            _handle_partial_tickets(partials, test_config_error, debug=False)
+            _handle_partial_tickets(partials, set(), test_config_error, debug=False)
 
-        assert "Partial ticket matches found" in str(exc_info.value)
+        assert "Unresolved partial ticket matches found" in str(exc_info.value) or "Partial ticket matches found" in str(exc_info.value)
         assert "1 total" in str(exc_info.value)
 
     def test_error_policy_with_multiple_partials(self, test_config_error):
@@ -288,7 +288,7 @@ class TestHandlePartialTickets:
         ]
 
         with pytest.raises(RuntimeError) as exc_info:
-            _handle_partial_tickets(partials, test_config_error, debug=False)
+            _handle_partial_tickets(partials, set(), test_config_error, debug=False)
 
         assert "2 total" in str(exc_info.value)
 
@@ -297,11 +297,11 @@ class TestHandlePartialTickets:
         partials = []
 
         # Should not raise, should not print
-        _handle_partial_tickets(partials, test_config_warn, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_warn, debug=False)
 
         assert True
 
-    @patch('release_tool.main.console')
+    @patch('release_tool.commands.generate.console')
     def test_warn_consolidates_by_reason(self, mock_console, test_config_warn):
         """Test that warnings consolidate tickets by reason."""
         partials = [
@@ -324,7 +324,7 @@ class TestHandlePartialTickets:
             )
         ]
 
-        _handle_partial_tickets(partials, test_config_warn, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_warn, debug=False)
 
         # Verify console.print was called
         assert mock_console.print.called
@@ -339,7 +339,7 @@ class TestHandlePartialTickets:
         # Should mention the reason
         assert "older than sync cutoff" in call_args or "OLDER_THAN_CUTOFF" in call_args
 
-    @patch('release_tool.main.console')
+    @patch('release_tool.commands.generate.console')
     def test_warn_different_repo_includes_url(self, mock_console, test_config_warn):
         """Test that different_repo warnings include URLs."""
         partials = [
@@ -353,7 +353,7 @@ class TestHandlePartialTickets:
             )
         ]
 
-        _handle_partial_tickets(partials, test_config_warn, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_warn, debug=False)
 
         # Verify console.print was called
         assert mock_console.print.called
@@ -365,7 +365,7 @@ class TestHandlePartialTickets:
         assert "https://github.com/test/other-repo/issues/8624" in call_args
         assert "test/other-repo" in call_args
 
-    @patch('release_tool.main.console')
+    @patch('release_tool.commands.generate.console')
     def test_warn_shows_resolution_steps(self, mock_console, test_config_warn):
         """Test that warnings include resolution steps."""
         partials = [
@@ -377,7 +377,7 @@ class TestHandlePartialTickets:
             )
         ]
 
-        _handle_partial_tickets(partials, test_config_warn, debug=False)
+        _handle_partial_tickets(partials, set(), test_config_warn, debug=False)
 
         # Get the printed message
         call_args = mock_console.print.call_args[0][0]
