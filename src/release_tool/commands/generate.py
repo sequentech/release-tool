@@ -598,13 +598,13 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(f"[yellow]{'='*80}[/yellow]\n")
                 console.print(formatted_output)
                 console.print(f"\n[yellow]{'='*80}[/yellow]")
-                console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
                 if doc_formatted_output:
-                    console.print(f"\n[bold]Docusaurus Output:[/bold]")
+                    console.print(f"\n[bold]Documentation Release Notes Output:[/bold]")
                     console.print(f"[dim]{'─' * 60}[/dim]")
                     console.print(doc_formatted_output)
                     console.print(f"[dim]{'─' * 60}[/dim]")
                 console.print(f"[yellow]{'='*80}[/yellow]\n")
+                console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
             else:
                 # Write release notes file
                 release_path_obj = Path(release_output_path)
