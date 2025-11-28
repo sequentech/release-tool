@@ -537,7 +537,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         'version': version,
                         'major': str(target_version.major),
                         'minor': str(target_version.minor),
-                        'patch': str(target_version.patch)
+                        'patch': str(target_version.patch),
+                        'output_file_type': 'release'
                     }
                     try:
                         release_output_path = render_template(config.output.draft_output_path, template_context)
@@ -545,15 +546,29 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         console.print(f"[red]Error rendering draft_output_path template: {e}[/red]")
                         sys.exit(1)
 
-                # Compute doc_output_path if configured
-                if config.output.doc_output_path and config.release_notes.doc_output_template:
+                    # Compute doc_output_path if configured (as a draft)
+                    if config.output.doc_output_path and config.release_notes.doc_output_template:
+                        # Use draft_output_path for doc draft as well, but with type='doc'
+                        template_context['output_file_type'] = 'doc'
+                        try:
+                            doc_output_path = render_template(config.output.draft_output_path, template_context)
+                        except TemplateError as e:
+                            console.print(f"[red]Error rendering draft_output_path template for docs: {e}[/red]")
+                            sys.exit(1)
+                
+                # If explicit output provided, we use that for release notes.
+                # For docs, we use the configured doc_output_path (final path) as fallback?
+                # Or we skip doc generation?
+                # The previous behavior was to generate docs to doc_output_path.
+                elif config.output.doc_output_path and config.release_notes.doc_output_template:
                     template_context = {
                         'code_repo': repo_name.replace('/', '-'),
                         'issue_repo': _get_issues_repo(config),
                         'version': version,
                         'major': str(target_version.major),
                         'minor': str(target_version.minor),
-                        'patch': str(target_version.patch)
+                        'patch': str(target_version.patch),
+                        'output_file_type': 'doc'
                     }
                     try:
                         doc_output_path = render_template(config.output.doc_output_path, template_context)

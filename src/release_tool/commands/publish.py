@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 from typing import Optional
+from collections import defaultdict
 from datetime import datetime
 import click
 from rich.console import Console
@@ -118,7 +119,9 @@ def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -
                                .replace("{{version}}", version_filter)\
                                .replace("{{major}}", "*")\
                                .replace("{{minor}}", "*")\
-                               .replace("{{patch}}", "*")
+                               .replace("{{minor}}", "*")\
+                               .replace("{{patch}}", "*")\
+                               .replace("{{output_file_type}}", "*")
     else:
         # Match all versions
         glob_pattern = template.replace("{{code_repo}}", "*")\
@@ -126,7 +129,8 @@ def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -
                                .replace("{{version}}", "*")\
                                .replace("{{major}}", "*")\
                                .replace("{{minor}}", "*")\
-                               .replace("{{patch}}", "*")
+                               .replace("{{patch}}", "*")\
+                               .replace("{{output_file_type}}", "*")
 
     # Use glob on the current directory to find all matching files
     draft_files = list(Path('.').glob(glob_pattern))
@@ -152,33 +156,71 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
     table = Table(title=title)
     table.add_column("Code Repository", style="green")
     table.add_column("Version", style="cyan")
-    table.add_column("Type", style="yellow")
-    table.add_column("Created", style="magenta")
-    table.add_column("Path", style="blue")
+    table.add_column("Release Type", style="yellow")  # RC or Final
+    table.add_column("Content Type", style="magenta") # Doc, Release
+    table.add_column("Created", style="blue")
+    table.add_column("Path(s)", style="dim")
 
+    # Group by (repo_name, version_str)
+    grouped_drafts = defaultdict(list)
+    
     for file_path in draft_files:
-        # Extract repo name from parent directory (assuming default structure)
-        # If the template structure is different, this might need adjustment
+        # Extract repo name
         repo_name = file_path.parent.name
+        
+        # Extract version from filename
+        # Filename format: version-type.md or version.md
+        filename = file_path.stem
+        
+        # Simple heuristic to strip suffix if present
+        version_str = filename
+        content_type = "Release"
+        
+        if filename.endswith("-doc"):
+            version_str = filename[:-4]
+            content_type = "Doc"
+        elif filename.endswith("-release"):
+            version_str = filename[:-8]
+            content_type = "Release"
+            
+        grouped_drafts[(repo_name, version_str)].append({
+            'path': file_path,
+            'content_type': content_type,
+            'mtime': file_path.stat().st_mtime
+        })
 
-        # Try to extract version from filename (assuming filename is version.md)
-        version_str = file_path.stem
+    # Sort groups by mtime of newest file in group
+    sorted_groups = sorted(
+        grouped_drafts.items(),
+        key=lambda item: max(f['mtime'] for f in item[1]),
+        reverse=True
+    )
+
+    for (repo_name, version_str), files in sorted_groups:
         try:
             version_obj = SemanticVersion.parse(version_str)
             rel_type = "RC" if not version_obj.is_final() else "Final"
         except ValueError:
             rel_type = "Unknown"
 
-        # Get modification time
-        mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
-        created_str = mtime.strftime("%Y-%m-%d %H:%M")
+        # Collect content types and paths
+        content_types = sorted(list(set(f['content_type'] for f in files)))
+        content_type_str = ", ".join(content_types)
+        
+        # Get newest creation time
+        newest_mtime = max(f['mtime'] for f in files)
+        created_str = datetime.fromtimestamp(newest_mtime).strftime("%Y-%m-%d %H:%M")
+        
+        # Format paths (newline separated)
+        paths_str = "\n".join(str(f['path']) for f in files)
 
         table.add_row(
             repo_name,
             version_str,
             rel_type,
+            content_type_str,
             created_str,
-            str(file_path)
+            paths_str
         )
 
     console.print(table)
@@ -240,6 +282,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
 
         # Handle tri-state prerelease: "auto", "true", "false"
         prerelease_value = prerelease if prerelease is not None else config.output.prerelease
+        doc_output_enabled = config.output.doc_output_path is not None
 
         # Convert string values to appropriate types
         if isinstance(prerelease_value, str):
@@ -268,6 +311,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
             console.print(f"[dim]  • Draft release: {draft} (CLI override: {draft is not None})[/dim]")
             console.print(f"[dim]  • Prerelease setting: {prerelease_value} (CLI override: {prerelease is not None})[/dim]")
             console.print(f"[dim]  • Prerelease auto-detect: {prerelease_auto}[/dim]")
+            console.print(f"[dim]  • Documentation output enabled: {doc_output_enabled}[/dim]")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
         # Parse version
@@ -298,6 +342,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
         # Read release notes
         notes_path = None
         release_notes = None
+        doc_notes_path = None
+        doc_notes_content = None
 
         if debug:
             console.print("[bold cyan]Debug Mode: Release Notes[/bold cyan]")
@@ -347,12 +393,43 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print(f"[dim]  release-tool generate {version}[/dim]")
                 sys.exit(1)
             else:
-                # Multiple matches found, error and list them
-                console.print(f"[red]Error: Multiple draft release notes found for version {version}[/red]")
-                console.print("[yellow]Matching drafts:[/yellow]\n")
-                _display_draft_releases(matching_drafts, title="Matching Draft Releases")
-                console.print(f"\n[yellow]Please specify one with --notes-file[/yellow]")
-                sys.exit(1)
+                # Multiple matches found. Separate release and doc drafts
+                release_candidates = [d for d in matching_drafts if "doc" not in d.name.lower()]
+                doc_candidates = [d for d in matching_drafts if "doc" in d.name.lower()]
+                
+                # Handle release notes
+                if len(release_candidates) == 1:
+                     notes_path = release_candidates[0]
+                     release_notes = notes_path.read_text()
+                     if debug:
+                        console.print(f"[dim]Multiple drafts found, selected release candidate:[/dim] {notes_path}")
+                     else:
+                        console.print(f"[blue]Auto-found release notes from {notes_path}[/blue]")
+                elif len(release_candidates) == 0:
+                    # If we have doc drafts but no release drafts, that might be an issue if we expected release notes
+                    # But maybe the user only wants to publish docs? 
+                    # For now, let's assume we need release notes.
+                    console.print(f"[red]Error: No release notes draft found for version {version}[/red]")
+                    if doc_candidates:
+                        console.print(f"[dim](Found {len(doc_candidates)} doc drafts, but need release notes)[/dim]")
+                    sys.exit(1)
+                else:
+                    # Ambiguous release notes
+                    console.print(f"[red]Error: Multiple release note drafts found for version {version}[/red]")
+                    _display_draft_releases(release_candidates, title="Ambiguous Release Drafts")
+                    sys.exit(1)
+
+                # Handle doc notes
+                if len(doc_candidates) == 1:
+                    doc_notes_path = doc_candidates[0]
+                    doc_notes_content = doc_notes_path.read_text()
+                    if debug:
+                        console.print(f"[dim]Selected doc candidate:[/dim] {doc_notes_path}")
+                elif len(doc_candidates) > 1:
+                    if debug:
+                        console.print(f"[yellow]Warning: Multiple doc drafts found, ignoring:[/yellow]")
+                        for d in doc_candidates:
+                            console.print(f"  - {d}")
 
         if debug:
             # Show full release notes in debug mode
@@ -395,13 +472,14 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print(f"[yellow]  Status: {'Draft' if draft else 'Published'}[/yellow]")
                 console.print(f"[yellow]  URL: https://github.com/{repo_name}/releases/tag/v{version}[/yellow]")
 
-                # Show release notes preview
-                preview_length = 500
-                preview = release_notes[:preview_length]
-                if len(release_notes) > preview_length:
-                    preview += "\n[... truncated ...]"
-                console.print(f"\n[yellow]Release notes preview ({len(release_notes)} characters):[/yellow]")
-                console.print(f"[dim]{preview}[/dim]\n")
+                # Show release notes preview (only if not in debug mode to avoid duplication)
+                if not debug:
+                    preview_length = 500
+                    preview = release_notes[:preview_length]
+                    if len(release_notes) > preview_length:
+                        preview += "\n[... truncated ...]"
+                    console.print(f"\n[yellow]Release notes preview ({len(release_notes)} characters):[/yellow]")
+                    console.print(f"[dim]{preview}[/dim]\n")
             else:
                 console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
 
@@ -560,7 +638,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
             console.print(f"[yellow]Would NOT create pull request (--no-pr or config setting)[/yellow]\n")
 
         # Handle Docusaurus file if configured
-        if config.output.doc_output_path:
+        if doc_output_enabled:
             template_context = {
                 'version': version,
                 'major': str(target_version.major),
@@ -581,42 +659,53 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print("[dim]" + "=" * 60 + "[/dim]")
                 console.print(f"[dim]Doc template configured:[/dim] {config.release_notes.doc_output_template is not None}")
                 console.print(f"[dim]Doc path template:[/dim] {config.output.doc_output_path}")
-                console.print(f"[dim]Resolved path:[/dim] {doc_path}")
-                console.print(f"[dim]File exists:[/dim] {doc_file.exists()}")
+                console.print(f"[dim]Resolved final path:[/dim] {doc_path}")
+                console.print(f"[dim]Draft source path:[/dim] {doc_notes_path if doc_notes_path else 'None'}")
+                console.print(f"[dim]Draft content found:[/dim] {doc_notes_content is not None}")
 
-            if doc_file.exists():
-                # Read doc file content for debug mode
-                doc_content = None
+            if doc_notes_content:
+                # We have draft content to write
                 if debug:
-                    try:
-                        doc_content = doc_file.read_text()
-                        console.print(f"[dim]File size:[/dim] {len(doc_content)} characters ({doc_file.stat().st_size} bytes)")
-                    except Exception as e:
-                        console.print(f"[dim]Error reading file:[/dim] {e}")
-
-                # Show full content in debug mode
-                if debug and doc_content:
-                    console.print(f"\n[bold]Full Documentation Release Notes Content:[/bold]")
+                    console.print(f"\n[bold]Full Doc Notes Content:[/bold]")
                     console.print(f"[dim]{'─' * 60}[/dim]")
-                    console.print(doc_content)
+                    console.print(doc_notes_content)
                     console.print(f"[dim]{'─' * 60}[/dim]")
                     console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
                 if dry_run:
-                    console.print(f"[yellow]Docusaurus file: {doc_path}[/yellow]")
-                    console.print(f"[yellow]  Status: File exists ({doc_file.stat().st_size} bytes)[/yellow]")
-                    console.print(f"[yellow]  Note: You may want to commit this file to your repository[/yellow]")
-                    console.print(f"[dim]  Example: git add {doc_path} && git commit -m \"Add release notes for {version}\"[/dim]")
+                    console.print(f"[yellow]Would write documentation to: {doc_path}[/yellow]")
+                    console.print(f"[yellow]  Source: {doc_notes_path}[/yellow]")
+                    console.print(f"[yellow]  Size: {len(doc_notes_content)} characters[/yellow]")
+                else:
+                    # Write the file
+                    doc_file.parent.mkdir(parents=True, exist_ok=True)
+                    doc_file.write_text(doc_notes_content)
+                    console.print(f"[green]✓ Documentation written to:[/green]")
+                    console.print(f"[green]  {doc_file}[/green]")
+                    
+            elif doc_file.exists():
+                # Fallback: File exists but we didn't find a draft. 
+                # This might happen if we didn't run generate or if we're just re-publishing.
+                # Just report it.
+                if debug:
+                    try:
+                        existing_content = doc_file.read_text()
+                        console.print(f"[dim]Existing file size:[/dim] {len(existing_content)} characters")
+                    except Exception as e:
+                        console.print(f"[dim]Error reading file:[/dim] {e}")
+                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
+
+                if dry_run:
+                    console.print(f"[yellow]Existing Docusaurus file found: {doc_path}[/yellow]")
+                    console.print(f"[dim]No new draft content found to update it.[/dim]")
                 elif not debug:
-                    console.print(f"[blue]Docusaurus file found at {doc_file}[/blue]")
-                    console.print(f"[dim]Note: You may want to commit this file to your repository.[/dim]")
-                    console.print(f"[dim]Example: git add {doc_path} && git commit -m \"Add release notes for {version}\"[/dim]")
+                    console.print(f"[blue]Existing Docusaurus file found at {doc_file}[/blue]")
             else:
                 if debug:
-                    console.print(f"[dim]Status:[/dim] File not found")
+                    console.print(f"[dim]Status:[/dim] No draft found and no existing file")
                     console.print("[dim]" + "=" * 60 + "[/dim]\n")
                 elif dry_run:
-                    console.print(f"[dim]No Docusaurus file found at {doc_path}[/dim]")
+                    console.print(f"[dim]No documentation draft found and no existing file at {doc_path}[/dim]")
 
         # Dry-run summary
         if dry_run:
