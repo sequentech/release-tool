@@ -583,7 +583,7 @@ class ReleaseNoteGenerator:
 
         return grouped
 
-    def _process_html_like_whitespace(self, text: str) -> str:
+    def _process_html_like_whitespace(self, text: str, preserve_br: bool = False) -> str:
         """
         Process template output with HTML-like whitespace behavior.
 
@@ -598,7 +598,8 @@ class ReleaseNoteGenerator:
         processed = text.replace('&nbsp;', '<NBSP_MARKER>')
 
         # 2. Replace <br> and <br/> with newline markers
-        processed = processed.replace('<br/>', '\n<BR_MARKER>\n').replace('<br>', '\n<BR_MARKER>\n')
+        if not preserve_br:
+            processed = processed.replace('<br/>', '\n<BR_MARKER>\n').replace('<br>', '\n<BR_MARKER>\n')
 
         # 3. Collapse multiple spaces/tabs into single space (like HTML)
         processed = re.sub(r'[^\S\n]+', ' ', processed)
@@ -613,6 +614,8 @@ class ReleaseNoteGenerator:
                 lines_list.append('')
             elif line.strip():
                 lines_list.append(line)
+            elif preserve_br:
+                lines_list.append('')
 
         result = '\n'.join(lines_list)
 
@@ -713,8 +716,18 @@ class ReleaseNoteGenerator:
 
         # If doc_output_template is configured, generate Docusaurus version as well
         if self.config.release_notes.doc_output_template:
+            # Generate a version of release notes with preserved BR tags for the doc template
+            if self.config.release_notes.release_output_template:
+                release_notes_for_doc = self._format_with_master_template(
+                    grouped_notes, version, release_output_path, media_downloader, preserve_br=True
+                )
+            else:
+                release_notes_for_doc = self._format_with_legacy_layout(
+                    grouped_notes, version, release_output_path, media_downloader, preserve_br=True
+                )
+
             doc_notes = self._format_with_doc_template(
-                grouped_notes, version, doc_output_path, media_downloader, release_notes
+                grouped_notes, version, doc_output_path, media_downloader, release_notes_for_doc
             )
             return (release_notes, doc_notes)
 
@@ -726,7 +739,8 @@ class ReleaseNoteGenerator:
         grouped_notes: Dict[str, List[ReleaseNote]],
         version: str,
         output_path: Optional[str],
-        media_downloader
+        media_downloader,
+        preserve_br: bool = False
     ) -> str:
         """Format using the master release_output_template."""
         from jinja2 import Template
@@ -738,7 +752,7 @@ class ReleaseNoteGenerator:
         def render_entry(note_dict: Dict[str, Any]) -> str:
             """Render a single entry using the entry_template."""
             rendered = entry_template.render(**note_dict)
-            return self._process_html_like_whitespace(rendered)
+            return self._process_html_like_whitespace(rendered, preserve_br=preserve_br)
 
         # Prepare all notes with processed data
         categories_data = []
@@ -813,9 +827,23 @@ class ReleaseNoteGenerator:
             return self._process_html_like_whitespace(rendered)
 
         # Create a render_release_notes function that returns the already-rendered release notes
-        def render_release_notes() -> str:
+        def render_release_notes(preserve_br: bool = True) -> str:
             """Render the GitHub release notes (already computed)."""
-            return release_notes
+            # If preserve_br is requested, we should ideally have that version available.
+            # But currently we only pass one version.
+            # The caller (format_markdown) now passes the version with preserve_br=True as `release_notes`.
+            # So if preserve_br=True (default for doc template usage usually), we return it as is.
+            # If preserve_br=False, we might need to strip them?
+            # Actually, the requirement is: "have a render mode in the render function where "<br>" is not being yet substituted"
+            # So `release_notes` passed here IS the one with preserved BRs.
+            
+            if preserve_br:
+                return release_notes
+            
+            # If they want standard rendering (newlines instead of BRs), we need to process it
+            # But since we already processed it with preserve_br=True, the BRs are there.
+            # We can replace <br> and <br/> with newlines here if needed.
+            return release_notes.replace('<br>', '\n').replace('<br/>', '\n')
 
         # Prepare all notes with processed data
         categories_data = []
@@ -862,8 +890,12 @@ class ReleaseNoteGenerator:
             render_release_notes=render_release_notes
         )
 
-        # Process HTML-like whitespace
-        output = self._process_html_like_whitespace(output)
+
+        # Convert <br> tags to newlines first (manual conversion before processing)
+        output = output.replace('<br>', '\n').replace('<br/>', '\n')
+        
+        # Process HTML-like whitespace (preserve empty lines)
+        output = self._process_html_like_whitespace(output, preserve_br=True)
 
         # Replace &nbsp; markers with actual spaces (done at the very end)
         output = output.replace('<NBSP_MARKER>', ' ')
@@ -875,7 +907,8 @@ class ReleaseNoteGenerator:
         grouped_notes: Dict[str, List[ReleaseNote]],
         version: str,
         output_path: Optional[str],
-        media_downloader
+        media_downloader,
+        preserve_br: bool = False
     ) -> str:
         """Format using the legacy category-based layout."""
         from jinja2 import Template
@@ -912,7 +945,7 @@ class ReleaseNoteGenerator:
                 )
 
                 rendered_entry = entry_template.render(**note_dict)
-                processed_entry = self._process_html_like_whitespace(rendered_entry)
+                processed_entry = self._process_html_like_whitespace(rendered_entry, preserve_br=preserve_br)
                 lines.append(processed_entry)
 
                 # Add description if present and not already in template

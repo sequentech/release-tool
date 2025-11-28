@@ -600,7 +600,10 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(f"\n[yellow]{'='*80}[/yellow]")
                 console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
                 if doc_formatted_output:
-                    console.print(f"[yellow](Docusaurus output would also be generated but is not shown in dry-run)[/yellow]")
+                    console.print(f"\n[bold]Docusaurus Output:[/bold]")
+                    console.print(f"[dim]{'─' * 60}[/dim]")
+                    console.print(doc_formatted_output)
+                    console.print(f"[dim]{'─' * 60}[/dim]")
                 console.print(f"[yellow]{'='*80}[/yellow]\n")
             else:
                 # Write release notes file

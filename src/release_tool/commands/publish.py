@@ -665,19 +665,17 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
 
             if doc_notes_content:
                 # We have draft content to write
-                if debug:
-                    console.print(f"\n[bold]Full Doc Notes Content:[/bold]")
-                    console.print(f"[dim]{'─' * 60}[/dim]")
-                    console.print(doc_notes_content)
-                    console.print(f"[dim]{'─' * 60}[/dim]")
-                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
+                console.print(f"\n[bold]Full Doc Notes Content:[/bold]")
+                console.print(f"[dim]{'─' * 60}[/dim]")
+                console.print(doc_notes_content)
+                console.print(f"[dim]{'─' * 60}[/dim]")
+                console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
                 if dry_run:
                     console.print(f"[yellow]Would write documentation to: {doc_path}[/yellow]")
                     console.print(f"[yellow]  Source: {doc_notes_path}[/yellow]")
                     console.print(f"[yellow]  Size: {len(doc_notes_content)} characters[/yellow]")
                 else:
-                    # Write the file
                     doc_file.parent.mkdir(parents=True, exist_ok=True)
                     doc_file.write_text(doc_notes_content)
                     console.print(f"[green]✓ Documentation written to:[/green]")
