@@ -430,6 +430,7 @@ entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }}
 # Available variables:
 #   - {{ version }}      : Version string (e.g., "1.2.3")
 #   - {{ title }}        : Rendered release title (from title_template)
+#   - {{ year }}         : Current year (e.g., "2025")
 #   - {{ categories }}   : List of category dicts with 'name' and 'notes'
 #   - {{ all_notes }}    : Flat list of all note dicts (across categories)
 #   - {{ render_entry(note) }}: Function to render a note using entry_template
@@ -576,6 +577,7 @@ release_output_template = '''# {{ title }}
 # Available variables (in addition to all release_output_template variables):
 #   - {{ version }}                 : Version string (e.g., "1.2.3")
 #   - {{ title }}                   : Rendered release title (from title_template)
+#   - {{ year }}                    : Current year (e.g., "2025")
 #   - {{ categories }}              : List of category dicts with 'name' and 'notes'
 #   - {{ all_notes }}               : Flat list of all note dicts
 #   - {{ render_entry(note) }}      : Function to render a note using entry_template
@@ -587,7 +589,7 @@ release_output_template = '''# {{ title }}
 #   title: {{title}}
 #   ---
 #   <!--
-#   SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+#   SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
 #   SPDX-License-Identifier: AGPL-3.0-only
 #   -->
 #   {{ render_release_notes() }}<br>'''
@@ -598,7 +600,7 @@ id: release-{{version}}
 title: {{title}}
 ---
 <!--
-SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
 SPDX-License-Identifier: AGPL-3.0-only
 -->
 {{ render_release_notes() }}<br>'''

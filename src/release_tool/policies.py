@@ -788,13 +788,15 @@ class ReleaseNoteGenerator:
         title = title_template.render(version=version)
 
         # Render master template
+        from datetime import datetime
         master_template = Template(self.config.release_notes.release_output_template)
         output = master_template.render(
             version=version,
             title=title,
             categories=categories_data,
             all_notes=all_notes_data,
-            render_entry=render_entry
+            render_entry=render_entry,
+            year=datetime.now().year
         )
 
         # Process HTML-like whitespace
@@ -867,6 +869,7 @@ class ReleaseNoteGenerator:
         title = title_template.render(version=version)
 
         # Render doc template
+        from datetime import datetime
         doc_template = Template(self.config.release_notes.doc_output_template)
         output = doc_template.render(
             version=version,
@@ -874,7 +877,8 @@ class ReleaseNoteGenerator:
             categories=categories_data,
             all_notes=all_notes_data,
             render_entry=render_entry,
-            render_release_notes=render_release_notes
+            render_release_notes=render_release_notes,
+            year=datetime.now().year
         )
 
         # Process HTML-like whitespace WITHOUT preserve_br
