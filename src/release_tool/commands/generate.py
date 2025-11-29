@@ -132,76 +132,98 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 target_version = base_version.bump_patch()
                 console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
             elif new_rc:
-                # Find existing RCs for this base version and auto-increment
+                # Check if a final release exists for this base version
+                # If yes, bump patch first, then create RC
                 import re
-                rc_number = 0
-
-                # Check database and Git for existing RCs of the same base version
+                
                 try:
                     # Get config from context
                     cfg = ctx.obj['config']
+                    git_ops_temp = GitOperations(cfg.get_code_repo_path())
+                    existing_versions = git_ops_temp.get_version_tags()
+                    
+                    # Check if final release exists for this base version
+                    final_exists = any(
+                        v.major == base_version.major and
+                        v.minor == base_version.minor and
+                        v.patch == base_version.patch and
+                        v.is_final()
+                        for v in existing_versions
+                    )
+                    
+                    if final_exists:
+                        # Final release exists - bump patch and create rc.0
+                        console.print(f"[blue]Final release {base_version.to_string()} exists → Bumping to next patch[/blue]")
+                        base_version = base_version.bump_patch()
+                        target_version = base_version.bump_rc(0)
+                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+                    else:
+                        # No final release - find existing RCs for this base version and auto-increment
+                        rc_number = 0
 
-                    # First, try database (has all synced releases from GitHub)
-                    db = Database(cfg.database.path)
-                    db.connect()
+                        # Check database and Git for existing RCs of the same base version
+                        try:
+                            # First, try database (has all synced releases from GitHub)
+                            db = Database(cfg.database.path)
+                            db.connect()
 
-                    # Get repository to get repo_id
-                    repo_name = cfg.repository.code_repo
-                    repo = db.get_repository(repo_name)
+                            # Get repository to get repo_id
+                            repo_name = cfg.repository.code_repo
+                            repo = db.get_repository(repo_name)
 
-                    matching_rcs = []
+                            matching_rcs = []
 
-                    if repo:
-                        # Get all releases with version prefix matching our base version
-                        version_prefix = f"{base_version.major}.{base_version.minor}.{base_version.patch}-rc"
-                        all_releases = db.get_all_releases(
-                            repo_id=repo.id,
-                            version_prefix=version_prefix
-                        )
+                            if repo:
+                                # Get all releases with version prefix matching our base version
+                                version_prefix = f"{base_version.major}.{base_version.minor}.{base_version.patch}-rc"
+                                all_releases = db.get_all_releases(
+                                    repo_id=repo.id,
+                                    version_prefix=version_prefix
+                                )
 
-                        for release in all_releases:
-                            try:
-                                v = SemanticVersion.parse(release.version)
+                                for release in all_releases:
+                                    try:
+                                        v = SemanticVersion.parse(release.version)
+                                        if (v.major == base_version.major
+                                            and v.minor == base_version.minor
+                                            and v.patch == base_version.patch
+                                            and v.prerelease and v.prerelease.startswith('rc.')):
+                                            matching_rcs.append(v)
+                                    except ValueError:
+                                        continue
+
+                            db.close()
+
+                            # Also check Git tags in case there are local tags not synced
+                            git_versions = git_ops_temp.get_version_tags()
+                            for v in git_versions:
                                 if (v.major == base_version.major
                                     and v.minor == base_version.minor
                                     and v.patch == base_version.patch
                                     and v.prerelease and v.prerelease.startswith('rc.')):
-                                    matching_rcs.append(v)
-                            except ValueError:
-                                continue
+                                    if v not in matching_rcs:
+                                        matching_rcs.append(v)
 
-                    db.close()
+                            if matching_rcs:
+                                # Extract RC numbers and find the highest
+                                rc_numbers = []
+                                for v in matching_rcs:
+                                    match = re.match(r'rc\.(\\d+)', v.prerelease)
+                                    if match:
+                                        rc_numbers.append(int(match.group(1)))
 
-                    # Also check Git tags in case there are local tags not synced
-                    try:
-                        git_ops_temp = GitOperations(cfg.get_code_repo_path())
-                        git_versions = git_ops_temp.get_version_tags()
-                        for v in git_versions:
-                            if (v.major == base_version.major
-                                and v.minor == base_version.minor
-                                and v.patch == base_version.patch
-                                and v.prerelease and v.prerelease.startswith('rc.')):
-                                if v not in matching_rcs:
-                                    matching_rcs.append(v)
-                    except Exception:
-                        pass
+                                if rc_numbers:
+                                    rc_number = max(rc_numbers) + 1
+                        except Exception as e:
+                            # If we can't check existing RCs, start at 0
+                            console.print(f"[yellow]Warning: Could not check existing RCs ({e}), starting at rc.0[/yellow]")
 
-                    if matching_rcs:
-                        # Extract RC numbers and find the highest
-                        rc_numbers = []
-                        for v in matching_rcs:
-                            match = re.match(r'rc\.(\d+)', v.prerelease)
-                            if match:
-                                rc_numbers.append(int(match.group(1)))
-
-                        if rc_numbers:
-                            rc_number = max(rc_numbers) + 1
+                        target_version = base_version.bump_rc(rc_number)
+                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
                 except Exception as e:
-                    # If we can't check existing RCs, start at 0
-                    console.print(f"[yellow]Warning: Could not check existing RCs ({e}), starting at rc.0[/yellow]")
-
-                target_version = base_version.bump_rc(rc_number)
-                console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+                    console.print(f"[yellow]Warning: Could not check existing versions ({e}), creating rc.0[/yellow]")
+                    target_version = base_version.bump_rc(0)
+                    console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
 
             version = target_version.to_string()
             # Skip the auto-calculation below
@@ -274,33 +296,42 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     target_version = base_version.bump_patch()
                     console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
                 elif new_rc:
-                    # Find the next RC number for this version
+                    # Check if base_version is final - if so, bump patch first
                     import re
-                    rc_number = 0
+                    
+                    if base_version.is_final():
+                        # Base version is final - bump patch and create rc.0
+                        console.print(f"[blue]Latest version {base_version.to_string()} is final → Bumping to next patch[/blue]")
+                        base_version = base_version.bump_patch()
+                        target_version = base_version.bump_rc(0)
+                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+                    else:
+                        # Base version is not final - find the next RC number for this version
+                        rc_number = 0
 
-                    # Check existing versions for RCs of the same base version
-                    all_versions = git_ops.get_version_tags()
-                    matching_rcs = [
-                        v for v in all_versions
-                        if v.major == base_version.major
-                        and v.minor == base_version.minor
-                        and v.patch == base_version.patch
-                        and v.prerelease and v.prerelease.startswith('rc.')
-                    ]
+                        # Check existing versions for RCs of the same base version
+                        all_versions = git_ops.get_version_tags()
+                        matching_rcs = [
+                            v for v in all_versions
+                            if v.major == base_version.major
+                            and v.minor == base_version.minor
+                            and v.patch == base_version.patch
+                            and v.prerelease and v.prerelease.startswith('rc.')
+                        ]
 
-                    if matching_rcs:
-                        # Extract RC numbers and find the highest
-                        rc_numbers = []
-                        for v in matching_rcs:
-                            match = re.match(r'rc\.(\d+)', v.prerelease)
-                            if match:
-                                rc_numbers.append(int(match.group(1)))
+                        if matching_rcs:
+                            # Extract RC numbers and find the highest
+                            rc_numbers = []
+                            for v in matching_rcs:
+                                match = re.match(r'rc\.(\d+)', v.prerelease)
+                                if match:
+                                    rc_numbers.append(int(match.group(1)))
 
-                        if rc_numbers:
-                            rc_number = max(rc_numbers) + 1
+                            if rc_numbers:
+                                rc_number = max(rc_numbers) + 1
 
-                    target_version = base_version.bump_rc(rc_number)
-                    console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+                        target_version = base_version.bump_rc(rc_number)
+                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
 
                 version = target_version.to_string()
             else:

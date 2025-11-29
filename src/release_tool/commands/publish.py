@@ -266,6 +266,21 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
     if list_drafts:
         draft_files = _find_draft_releases(config)
         _display_draft_releases(draft_files)
+        
+        # Show tip with an example version if drafts exist
+        if draft_files:
+            # Extract version from the first (newest) draft
+            first_file = draft_files[0]
+            filename = first_file.stem
+            version_str = filename
+            if filename.endswith("-doc"):
+                version_str = filename[:-4]
+            elif filename.endswith("-release"):
+                version_str = filename[:-8]
+            
+            console.print(f"\n[yellow]Tip: Publish a release with:[/yellow]")
+            console.print(f"[dim]  release-tool publish {version_str}[/dim]")
+        
         return
 
     if not version:
@@ -389,8 +404,24 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print("[yellow]Available draft releases:[/yellow]\n")
                 all_drafts = _find_draft_releases(config)
                 _display_draft_releases(all_drafts, title="Available Draft Releases")
-                console.print(f"\n[yellow]Tip: Generate release notes first with:[/yellow]")
-                console.print(f"[dim]  release-tool generate {version}[/dim]")
+                
+                # Show tip with an available version if any exist
+                if all_drafts:
+                    # Extract version from the first (newest) draft
+                    first_file = all_drafts[0]
+                    filename = first_file.stem
+                    example_version = filename
+                    if filename.endswith("-doc"):
+                        example_version = filename[:-4]
+                    elif filename.endswith("-release"):
+                        example_version = filename[:-8]
+                    
+                    console.print(f"\n[yellow]Tip: Use an existing draft or generate new notes:[/yellow]")
+                    console.print(f"[dim]  release-tool publish {example_version}[/dim]")
+                    console.print(f"[dim]  release-tool generate {version}[/dim]")
+                else:
+                    console.print(f"\n[yellow]Tip: Generate release notes first with:[/yellow]")
+                    console.print(f"[dim]  release-tool generate {version}[/dim]")
                 sys.exit(1)
             else:
                 # Multiple matches found. Separate release and doc drafts
