@@ -518,7 +518,7 @@ entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }}
 #      {% endfor %}'''
 #
 # Default: Comprehensive template with breaking changes, migrations, descriptions, and categorized changes
-release_output_template = '''# {{ title }}<br>
+release_output_template = '''# {{ title }}
 {% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
 {% if breaking_with_desc|length > 0 %}
 <br>## 💥 Breaking Changes
@@ -543,17 +543,17 @@ release_output_template = '''# {{ title }}<br>
 {% if non_breaking_with_desc|length > 0 %}
 <br>## 📝 Highlights<br>
 {% for note in non_breaking_with_desc %}
-<br>### {{ note.title }}<br>
+<br>### {{ note.title }}
 {{ note.description }}
 {% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
 
 {% endfor %}
 {% endif %}
-<br>## 📋 All Changes<br>
+<br>## 📋 All Changes
 {% for category in categories %}
-<br>### {{ category.name }}<br>
+<br>### {{ category.name }}
 {% for note in category.notes %}
-{{ render_entry(note) }}<br>
+{% if loop.first %}<br>{% endif %}{{ render_entry(note) }}<br>
 {% endfor %}
 
 {% endfor %}'''

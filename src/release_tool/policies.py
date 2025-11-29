@@ -598,8 +598,9 @@ class ReleaseNoteGenerator:
         processed = text.replace('&nbsp;', '<NBSP_MARKER>')
 
         # 2. Replace <br> and <br/> with newline markers
+        # Use a unique marker that won't conflict with actual content
         if not preserve_br:
-            processed = processed.replace('<br/>', '\n<BR_MARKER>\n').replace('<br>', '\n<BR_MARKER>\n')
+            processed = processed.replace('<br/>', '<BR_MARKER>').replace('<br>', '<BR_MARKER>')
 
         # 3. Collapse multiple spaces/tabs into single space (like HTML)
         processed = re.sub(r'[^\S\n]+', ' ', processed)
@@ -608,10 +609,18 @@ class ReleaseNoteGenerator:
         processed = '\n'.join(line.strip() for line in processed.split('\n'))
 
         # 5. Remove empty lines (unless they came from <br> tags)
+        # Process line by line and handle BR_MARKER specially
         lines_list = []
         for line in processed.split('\n'):
-            if line == '<BR_MARKER>':
-                lines_list.append('')
+            # If line contains BR_MARKER, split it and add empty line after
+            if '<BR_MARKER>' in line:
+                parts = line.split('<BR_MARKER>')
+                for i, part in enumerate(parts):
+                    if part.strip():
+                        lines_list.append(part)
+                    # Add empty line after all BR_MARKER occurrences except the last part
+                    if i < len(parts) - 1:
+                        lines_list.append('')
             elif line.strip():
                 lines_list.append(line)
             elif preserve_br:
@@ -716,18 +725,8 @@ class ReleaseNoteGenerator:
 
         # If doc_output_template is configured, generate Docusaurus version as well
         if self.config.release_notes.doc_output_template:
-            # Generate a version of release notes with preserved BR tags for the doc template
-            if self.config.release_notes.release_output_template:
-                release_notes_for_doc = self._format_with_master_template(
-                    grouped_notes, version, release_output_path, media_downloader, preserve_br=True
-                )
-            else:
-                release_notes_for_doc = self._format_with_legacy_layout(
-                    grouped_notes, version, release_output_path, media_downloader, preserve_br=True
-                )
-
             doc_notes = self._format_with_doc_template(
-                grouped_notes, version, doc_output_path, media_downloader, release_notes_for_doc
+                grouped_notes, version, doc_output_path, media_downloader, release_notes
             )
             return (release_notes, doc_notes)
 
@@ -827,23 +826,11 @@ class ReleaseNoteGenerator:
             return self._process_html_like_whitespace(rendered)
 
         # Create a render_release_notes function that returns the already-rendered release notes
+        # wrapped in a marker to prevent re-processing
         def render_release_notes(preserve_br: bool = True) -> str:
             """Render the GitHub release notes (already computed)."""
-            # If preserve_br is requested, we should ideally have that version available.
-            # But currently we only pass one version.
-            # The caller (format_markdown) now passes the version with preserve_br=True as `release_notes`.
-            # So if preserve_br=True (default for doc template usage usually), we return it as is.
-            # If preserve_br=False, we might need to strip them?
-            # Actually, the requirement is: "have a render mode in the render function where "<br>" is not being yet substituted"
-            # So `release_notes` passed here IS the one with preserved BRs.
-            
-            if preserve_br:
-                return release_notes
-            
-            # If they want standard rendering (newlines instead of BRs), we need to process it
-            # But since we already processed it with preserve_br=True, the BRs are there.
-            # We can replace <br> and <br/> with newlines here if needed.
-            return release_notes.replace('<br>', '\n').replace('<br/>', '\n')
+            # Return the release notes wrapped in a marker to protect from re-processing
+            return '<RELEASE_NOTES_MARKER>'
 
         # Prepare all notes with processed data
         categories_data = []
@@ -890,12 +877,13 @@ class ReleaseNoteGenerator:
             render_release_notes=render_release_notes
         )
 
-
-        # Convert <br> tags to newlines first (manual conversion before processing)
-        output = output.replace('<br>', '\n').replace('<br/>', '\n')
+        # Process HTML-like whitespace WITHOUT preserve_br
+        # This will convert <br> tags to proper newlines without extra blank lines
+        output = self._process_html_like_whitespace(output, preserve_br=False)
         
-        # Process HTML-like whitespace (preserve empty lines)
-        output = self._process_html_like_whitespace(output, preserve_br=True)
+        # Replace the marker with the actual release notes AFTER processing
+        # This way the release notes won't be re-processed
+        output = output.replace('<RELEASE_NOTES_MARKER>', release_notes)
 
         # Replace &nbsp; markers with actual spaces (done at the very end)
         output = output.replace('<NBSP_MARKER>', ' ')
