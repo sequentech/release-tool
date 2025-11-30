@@ -133,6 +133,14 @@ class TicketTemplateConfig(BaseModel):
         description="Custom fields to set in the GitHub Project. Maps field name to field value. "
                     "Example: {'Priority': 'High', 'Sprint': '2024-Q1'}"
     )
+    type: Optional[str] = Field(
+        default=None,
+        description="Issue type to set (e.g., 'Task', 'Bug'). This is often mapped to a label or a specific field."
+    )
+    milestone: Optional[str] = Field(
+        default=None,
+        description="Milestone name to assign the ticket to (e.g., 'v1.0.0')."
+    )
 
 
 class TicketPolicyConfig(BaseModel):
@@ -480,10 +488,6 @@ class OutputConfig(BaseModel):
     pr_templates: PRTemplateConfig = Field(
         default_factory=PRTemplateConfig,
         description="Templates for PR branch, title, and body"
-    )
-    pr_target_branch: str = Field(
-        default="main",
-        description="Target branch for release notes PR"
     )
 
 

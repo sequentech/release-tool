@@ -143,7 +143,6 @@ output_file = "docs/releases/{major}.{minor}.{patch}.md"
 create_github_release = false
 create_pr = false
 pr_branch_template = "release-notes-{version}"
-pr_target_branch = "main"
 ```
 
 ## How It Works

@@ -141,7 +141,6 @@ body_template = '''Automated release notes for version {version}.
 
 ## Summary
 This PR adds release notes for {version} with {num_changes} changes across {num_categories} categories.'''
-pr_target_branch = "main"
 """
 
     config_path = Path("release_tool.toml")

@@ -832,6 +832,62 @@ NOTE: Please also update deployment status when a release is deployed in an envi
 # Default: ["release", "devops", "infrastructure"]
 labels = ["release", "devops", "infrastructure"]
 
+# assignee: GitHub username to assign the ticket to
+# If not specified (or commented out), the ticket is assigned to the user
+# authenticated with the GitHub token (the one running the tool).
+# Set this if you want to assign the release ticket to a specific person or bot.
+# Example: "johndoe"
+# assignee = "johndoe"
+
+# project_id: GitHub Project V2 ID (number) to add the ticket to
+# This allows automatically adding the release ticket to a GitHub Project board.
+# The ID is the number found in the project URL: github.com/orgs/ORG/projects/123
+# NOTE: This requires the GitHub token to have 'project' scope (for PATs) or
+# appropriate permissions (for GitHub Apps).
+# Example: "123"
+project_id = "1"
+
+# project_status: Status to set in the GitHub Project
+# Sets the value of the "Status" field in the project board.
+# The value must EXACTLY match a valid status option in your project (case-sensitive).
+# This setting is ignored if project_id is not set.
+# Common values: "Todo", "In Progress", "Backlog", "Ready"
+# Example: "Todo"
+project_status = "In progress"
+
+# project_fields: Custom fields to set in the GitHub Project
+# Allows setting additional metadata fields in the project board.
+# This is a key-value map where:
+#   - Key: The exact name of the field in the project (e.g., "Priority", "Sprint")
+#   - Value: The value to set (must match valid options for single-select fields)
+# This setting is ignored if project_id is not set.
+# Example: { "Priority" = "High", "Team" = "DevOps" }
+# project_fields = { "Team" = "Product", "Estimate" = "3" }
+
+# type: Issue type to set
+# Specifies the type of the issue (e.g., "Task", "Bug", "Feature").
+# This is typically mapped to a label with the same name.
+# Example: "Task"
+type = "Task"
+
+# milestone: Milestone to assign the ticket to
+# Specifies the name of the GitHub milestone to assign.
+# The milestone must exist in the repository.
+#
+# Available variables:
+#   - {{version}}: Full version string (e.g., "1.2.3")
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{year}}: Current year (e.g., "2025")
+#   - {{quarter_uppercase}}: Current quarter (e.g., "Q4")
+#
+# Examples:
+#   - "{{year}}_{{quarter_uppercase}}": Time-based (DEFAULT) -> "2025_Q4"
+#   - "v{{major}}.{{minor}}": Version-based -> "v1.2"
+#   - "Release {{version}}": Full version -> "Release 1.2.3"
+#
+# Default: "{{year}}_{{quarter_uppercase}}"
+milestone = "{{year}}_{{quarter_uppercase}}"
+
 # =============================================================================
 # Pull Request Templates (for create_pr)
 # =============================================================================
@@ -845,7 +901,7 @@ labels = ["release", "devops", "infrastructure"]
 #   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
 #   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
-#   - {{target_branch}}: Target branch for PR (from pr_target_branch)
+#   - {{target_branch}}: Target branch for PR
 #
 # Available variables (only when create_ticket=true and ticket was created):
 #   - {{issue_number}}: Auto-generated issue number
@@ -913,12 +969,6 @@ Automated release notes for version {{version}}.
 
 ## Summary
 This PR adds release notes for {{version}} with {{num_changes}} changes across {{num_categories}} categories.'''
-
-# pr_target_branch: Target branch for the release notes PR
-# The branch where the PR will be merged
-# Default: "main"
-# Common values: "main", "master", "develop"
-pr_target_branch = "main"
 
 # =============================================================================
 # End of Configuration

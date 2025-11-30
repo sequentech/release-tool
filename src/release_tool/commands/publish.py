@@ -62,49 +62,28 @@ def _create_release_ticket(
     issues_repo = _get_issues_repo(config)
     repo_full_name = config.repository.code_repo
 
+    # Prepare labels
+    final_labels = config.output.ticket_templates.labels.copy()
+    # Note: Issue type is handled separately via GraphQL, not as a label
+
+    # Prepare milestone
+    milestone_obj = None
+    milestone_name = None
+    
+    if config.output.ticket_templates.milestone:
+        try:
+            milestone_name = render_template(
+                config.output.ticket_templates.milestone,
+                template_context
+            )
+            if not dry_run:
+                milestone_obj = github_client.get_milestone_by_title(issues_repo, milestone_name)
+        except TemplateError as e:
+            console.print(f"[red]Error rendering milestone template: {e}[/red]")
+
     # Check for existing ticket association if override is enabled
     existing_association = db.get_ticket_association(repo_full_name, version) if not dry_run else None
-
-    if existing_association and override:
-        # Reuse existing ticket
-        if debug or not dry_run:
-            console.print(f"[blue]Reusing existing ticket #{existing_association['ticket_number']} (--force)[/blue]")
-            console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
-
-        # Render ticket templates to update content
-        try:
-            title = render_template(
-                config.output.ticket_templates.title_template,
-                template_context
-            )
-            body = render_template(
-                config.output.ticket_templates.body_template,
-                template_context
-            )
-            
-            if not dry_run:
-                github_client.update_issue(
-                    repo_full_name=issues_repo,
-                    issue_number=existing_association['ticket_number'],
-                    title=title,
-                    body=body,
-                    labels=config.output.ticket_templates.labels
-                )
-                console.print(f"[green]Updated ticket #{existing_association['ticket_number']} details (title, body, labels)[/green]")
-                
-        except TemplateError as e:
-            console.print(f"[red]Error rendering ticket template for update: {e}[/red]")
-            # Continue anyway with existing ticket
-
-        return {
-            'number': str(existing_association['ticket_number']),
-            'url': existing_association['ticket_url']
-        }
-    elif existing_association and not override:
-        console.print(f"[yellow]Warning: Ticket already exists for {version} (#{existing_association['ticket_number']})[/yellow]")
-        console.print(f"[yellow]Use --force \\[draft|release] to reuse the existing ticket[/yellow]")
-        console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
-        return None
+    result = None
 
     # Render ticket templates
     try:
@@ -120,81 +99,126 @@ def _create_release_ticket(
         console.print(f"[red]Error rendering ticket template: {e}[/red]")
         return None
 
-    if dry_run or debug:
-        console.print("\n[cyan]Release Tracking Ticket:[/cyan]")
-        console.print(f"  Repository: {issues_repo}")
-        console.print(f"  Title: {title}")
-        console.print(f"  Labels: {', '.join(config.output.ticket_templates.labels)}")
+    if existing_association and override:
+        # Reuse existing ticket
+        if debug or not dry_run:
+            console.print(f"[blue]Reusing existing ticket #{existing_association['ticket_number']} (--force)[/blue]")
+            console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
 
-        # Show assignee if configured
-        assignee = config.output.ticket_templates.assignee
-        if not assignee and not dry_run:
-            # Get current user if not dry-run
-            assignee = github_client.get_authenticated_user() if github_client else "current user"
-        console.print(f"  Assignee: {assignee or 'current user'}")
+        if not dry_run:
+            github_client.update_issue(
+                repo_full_name=issues_repo,
+                issue_number=existing_association['ticket_number'],
+                title=title,
+                body=body,
+                labels=final_labels,
+                milestone=milestone_obj
+            )
+            
+            # Update issue type if specified
+            if config.output.ticket_templates.type:
+                github_client.set_issue_type(
+                    repo_full_name=issues_repo,
+                    issue_number=existing_association['ticket_number'],
+                    type_name=config.output.ticket_templates.type
+                )
 
-        # Show project assignment if configured
-        if config.output.ticket_templates.project_id:
-            console.print(f"  Project ID: {config.output.ticket_templates.project_id}")
-            if config.output.ticket_templates.project_status:
-                console.print(f"  Project Status: {config.output.ticket_templates.project_status}")
-            if config.output.ticket_templates.project_fields:
-                console.print(f"  Project Fields: {config.output.ticket_templates.project_fields}")
+            console.print(f"[green]Updated ticket #{existing_association['ticket_number']} details (title, body, labels, milestone, type)[/green]")
 
-    if debug:
-        console.print(f"\n[dim]Body:[/dim]")
-        console.print(f"[dim]{'─' * 60}[/dim]")
-        console.print(f"[dim]{body}[/dim]")
-        console.print(f"[dim]{'─' * 60}[/dim]\n")
+        result = {
+            'number': str(existing_association['ticket_number']),
+            'url': existing_association['ticket_url']
+        }
+    elif existing_association and not override:
+        console.print(f"[yellow]Warning: Ticket already exists for {version} (#{existing_association['ticket_number']})[/yellow]")
+        console.print(f"[yellow]Use --force \\[draft|release] to reuse the existing ticket[/yellow]")
+        console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
+        return None
+    else:
+        # Create new ticket
+        if dry_run or debug:
+            console.print("\n[cyan]Release Tracking Ticket:[/cyan]")
+            console.print(f"  Repository: {issues_repo}")
+            console.print(f"  Title: {title}")
+            console.print(f"  Labels: {', '.join(final_labels)}")
+            if config.output.ticket_templates.type:
+                console.print(f"  Issue Type: {config.output.ticket_templates.type}")
+            if milestone_name:
+                console.print(f"  Milestone: {milestone_name}")
 
-    if dry_run:
-        return {'number': 'XXXX', 'url': f'https://github.com/{issues_repo}/issues/XXXX'}
+            # Show assignee if configured
+            assignee = config.output.ticket_templates.assignee
+            if not assignee and not dry_run:
+                # Get current user if not dry-run
+                assignee = github_client.get_authenticated_user() if github_client else "current user"
+            console.print(f"  Assignee: {assignee or 'current user'}")
 
-    # Create the issue
-    if debug:
-        console.print(f"[cyan]Creating ticket in {issues_repo}...[/cyan]")
+            # Show project assignment if configured
+            if config.output.ticket_templates.project_id:
+                console.print(f"  Project ID: {config.output.ticket_templates.project_id}")
+                if config.output.ticket_templates.project_status:
+                    console.print(f"  Project Status: {config.output.ticket_templates.project_status}")
+                if config.output.ticket_templates.project_fields:
+                    console.print(f"  Project Fields: {config.output.ticket_templates.project_fields}")
 
-    result = github_client.create_issue(
-        repo_full_name=issues_repo,
-        title=title,
-        body=body,
-        labels=config.output.ticket_templates.labels
-    )
+        if debug:
+            console.print(f"\n[dim]Body:[/dim]")
+            console.print(f"[dim]{'─' * 60}[/dim]")
+            console.print(f"[dim]{body}[/dim]")
+            console.print(f"[dim]{'─' * 60}[/dim]\n")
+
+        if dry_run:
+            return {'number': 'XXXX', 'url': f'https://github.com/{issues_repo}/issues/XXXX'}
+
+        # Create the issue
+        if debug:
+            console.print(f"[cyan]Creating ticket in {issues_repo}...[/cyan]")
+
+        result = github_client.create_issue(
+            repo_full_name=issues_repo,
+            title=title,
+            body=body,
+            labels=final_labels,
+            milestone=milestone_obj,
+            issue_type=config.output.ticket_templates.type
+        )
+
+        if result:
+            # Save association to database
+            db.save_ticket_association(
+                repo_full_name=repo_full_name,
+                version=version,
+                ticket_number=int(result['number']),
+                ticket_url=result['url']
+            )
+
+            if debug:
+                console.print(f"[dim]Saved ticket association to database[/dim]")
 
     if not result:
         return None
 
-    # Assign issue to user
-    assignee = config.output.ticket_templates.assignee
-    if not assignee:
-        assignee = github_client.get_authenticated_user()
+    # Assign issue to user (for both new and updated tickets)
+    if not dry_run:
+        assignee = config.output.ticket_templates.assignee
+        if not assignee:
+            assignee = github_client.get_authenticated_user()
 
-    if assignee:
-        github_client.assign_issue(
-            repo_full_name=issues_repo,
-            issue_number=int(result['number']),
-            assignee=assignee
-        )
+        if assignee:
+            github_client.assign_issue(
+                repo_full_name=issues_repo,
+                issue_number=int(result['number']),
+                assignee=assignee
+            )
 
-    # Add to project if configured
-    if config.output.ticket_templates.project_id:
-        github_client.assign_issue_to_project(
-            issue_url=result['url'],
-            project_id=config.output.ticket_templates.project_id,
-            status=config.output.ticket_templates.project_status,
-            custom_fields=config.output.ticket_templates.project_fields
-        )
-
-    # Save association to database
-    db.save_ticket_association(
-        repo_full_name=repo_full_name,
-        version=version,
-        ticket_number=int(result['number']),
-        ticket_url=result['url']
-    )
-
-    if debug:
-        console.print(f"[dim]Saved ticket association to database[/dim]")
+        # Add to project if configured (for both new and updated tickets)
+        if config.output.ticket_templates.project_id:
+            github_client.assign_issue_to_project(
+                issue_url=result['url'],
+                project_id=config.output.ticket_templates.project_id,
+                status=config.output.ticket_templates.project_status,
+                custom_fields=config.output.ticket_templates.project_fields
+            )
 
     return result
 
@@ -762,6 +786,11 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
                 # Build initial template context
                 issues_repo = _get_issues_repo(config)
+                
+                # Calculate date-based variables
+                now = datetime.now()
+                quarter = (now.month - 1) // 3 + 1
+                quarter_uppercase = f"Q{quarter}"
 
                 template_context = {
                     'code_repo': config.repository.code_repo.replace('/', '-'),
@@ -772,6 +801,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     'major': str(target_version.major),
                     'minor': str(target_version.minor),
                     'patch': str(target_version.patch),
+                    'year': str(now.year),
+                    'quarter_uppercase': quarter_uppercase,
                     'num_changes': num_changes if num_changes > 0 else 'several',
                     'num_categories': num_categories if num_categories > 0 else 'multiple',
                     'target_branch': target_branch
@@ -896,7 +927,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     console.print("[dim]" + "=" * 60 + "[/dim]")
                     console.print(f"[dim]Branch name:[/dim] {branch_name}")
                     console.print(f"[dim]PR title:[/dim] {pr_title}")
-                    console.print(f"[dim]Target branch:[/dim] {config.output.pr_target_branch}")
+                    console.print(f"[dim]Target branch:[/dim] {target_branch}")
                     console.print(f"[dim]Primary file path:[/dim] {pr_file_path}")
                     if additional_files:
                         for path in additional_files:

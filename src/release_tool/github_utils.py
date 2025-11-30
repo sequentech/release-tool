@@ -959,7 +959,9 @@ class GitHubClient:
         repo_full_name: str,
         title: str,
         body: str,
-        labels: Optional[List[str]] = None
+        labels: Optional[List[str]] = None,
+        milestone: Optional[Any] = None,
+        issue_type: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Create a GitHub issue.
 
@@ -968,6 +970,8 @@ class GitHubClient:
             title: Issue title
             body: Issue body/description
             labels: List of label names to apply
+            milestone: Milestone object or number to assign
+            issue_type: Issue type name (e.g. "Task", "Bug")
 
         Returns:
             Dictionary with 'number' and 'url' keys if successful, None otherwise
@@ -986,12 +990,22 @@ class GitHubClient:
                         # Label doesn't exist, skip it or create it
                         console.print(f"[yellow]Warning: Label '{label_name}' not found in {repo_full_name}, skipping[/yellow]")
 
+            # Prepare kwargs
+            kwargs = {
+                'title': title,
+                'body': body,
+                'labels': label_objects if label_objects else []
+            }
+            
+            if milestone:
+                kwargs['milestone'] = milestone
+
             # Create the issue
-            issue = repo.create_issue(
-                title=title,
-                body=body,
-                labels=label_objects if label_objects else []
-            )
+            issue = repo.create_issue(**kwargs)
+
+            # Set issue type if specified
+            if issue_type:
+                self.set_issue_type(repo_full_name, issue.number, issue_type)
 
             console.print(f"[green]Created issue #{issue.number}: {issue.html_url}[/green]")
             return {
@@ -1000,6 +1014,21 @@ class GitHubClient:
             }
         except GithubException as e:
             console.print(f"[red]Error creating issue: {e}[/red]")
+            return None
+
+    def get_milestone_by_title(self, repo_full_name: str, title: str) -> Optional[Any]:
+        """Get a milestone by its title."""
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            milestones = repo.get_milestones(state='open')
+            for milestone in milestones:
+                if milestone.title == title:
+                    return milestone
+            
+            console.print(f"[yellow]Warning: Milestone '{title}' not found in {repo_full_name}[/yellow]")
+            return None
+        except GithubException as e:
+            console.print(f"[yellow]Warning: Error fetching milestones: {e}[/yellow]")
             return None
 
     def create_pr_for_release_notes(
@@ -1503,7 +1532,8 @@ class GitHubClient:
         issue_number: int,
         title: Optional[str] = None,
         body: Optional[str] = None,
-        labels: Optional[List[str]] = None
+        labels: Optional[List[str]] = None,
+        milestone: Optional[Any] = None
     ) -> bool:
         """Update an existing issue."""
         try:
@@ -1517,6 +1547,8 @@ class GitHubClient:
                 kwargs['body'] = body
             if labels is not None:
                 kwargs['labels'] = labels
+            if milestone is not None:
+                kwargs['milestone'] = milestone
                 
             if kwargs:
                 issue.edit(**kwargs)
@@ -1534,3 +1566,94 @@ class GitHubClient:
     ) -> bool:
         """Update the body of an existing issue."""
         return self.update_issue(repo_full_name, issue_number, body=body)
+
+    def set_issue_type(self, repo_full_name: str, issue_number: int, type_name: str) -> bool:
+        """Set the issue type for an issue using GraphQL."""
+        import requests
+
+        owner, repo = repo_full_name.split('/')
+
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+                issue(number: $number) {
+                    id
+                }
+                issueTypes(first: 20) {
+                    nodes {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": {"owner": owner, "repo": repo, "number": int(issue_number)}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[red]GraphQL Error fetching issue/types: {data['errors']}[/red]")
+                return False
+
+            repository = data.get("data", {}).get("repository")
+            if not repository:
+                return False
+
+            issue_id = repository.get("issue", {}).get("id")
+            issue_types = repository.get("issueTypes", {}).get("nodes", [])
+
+            if not issue_id:
+                console.print(f"[red]Could not find issue node ID for #{issue_number}[/red]")
+                return False
+
+            # Find the type ID
+            type_id = None
+            for it in issue_types:
+                if it["name"].lower() == type_name.lower():
+                    type_id = it["id"]
+                    break
+
+            if not type_id:
+                console.print(f"[yellow]Warning: Issue type '{type_name}' not found in repository. Available types: {', '.join(t['name'] for t in issue_types)}[/yellow]")
+                return False
+
+            # Mutation to update issue type
+            mutation = """
+            mutation($issueId: ID!, $issueTypeId: ID!) {
+                updateIssue(input: {id: $issueId, issueTypeId: $issueTypeId}) {
+                    issue {
+                        id
+                    }
+                }
+            }
+            """
+
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": mutation, "variables": {"issueId": issue_id, "issueTypeId": type_id}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[red]GraphQL Error setting issue type: {data['errors']}[/red]")
+                return False
+
+            console.print(f"[green]Set issue type to '{type_name}'[/green]")
+            return True
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error setting issue type: {e}[/yellow]")
+            return False
