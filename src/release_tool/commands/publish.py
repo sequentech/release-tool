@@ -71,6 +71,31 @@ def _create_release_ticket(
             console.print(f"[blue]Reusing existing ticket #{existing_association['ticket_number']} (--force)[/blue]")
             console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
 
+        # Render ticket templates to update content
+        try:
+            title = render_template(
+                config.output.ticket_templates.title_template,
+                template_context
+            )
+            body = render_template(
+                config.output.ticket_templates.body_template,
+                template_context
+            )
+            
+            if not dry_run:
+                github_client.update_issue(
+                    repo_full_name=issues_repo,
+                    issue_number=existing_association['ticket_number'],
+                    title=title,
+                    body=body,
+                    labels=config.output.ticket_templates.labels
+                )
+                console.print(f"[green]Updated ticket #{existing_association['ticket_number']} details (title, body, labels)[/green]")
+                
+        except TemplateError as e:
+            console.print(f"[red]Error rendering ticket template for update: {e}[/red]")
+            # Continue anyway with existing ticket
+
         return {
             'number': str(existing_association['ticket_number']),
             'url': existing_association['ticket_url']
@@ -842,13 +867,24 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     pr_title = render_template(config.output.pr_templates.title_template, template_context)
                     pr_body = render_template(config.output.pr_templates.body_template, template_context)
                     
-                    # Render output paths for PR
-                    release_output_path = render_template(config.output.release_output_path, template_context)
-                    
+                    # Determine which file(s) to include in the PR
+                    # If Docusaurus output is enabled, we prioritize it and suppress the default release output
+                    # to avoid double commits and unwanted files.
                     additional_files = {}
+                    
                     if doc_output_enabled and doc_notes_content:
-                         doc_output_path = render_template(config.output.doc_output_path, template_context)
-                         additional_files[doc_output_path] = doc_notes_content
+                         # Use Docusaurus file as the primary file
+                         pr_file_path = render_template(config.output.doc_output_path, template_context)
+                         pr_content = doc_notes_content
+                         if debug:
+                             console.print(f"[dim]Using Docusaurus output as primary PR file: {pr_file_path}[/dim]")
+                    else:
+                         # Use default release output
+                         pr_file_path = render_template(config.output.release_output_path, template_context)
+                         pr_content = release_notes
+                         if debug:
+                             console.print(f"[dim]Using standard release output as primary PR file: {pr_file_path}[/dim]")
+                    
                 except TemplateError as e:
                     console.print(f"[red]Error rendering PR template: {e}[/red]")
                     if debug:
@@ -861,7 +897,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     console.print(f"[dim]Branch name:[/dim] {branch_name}")
                     console.print(f"[dim]PR title:[/dim] {pr_title}")
                     console.print(f"[dim]Target branch:[/dim] {config.output.pr_target_branch}")
-                    console.print(f"[dim]Release notes path:[/dim] {release_output_path}")
+                    console.print(f"[dim]Primary file path:[/dim] {pr_file_path}")
                     if additional_files:
                         for path in additional_files:
                             console.print(f"[dim]Additional file:[/dim] {path}")
@@ -874,7 +910,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     console.print(f"[yellow]  Branch: {branch_name}[/yellow]")
                     console.print(f"[yellow]  Title: {pr_title}[/yellow]")
                     console.print(f"[yellow]  Target: {target_branch}[/yellow]")
-                    console.print(f"[yellow]  Release notes path:[/yellow] {release_output_path}")
+                    console.print(f"[yellow]  Primary file:[/yellow] {pr_file_path}")
                     if additional_files:
                         for path in additional_files:
                             console.print(f"[yellow]  Additional file:[/yellow] {path}")
@@ -885,26 +921,32 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     pr_url = github_client.create_pr_for_release_notes(
                         repo_name,
                         pr_title,
-                        release_output_path,
-                        release_notes,
+                        pr_file_path,
+                        pr_content,
                         branch_name,
                         target_branch,
                         pr_body,
                         additional_files=additional_files
                     )
-                    console.print(f"[green]✓ Pull request created successfully[/green]")
+                    
+                    if pr_url:
+                        console.print(f"[green]✓ Pull request processed successfully[/green]")
 
-                    # Update ticket body with real PR link
-                    if ticket_result and pr_url and not dry_run:
-                        try:
-                            repo = github_client.gh.get_repo(issues_repo)
-                            issue = repo.get_issue(int(ticket_result['number']))
-                            
-                            if issue.body and 'PR_LINK_PLACEHOLDER' in issue.body:
-                                new_body = issue.body.replace('PR_LINK_PLACEHOLDER', pr_url)
-                                github_client.update_issue_body(issues_repo, int(ticket_result['number']), new_body)
-                        except Exception as e:
-                            console.print(f"[yellow]Warning: Could not update ticket body: {e}[/yellow]")
+                        # Update ticket body with real PR link
+                        if ticket_result and not dry_run:
+                            try:
+                                repo = github_client.gh.get_repo(issues_repo)
+                                issue = repo.get_issue(int(ticket_result['number']))
+                                
+                                # Check if we need to update the link
+                                if issue.body and 'PR_LINK_PLACEHOLDER' in issue.body:
+                                    new_body = issue.body.replace('PR_LINK_PLACEHOLDER', pr_url)
+                                    github_client.update_issue_body(issues_repo, int(ticket_result['number']), new_body)
+                                    console.print(f"[green]Updated ticket #{ticket_result['number']} with PR link[/green]")
+                            except Exception as e:
+                                console.print(f"[yellow]Warning: Could not update ticket body with PR link: {e}[/yellow]")
+                    else:
+                        console.print(f"[red]Failed to create or find PR[/red]")
         elif dry_run:
             console.print(f"[yellow]Would NOT create pull request (--no-pr or config setting)[/yellow]\n")
 

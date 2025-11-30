@@ -1075,15 +1075,37 @@ class GitHubClient:
 
             # Create PR with custom title and body
             pr_body_text = pr_body if pr_body else f"Automated release notes update"
-            pr = repo.create_pull(
-                title=pr_title,
-                body=pr_body_text,
-                head=branch_name,
-                base=target_branch
-            )
-
-            console.print(f"[green]Created PR: {pr.html_url}[/green]")
-            return pr.html_url
+            try:
+                pr = repo.create_pull(
+                    title=pr_title,
+                    body=pr_body_text,
+                    head=branch_name,
+                    base=target_branch
+                )
+                console.print(f"[green]Created PR: {pr.html_url}[/green]")
+                return pr.html_url
+            except GithubException as e:
+                if e.status == 422 and "A pull request already exists" in str(e.data):
+                    console.print(f"[yellow]PR already exists for {branch_name}, finding it...[/yellow]")
+                    # Find the existing PR
+                    # head needs to be "owner:branch" or just "branch" depending on context
+                    # Try searching for it
+                    prs = repo.get_pulls(head=f"{repo.owner.login}:{branch_name}", base=target_branch, state='open')
+                    if prs.totalCount > 0:
+                        pr = prs[0]
+                        console.print(f"[green]Found existing PR: {pr.html_url}[/green]")
+                        
+                        # Update PR title and body if they differ
+                        if pr.title != pr_title or pr.body != pr_body_text:
+                            console.print(f"[blue]Updating PR title/body...[/blue]")
+                            pr.edit(title=pr_title, body=pr_body_text)
+                            console.print(f"[green]Updated PR details[/green]")
+                            
+                        return pr.html_url
+                
+                # If it's another error or we couldn't find it
+                console.print(f"[red]Error creating PR: {e}[/red]")
+                return None
         except GithubException as e:
             console.print(f"[red]Error creating PR: {e}[/red]")
             return None
@@ -1475,6 +1497,35 @@ class GitHubClient:
             console.print(f"[yellow]Warning: Could not assign issue: {e}[/yellow]")
             return False
 
+    def update_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        title: Optional[str] = None,
+        body: Optional[str] = None,
+        labels: Optional[List[str]] = None
+    ) -> bool:
+        """Update an existing issue."""
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            issue = repo.get_issue(issue_number)
+            
+            kwargs = {}
+            if title is not None:
+                kwargs['title'] = title
+            if body is not None:
+                kwargs['body'] = body
+            if labels is not None:
+                kwargs['labels'] = labels
+                
+            if kwargs:
+                issue.edit(**kwargs)
+                console.print(f"[green]Updated issue #{issue_number}[/green]")
+            return True
+        except GithubException as e:
+            console.print(f"[red]Error updating issue #{issue_number}: {e}[/red]")
+            return False
+
     def update_issue_body(
         self,
         repo_full_name: str,
@@ -1482,12 +1533,4 @@ class GitHubClient:
         body: str
     ) -> bool:
         """Update the body of an existing issue."""
-        try:
-            repo = self.gh.get_repo(repo_full_name)
-            issue = repo.get_issue(issue_number)
-            issue.edit(body=body)
-            console.print(f"[green]Updated issue #{issue_number} body[/green]")
-            return True
-        except GithubException as e:
-            console.print(f"[red]Error updating issue #{issue_number}: {e}[/red]")
-            return False
+        return self.update_issue(repo_full_name, issue_number, body=body)
