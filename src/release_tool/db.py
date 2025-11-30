@@ -130,10 +130,18 @@ class Database:
                 is_draft INTEGER DEFAULT 0,
                 is_prerelease INTEGER DEFAULT 0,
                 url TEXT,
+                target_commitish TEXT,
                 FOREIGN KEY (repo_id) REFERENCES repositories (id),
                 UNIQUE(repo_id, version)
             )
         """)
+
+        # Migration for existing tables
+        try:
+            self.cursor.execute("ALTER TABLE releases ADD COLUMN target_commitish TEXT")
+        except sqlite3.OperationalError:
+            # Column likely already exists
+            pass
 
         # Sync metadata table - tracks last sync timestamp per repository
         self.cursor.execute("""
@@ -145,6 +153,19 @@ class Database:
                 cutoff_date TEXT,
                 total_fetched INTEGER DEFAULT 0,
                 UNIQUE(repo_full_name, entity_type)
+            )
+        """)
+
+        # Release tickets table - tracks association between releases and tracking tickets
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS release_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_full_name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                ticket_number INTEGER NOT NULL,
+                ticket_url TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(repo_full_name, version)
             )
         """)
 
@@ -162,6 +183,11 @@ class Database:
         self.cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_ticket_repo
             ON tickets(repo_id, state)
+        """)
+
+        self.cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_release_ticket_repo_version
+            ON release_tickets(repo_full_name, version)
         """)
 
         self.conn.commit()
@@ -720,11 +746,12 @@ class Database:
             self.cursor.execute(
                 """INSERT INTO releases (
                     repo_id, version, tag_name, name, body, created_at, published_at,
-                    is_draft, is_prerelease, url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_draft, is_prerelease, url, target_commitish
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (release.repo_id, release.version, release.tag_name, release.name,
                  release.body, created_at_str, published_at_str,
-                 int(release.is_draft), int(release.is_prerelease), release.url)
+                 int(release.is_draft), int(release.is_prerelease), release.url,
+                 release.target_commitish)
             )
             self.conn.commit()
             return self.cursor.lastrowid
@@ -732,11 +759,11 @@ class Database:
             self.cursor.execute(
                 """UPDATE releases SET
                     tag_name=?, name=?, body=?, created_at=?, published_at=?,
-                    is_draft=?, is_prerelease=?, url=?
+                    is_draft=?, is_prerelease=?, url=?, target_commitish=?
                 WHERE repo_id=? AND version=?""",
                 (release.tag_name, release.name, release.body, created_at_str,
                  published_at_str, int(release.is_draft), int(release.is_prerelease),
-                 release.url, release.repo_id, release.version)
+                 release.url, release.target_commitish, release.repo_id, release.version)
             )
             self.conn.commit()
             return self.get_release_id(release.repo_id, release.version)
@@ -844,10 +871,11 @@ class Database:
 
             # Apply version prefix filter (client-side since version format varies)
             if version_prefix:
-                # Match exact version or version starting with prefix followed by "."
+                # Match exact version, version starting with prefix followed by ".", or "-" (for prereleases)
                 version_matches = (
                     release.version == version_prefix or
-                    release.version.startswith(version_prefix + ".")
+                    release.version.startswith(version_prefix + ".") or
+                    release.version.startswith(version_prefix + "-")
                 )
                 if not version_matches:
                     continue
@@ -900,3 +928,86 @@ class Database:
         self.conn.commit()
 
         return updated_count
+
+    # Release ticket association operations
+    def save_ticket_association(
+        self,
+        repo_full_name: str,
+        version: str,
+        ticket_number: int,
+        ticket_url: str
+    ) -> None:
+        """
+        Save or update the association between a release version and its tracking ticket.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            version: Release version (e.g., "1.2.3")
+            ticket_number: GitHub issue number
+            ticket_url: URL to the GitHub issue
+
+        Example:
+            db.save_ticket_association(
+                repo_full_name="sequentech/step",
+                version="1.2.3",
+                ticket_number=8624,
+                ticket_url="https://github.com/sequentech/meta/issues/8624"
+            )
+        """
+        now = datetime.now().isoformat()
+
+        self.cursor.execute(
+            """INSERT OR REPLACE INTO release_tickets
+               (repo_full_name, version, ticket_number, ticket_url, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (repo_full_name, version, ticket_number, ticket_url, now)
+        )
+        self.conn.commit()
+
+    def get_ticket_association(
+        self,
+        repo_full_name: str,
+        version: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the tracking ticket associated with a release version.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            version: Release version (e.g., "1.2.3")
+
+        Returns:
+            Dictionary with ticket_number, ticket_url, created_at if found, None otherwise
+
+        Example:
+            association = db.get_ticket_association("sequentech/step", "1.2.3")
+            if association:
+                print(f"Ticket #{association['ticket_number']}: {association['ticket_url']}")
+        """
+        self.cursor.execute(
+            """SELECT ticket_number, ticket_url, created_at
+               FROM release_tickets
+               WHERE repo_full_name=? AND version=?""",
+            (repo_full_name, version)
+        )
+        row = self.cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+
+    def has_ticket_association(self, repo_full_name: str, version: str) -> bool:
+        """
+        Check if a release version has an associated tracking ticket.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            version: Release version (e.g., "1.2.3")
+
+        Returns:
+            True if association exists, False otherwise
+
+        Example:
+            if db.has_ticket_association("sequentech/step", "1.2.3"):
+                print("This release already has a tracking ticket")
+        """
+        return self.get_ticket_association(repo_full_name, version) is not None

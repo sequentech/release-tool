@@ -89,18 +89,49 @@ class PRTemplateConfig(BaseModel):
 class TicketTemplateConfig(BaseModel):
     """Ticket template configuration for release tracking."""
     title_template: str = Field(
-        default="Release {{version}}",
+        default="✨ Prepare Release {{version}}",
         description="Ticket title template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}"
     )
     body_template: str = Field(
-        default="Tracking issue for release {{version}}.\n\n"
-                "This issue tracks the creation and publication of release notes for version {{version}}.",
+        default=(
+            "### DevOps Tasks\n\n"
+            "- [ ] Github release notes: correct and complete\n"
+            "- [ ] Docusaurus release notes: correct and complete\n"
+            "- [ ] BEYOND-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)\n"
+            "- [ ] GITOPS-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)\n"
+            "- [ ] Request in [Environment spreadsheet](https://docs.google.com/spreadsheets/d/1TDxb8r9dZKwNxHc3lAL0mtFDSsoou985NX_Y44eA7V4/edit#gid=0) to get deployment approval by environment owners\n\n"
+            "NOTE: Please also update deployment status when a release is deployed in an environment.\n\n"
+            "### QA Flight List\n\n"
+            "- [ ] Deploy in `dev`\n"
+            "- [ ] Positive Test in `dev`\n"
+            "- [ ] Deploy in `qa`\n"
+            "- [ ] Positive Test in `qa`\n\n"
+            "### PRs to deploy new version in different environments\n\n"
+            "- [ ] PR 1"
+        ),
         description="Ticket body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
                     "{{num_changes}}, {{num_categories}}"
     )
     labels: List[str] = Field(
-        default_factory=lambda: ["release", "documentation"],
+        default_factory=lambda: ["release", "devops", "infrastructure"],
         description="Labels to apply to the release tracking ticket"
+    )
+    assignee: Optional[str] = Field(
+        default=None,
+        description="GitHub username to assign the ticket to. If None, assigns to the authenticated user from the GitHub token."
+    )
+    project_id: Optional[str] = Field(
+        default=None,
+        description="GitHub Project ID (number) to add the ticket to. Find this in the project URL: github.com/orgs/ORG/projects/ID"
+    )
+    project_status: Optional[str] = Field(
+        default=None,
+        description="Status to set in the GitHub Project (e.g., 'Todo', 'In Progress', 'Done')"
+    )
+    project_fields: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Custom fields to set in the GitHub Project. Maps field name to field value. "
+                    "Example: {'Priority': 'High', 'Sprint': '2024-Q1'}"
     )
 
 
@@ -270,8 +301,6 @@ class ReleaseNoteConfig(BaseModel):
     )
     release_output_template: Optional[str] = Field(
         default=(
-            "# {{ title }}\n"
-            "\n"
             "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
             "{% if breaking_with_desc|length > 0 %}\n"
             "## 💥 Breaking Changes\n"
@@ -431,9 +460,9 @@ class OutputConfig(BaseModel):
         default=False,
         description="Whether to create a PR with release notes"
     )
-    draft_release: bool = Field(
-        default=False,
-        description="Create GitHub releases as drafts by default"
+    release_mode: Literal["draft", "published"] = Field(
+        default="draft",
+        description="Default release mode: 'draft' or 'published'"
     )
     prerelease: Union[bool, Literal["auto"]] = Field(
         default="auto",

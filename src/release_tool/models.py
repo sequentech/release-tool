@@ -317,6 +317,7 @@ class Release(BaseModel):
     is_draft: bool = False
     is_prerelease: bool = False
     url: Optional[str] = None
+    target_commitish: Optional[str] = None
 
 
 class ReleaseNote(BaseModel):

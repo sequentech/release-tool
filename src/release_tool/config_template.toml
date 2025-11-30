@@ -519,8 +519,7 @@ entry_template = '''- {{ title }} {% if short_repo_link %}({{ short_repo_link }}
 #      {% endfor %}'''
 #
 # Default: Comprehensive template with breaking changes, migrations, descriptions, and categorized changes
-release_output_template = '''# {{ title }}
-{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
+release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
 {% if breaking_with_desc|length > 0 %}
 <br>## 💥 Breaking Changes
 {% for note in breaking_with_desc %}
@@ -603,6 +602,8 @@ title: {{title}}
 SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
 SPDX-License-Identifier: AGPL-3.0-only
 -->
+# Release {{version}}
+
 {{ render_release_notes() }}<br>'''
 
 # =============================================================================
@@ -751,13 +752,14 @@ create_github_release = true
 # CLI override: --pr / --no-pr
 create_pr = true
 
-# draft_release: Create GitHub releases as drafts by default
-# When true: Releases are created as drafts (unpublished)
-# When false: Releases are published immediately
-# Default: false
-# CLI override: --draft / --no-draft
-# Use case: Set to true if you want to review releases before publishing
-draft_release = true
+# release_mode: Default release mode for GitHub releases
+# Options:
+#   - "draft": Releases are created as drafts (unpublished)
+#   - "published": Releases are published immediately
+# Default: "draft"
+# CLI override: --release-mode draft|published
+# Use case: Set to "draft" if you want to review releases before publishing
+release_mode = "draft"
 
 # prerelease: Mark GitHub releases as prereleases
 # Options:
@@ -793,20 +795,42 @@ create_ticket = true
 #   - "Release {{version}}": Simple format (DEFAULT)
 #   - "Release v{{version}} - {{num_changes}} changes": With stats
 #
-# Default: "Release {{version}}"
-title_template = "Release {{version}}"
+# Default: "✨ Prepare Release {{version}}"
+title_template = "✨ Prepare Release {{version}}"
 
 # body_template: Template for the ticket description (supports multi-line)
-# Available variables: Same as title_template
+# Available variables:
+#   - {{version}}: Full version string (e.g., "1.2.3")
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{num_changes}}, {{num_categories}}: Release notes statistics
+#   - {{pr_link}}: Link to the release notes PR (will be populated after PR creation)
+#   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
 #
-# Default: Simple tracking message
-body_template = '''Tracking issue for release {{version}}.
+# Default: Release preparation checklist based on step's .github release template
+body_template = '''### DevOps Tasks
 
-This issue tracks the creation and publication of release notes for version {{version}}.'''
+- [ ] Github release notes: correct and complete
+- [ ] Docusaurus release notes: correct and complete
+- [ ] BEYOND-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)
+- [ ] GITOPS-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)
+- [ ] Request in Environments spreadsheet to get deployment approval by environment owners
+
+NOTE: Please also update deployment status when a release is deployed in an environment.
+
+### QA Flight List
+
+- [ ] Deploy in `dev`
+- [ ] Positive Test in `dev`
+- [ ] Deploy in `qa`
+- [ ] Positive Test in `qa`
+
+### PRs
+
+- {{pr_link}}'''
 
 # labels: Labels to apply to the release tracking ticket
-# Default: ["release", "documentation"]
-labels = ["release", "documentation"]
+# Default: ["release", "devops", "infrastructure"]
+labels = ["release", "devops", "infrastructure"]
 
 # =============================================================================
 # Pull Request Templates (for create_pr)
@@ -820,6 +844,7 @@ labels = ["release", "documentation"]
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
 #   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
+#   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
 #   - {{target_branch}}: Target branch for PR (from pr_target_branch)
 #
 # Available variables (only when create_ticket=true and ticket was created):
@@ -828,12 +853,12 @@ labels = ["release", "documentation"]
 #
 # Examples:
 #   - "release-notes-{{version}}": Simple format
-#   - "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}": With issue tracking (DEFAULT)
+#   - "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}": With issue tracking (DEFAULT)
 #   - "docs/release-{{major}}.{{minor}}.{{patch}}": Structured branch
 #   - "chore/update-changelog-{{version}}": With prefix
 #
-# Default: "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}"
-branch_template = "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}"
+# Default: "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}"
+branch_template = "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}"
 
 # title_template: Template for the PR title
 # Available variables (always):
@@ -855,7 +880,19 @@ branch_template = "docs/{{issue_repo}}-{{issue_number}}/{{target_branch}}"
 title_template = "Release notes for {{version}}"
 
 # body_template: Template for the PR description (supports multi-line)
-# Available variables: Same as title_template
+# Available variables:
+#   - {{version}}: Full version string
+#   - {{major}}, {{minor}}, {{patch}}: Version components
+#   - {{num_changes}}: Number of changes in release notes
+#   - {{num_categories}}: Number of categories
+#   - {{code_repo}}: Sanitized code repository name
+#   - {{issue_repo}}: Issues repository name
+#   - {{issue_repo_name}}: Short name of issues repo
+#   - {{target_branch}}: Target branch for PR
+#
+# Available variables (only when create_ticket=true and ticket was created):
+#   - {{issue_number}}: Auto-generated issue number
+#   - {{issue_link}}: Auto-generated issue URL
 #
 # Examples:
 #   - Simple:

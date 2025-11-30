@@ -206,8 +206,8 @@ def test_legacy_format_without_release_output_template():
     grouped = generator.group_by_category(notes)
     output = generator.format_markdown(grouped, "1.0.0")
 
-    # Now uses default release_output_template (not legacy)
-    assert "# Release 1.0.0" in output
+    # Now uses default release_output_template
+    # Note: Title header removed - appears in GitHub release UI instead
     assert "🚀 Features" in output
     assert "Test change" in output
 

@@ -7,7 +7,7 @@ from rich.console import Console
 from ..config import Config, PolicyAction
 from ..db import Database
 from ..github_utils import GitHubClient
-from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy
+from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy, find_comparison_version
 from ..models import SemanticVersion
 from ..template_utils import render_template, TemplateError
 from ..policies import (
@@ -39,16 +39,14 @@ def _get_issues_repo(config: Config) -> str:
 @click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to synced repo)')
 @click.option('--output', '-o', type=click.Path(), help='Output file for release notes')
 @click.option('--dry-run', is_flag=True, help='Show what would be generated without creating files')
-@click.option('--new-major', is_flag=True, help='Auto-bump major version (X.0.0)')
-@click.option('--new-minor', is_flag=True, help='Auto-bump minor version (x.Y.0)')
-@click.option('--new-patch', is_flag=True, help='Auto-bump patch version (x.y.Z)')
-@click.option('--new-rc', is_flag=True, help='Create new RC version (auto-increments from existing RCs)')
+@click.option('--new', type=click.Choice(['major', 'minor', 'patch', 'rc'], case_sensitive=False), help='Auto-bump version')
+@click.option('--detect-mode', type=click.Choice(['all', 'published'], case_sensitive=False), default='published', help='Detection mode for existing releases (default: published)')
 @click.option('--format', type=click.Choice(['markdown', 'json'], case_sensitive=False), default='markdown', help='Output format (default: markdown)')
 @click.option('--debug', is_flag=True, help='Show detailed pattern matching debug output')
 @click.pass_context
 def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path: Optional[str],
-             output: Optional[str], dry_run: bool, new_major: bool, new_minor: bool,
-             new_patch: bool, new_rc: bool, format: str, debug: bool):
+             output: Optional[str], dry_run: bool, new: Optional[str], detect_mode: str,
+             format: str, debug: bool):
     """
     Generate release notes for a version.
 
@@ -56,35 +54,28 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
     formatted release notes.
 
     VERSION can be specified explicitly (e.g., "9.1.0") or auto-calculated using
-    --new-major, --new-minor, --new-patch, or --new-rc options. Partial versions
-    are supported (e.g., "9.2" + --new-patch creates 9.2.1).
+    --new option. Partial versions are supported (e.g., "9.2" + --new patch creates 9.2.1).
 
     Examples:
 
       release-tool generate 9.1.0
 
-      release-tool generate --new-minor
+      release-tool generate --new minor
 
-      release-tool generate --new-rc
+      release-tool generate --new rc
 
       release-tool generate 9.1.0 --dry-run
 
-      release-tool generate --new-patch --repo-path /custom/path
+      release-tool generate --new patch --repo-path /custom/path
 
-      release-tool generate 9.2 --new-patch
+      release-tool generate 9.2 --new patch
     """
-    # Validate mutually exclusive version options
-    version_flags = [new_major, new_minor, new_patch, new_rc]
-    if sum(version_flags) > 1:
-        console.print("[red]Error: Only one of --new-major, --new-minor, --new-patch, --new-rc can be specified[/red]")
-        return
-
-    if not version and not any(version_flags):
-        console.print("[red]Error: VERSION argument or one of --new-major/--new-minor/--new-patch/--new-rc is required[/red]")
+    if not version and not new:
+        console.print("[red]Error: VERSION argument or --new option is required[/red]")
         return
 
     # Check if version is provided WITH a bump flag (partial version support)
-    if version and any(version_flags):
+    if version and new:
         # Parse as partial version to use as base
         try:
             base_version = SemanticVersion.parse(version, allow_partial=True)
@@ -92,7 +83,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
             # For patch bumps, check if the base version exists first
             # If it doesn't exist, use the base version instead of bumping
-            if new_patch and base_version.patch == 0:
+            if new == 'patch' and base_version.patch == 0:
                 # Need to check if base version exists in Git
                 # Load config early to access repo path
                 cfg = ctx.obj['config']
@@ -121,113 +112,137 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     target_version = base_version.bump_patch()
                     console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
             # Apply the bump for other cases
-            elif new_major:
+            elif new == 'major':
                 target_version = base_version.bump_major()
                 console.print(f"[blue]Bumping major version → {target_version.to_string()}[/blue]")
-            elif new_minor:
+            elif new == 'minor':
                 target_version = base_version.bump_minor()
                 console.print(f"[blue]Bumping minor version → {target_version.to_string()}[/blue]")
-            elif new_patch:
+            elif new == 'patch':
                 # Patch != 0, just bump it
                 target_version = base_version.bump_patch()
                 console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
-            elif new_rc:
+            elif new == 'rc':
                 # Check if a final release exists for this base version
                 # If yes, bump patch first, then create RC
+                # Strategy: Check database FIRST, then optionally check git as fallback
                 import re
-                
+
+                cfg = ctx.obj['config']
+                final_exists = False
+                rc_number = 0
+                matching_rcs = []
+                checked_db = False
+                checked_git = False
+
+                # Step 1: Check database for existing versions (primary source of truth)
                 try:
-                    # Get config from context
-                    cfg = ctx.obj['config']
-                    git_ops_temp = GitOperations(cfg.get_code_repo_path())
-                    existing_versions = git_ops_temp.get_version_tags()
-                    
-                    # Check if final release exists for this base version
-                    final_exists = any(
-                        v.major == base_version.major and
-                        v.minor == base_version.minor and
-                        v.patch == base_version.patch and
-                        v.is_final()
-                        for v in existing_versions
-                    )
-                    
-                    if final_exists:
-                        # Final release exists - bump patch and create rc.0
-                        console.print(f"[blue]Final release {base_version.to_string()} exists → Bumping to next patch[/blue]")
-                        base_version = base_version.bump_patch()
-                        target_version = base_version.bump_rc(0)
-                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
-                    else:
-                        # No final release - find existing RCs for this base version and auto-increment
-                        rc_number = 0
+                    db = Database(cfg.database.path)
+                    db.connect()
 
-                        # Check database and Git for existing RCs of the same base version
-                        try:
-                            # First, try database (has all synced releases from GitHub)
-                            db = Database(cfg.database.path)
-                            db.connect()
+                    repo_name = cfg.repository.code_repo
+                    repo = db.get_repository(repo_name)
 
-                            # Get repository to get repo_id
-                            repo_name = cfg.repository.code_repo
-                            repo = db.get_repository(repo_name)
+                    if repo:
+                        # Check for final release of this base version
+                        final_version_str = f"{base_version.major}.{base_version.minor}.{base_version.patch}"
+                        all_releases = db.get_all_releases(
+                            repo_id=repo.id,
+                            version_prefix=final_version_str
+                        )
 
-                            matching_rcs = []
+                        for release in all_releases:
+                            # Filter by detect_mode
+                            if detect_mode == 'published' and release.is_draft:
+                                continue
 
-                            if repo:
-                                # Get all releases with version prefix matching our base version
-                                version_prefix = f"{base_version.major}.{base_version.minor}.{base_version.patch}-rc"
-                                all_releases = db.get_all_releases(
-                                    repo_id=repo.id,
-                                    version_prefix=version_prefix
-                                )
+                            try:
+                                v = SemanticVersion.parse(release.version)
+                                # Check for exact final version match
+                                if (v.major == base_version.major and
+                                    v.minor == base_version.minor and
+                                    v.patch == base_version.patch and
+                                    v.is_final()):
+                                    final_exists = True
+                                # Also collect RCs while we're here
+                                if (v.major == base_version.major and
+                                    v.minor == base_version.minor and
+                                    v.patch == base_version.patch and
+                                    v.prerelease and v.prerelease.startswith('rc.')):
+                                    matching_rcs.append(v)
+                            except ValueError:
+                                continue
 
-                                for release in all_releases:
-                                    try:
-                                        v = SemanticVersion.parse(release.version)
-                                        if (v.major == base_version.major
-                                            and v.minor == base_version.minor
-                                            and v.patch == base_version.patch
-                                            and v.prerelease and v.prerelease.startswith('rc.')):
-                                            matching_rcs.append(v)
-                                    except ValueError:
-                                        continue
+                        checked_db = True
 
-                            db.close()
+                    db.close()
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not check database for existing versions: {e}[/yellow]")
 
-                            # Also check Git tags in case there are local tags not synced
+                # Step 2: Optionally check git tags (only if repo exists locally)
+                # Only check git if detect_mode is 'all' or if we failed to check DB
+                # If detect_mode is 'published', we should rely on DB because git tags don't have draft status
+                if (detect_mode == 'all' or not checked_db):
+                    try:
+                        repo_path = cfg.get_code_repo_path()
+                        from pathlib import Path
+                        if Path(repo_path).exists():
+                            git_ops_temp = GitOperations(repo_path)
                             git_versions = git_ops_temp.get_version_tags()
+
                             for v in git_versions:
-                                if (v.major == base_version.major
-                                    and v.minor == base_version.minor
-                                    and v.patch == base_version.patch
-                                    and v.prerelease and v.prerelease.startswith('rc.')):
+                                # Check for final version
+                                if (v.major == base_version.major and
+                                    v.minor == base_version.minor and
+                                    v.patch == base_version.patch and
+                                    v.is_final()):
+                                    final_exists = True
+                                # Check for RCs
+                                if (v.major == base_version.major and
+                                    v.minor == base_version.minor and
+                                    v.patch == base_version.patch and
+                                    v.prerelease and v.prerelease.startswith('rc.')):
                                     if v not in matching_rcs:
                                         matching_rcs.append(v)
 
-                            if matching_rcs:
-                                # Extract RC numbers and find the highest
-                                rc_numbers = []
-                                for v in matching_rcs:
-                                    match = re.match(r'rc\.(\\d+)', v.prerelease)
-                                    if match:
-                                        rc_numbers.append(int(match.group(1)))
+                            checked_git = True
+                    except Exception as e:
+                        # Git check is optional - not a critical failure
+                        pass
 
-                                if rc_numbers:
-                                    rc_number = max(rc_numbers) + 1
-                        except Exception as e:
-                            # If we can't check existing RCs, start at 0
-                            console.print(f"[yellow]Warning: Could not check existing RCs ({e}), starting at rc.0[/yellow]")
-
-                        target_version = base_version.bump_rc(rc_number)
-                        console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
-                except Exception as e:
-                    console.print(f"[yellow]Warning: Could not check existing versions ({e}), creating rc.0[/yellow]")
+                # Step 3: Determine target version based on what we found
+                if final_exists:
+                    # Final release exists - bump patch and create rc.0
+                    source = "database" if checked_db else "git" if checked_git else "unknown"
+                    console.print(f"[blue]Final release {base_version.to_string()} exists ({source}) → Bumping to next patch[/blue]")
+                    base_version = base_version.bump_patch()
+                    # Reset matching_rcs since we're now working with a new base version
+                    matching_rcs = []
                     target_version = base_version.bump_rc(0)
+                    console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
+                else:
+                    # No final release - find existing RCs and auto-increment
+                    if matching_rcs:
+                        # Extract RC numbers and find the highest
+                        rc_numbers = []
+                        for v in matching_rcs:
+                            match = re.match(r'rc\.(\d+)', v.prerelease)
+                            if match:
+                                rc_numbers.append(int(match.group(1)))
+
+                        if rc_numbers:
+                            rc_number = max(rc_numbers) + 1
+                            source = "database" if checked_db else "git" if checked_git else "unknown"
+                            console.print(f"[blue]Found existing RCs in {source}, incrementing to rc.{rc_number}[/blue]")
+                    elif not checked_db and not checked_git:
+                        console.print(f"[yellow]Warning: Could not check existing versions, creating rc.0[/yellow]")
+
+                    target_version = base_version.bump_rc(rc_number)
                     console.print(f"[blue]Creating RC version → {target_version.to_string()}[/blue]")
 
             version = target_version.to_string()
             # Skip the auto-calculation below
-            version_flags = [False, False, False, False]
+            new = None
         except ValueError as e:
             console.print(f"[red]Error parsing version: {e}[/red]")
             return
@@ -267,35 +282,44 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             git_ops = GitOperations(repo_path)
 
             # Auto-calculate version if using bump options
-            if any(version_flags):
-                # For --new-patch, use latest final version (exclude RCs)
-                # For other bumps, use latest version including RCs
-                if new_patch:
-                    latest_tag = git_ops.get_latest_tag(final_only=True)
-                    if not latest_tag:
-                        console.print("[red]Error: No final release tags found in repository. Cannot bump patch.[/red]")
-                        console.print("[yellow]Tip: Create a final release first (e.g., 1.0.0) or specify version explicitly[/yellow]")
-                        return
-                else:
-                    latest_tag = git_ops.get_latest_tag(final_only=False)
-                    if not latest_tag:
-                        console.print("[red]Error: No tags found in repository. Cannot auto-bump version.[/red]")
-                        console.print("[yellow]Tip: Specify version explicitly or create an initial tag[/yellow]")
-                        return
+            if new:
+                # Get all version tags from Git
+                all_tags = git_ops.get_version_tags()
+                all_tags.sort(reverse=True)
+                
+                latest_tag = None
+                for tag in all_tags:
+                    # Check if this tag is a draft in DB if detect_mode is published
+                    if detect_mode == 'published':
+                        release = db.get_release(repo_id, tag.to_string())
+                        if release and release.is_draft:
+                            continue
+                    
+                    # For patch bumps, we only want final versions
+                    if new == 'patch' and not tag.is_final():
+                        continue
+                        
+                    latest_tag = tag
+                    break
 
-                base_version = SemanticVersion.parse(latest_tag)
+                if not latest_tag:
+                    console.print("[red]Error: No suitable tags found in repository. Cannot auto-bump version.[/red]")
+                    console.print("[yellow]Tip: Specify version explicitly or create an initial tag[/yellow]")
+                    return
+
+                base_version = latest_tag
                 console.print(f"[blue]Latest version: {base_version.to_string()}[/blue]")
 
-                if new_major:
+                if new == 'major':
                     target_version = base_version.bump_major()
                     console.print(f"[blue]Bumping major version → {target_version.to_string()}[/blue]")
-                elif new_minor:
+                elif new == 'minor':
                     target_version = base_version.bump_minor()
                     console.print(f"[blue]Bumping minor version → {target_version.to_string()}[/blue]")
-                elif new_patch:
+                elif new == 'patch':
                     target_version = base_version.bump_patch()
                     console.print(f"[blue]Bumping patch version → {target_version.to_string()}[/blue]")
-                elif new_rc:
+                elif new == 'rc':
                     # Check if base_version is final - if so, bump patch first
                     import re
                     
@@ -310,14 +334,18 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         rc_number = 0
 
                         # Check existing versions for RCs of the same base version
-                        all_versions = git_ops.get_version_tags()
-                        matching_rcs = [
-                            v for v in all_versions
-                            if v.major == base_version.major
-                            and v.minor == base_version.minor
-                            and v.patch == base_version.patch
-                            and v.prerelease and v.prerelease.startswith('rc.')
-                        ]
+                        matching_rcs = []
+                        for v in all_tags:
+                            if (v.major == base_version.major and
+                                v.minor == base_version.minor and
+                                v.patch == base_version.patch and
+                                v.prerelease and v.prerelease.startswith('rc.')):
+                                
+                                if detect_mode == 'published':
+                                    release = db.get_release(repo_id, v.to_string())
+                                    if release and release.is_draft:
+                                        continue
+                                matching_rcs.append(v)
 
                         if matching_rcs:
                             # Extract RC numbers and find the highest
@@ -386,6 +414,37 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
             # Determine comparison version and get commits
             from_ver = SemanticVersion.parse(from_version) if from_version else None
+
+            if not from_ver:
+                # Calculate from_ver respecting detect_mode
+                available_versions = git_ops.get_version_tags()
+                
+                if detect_mode == 'published':
+                    # Filter out drafts
+                    filtered_versions = []
+                    for v in available_versions:
+                        release = db.get_release(repo_id, v.to_string())
+                        if release and release.is_draft:
+                            continue
+                        filtered_versions.append(v)
+                    available_versions = filtered_versions
+                elif detect_mode == 'all':
+                    # Add releases from DB that might be missing from local tags
+                    # This ensures we detect previous RCs even if tags aren't fetched yet
+                    try:
+                        db_releases = db.get_all_releases(repo_id)
+                        for release in db_releases:
+                            try:
+                                v = SemanticVersion.parse(release.version)
+                                if v not in available_versions:
+                                    available_versions.append(v)
+                            except ValueError:
+                                continue
+                        available_versions.sort()
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Could not fetch releases from DB: {e}[/yellow]")
+                
+                from_ver = find_comparison_version(target_version, available_versions)
 
             # Determine head_ref for commit range
             # If we are creating a new branch, the head is the source branch

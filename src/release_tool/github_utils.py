@@ -927,20 +927,26 @@ class GitHubClient:
         name: str,
         body: str,
         draft: bool = False,
-        prerelease: bool = False
+        prerelease: bool = False,
+        target_commitish: Optional[str] = None
     ) -> Optional[str]:
         """Create a GitHub release."""
         try:
             repo = self.gh.get_repo(repo_full_name)
             tag_name = f"{self.config.version_policy.tag_prefix}{version}"
 
-            release = repo.create_git_release(
-                tag=tag_name,
-                name=name,
-                message=body,
-                draft=draft,
-                prerelease=prerelease
-            )
+            # Prepare arguments
+            kwargs = {
+                'tag': tag_name,
+                'name': name,
+                'message': body,
+                'draft': draft,
+                'prerelease': prerelease
+            }
+            if target_commitish:
+                kwargs['target_commitish'] = target_commitish
+
+            release = repo.create_git_release(**kwargs)
 
             console.print(f"[green]Created release: {release.html_url}[/green]")
             return release.html_url
@@ -1004,7 +1010,8 @@ class GitHubClient:
         content: str,
         branch_name: str,
         target_branch: str,
-        pr_body: Optional[str] = None
+        pr_body: Optional[str] = None,
+        additional_files: Optional[Dict[str, str]] = None
     ) -> Optional[str]:
         """
         Create a PR with release notes.
@@ -1017,6 +1024,7 @@ class GitHubClient:
             branch_name: Name of the branch to create
             target_branch: Target branch for the PR (e.g., main)
             pr_body: Optional body text for the PR
+            additional_files: Optional dictionary of {path: content} for extra files
 
         Returns:
             URL of the created PR or None if failed
@@ -1035,28 +1043,35 @@ class GitHubClient:
                 # Branch might already exist
                 pass
 
-            # Determine commit message from pr_title
-            commit_msg = f"Update {file_path}"
+            # Helper to update/create a file
+            def update_file(path: str, file_content: str):
+                commit_msg = f"Update {path}"
+                try:
+                    file_contents = repo.get_contents(path, ref=branch_name)
+                    # Update existing file
+                    repo.update_file(
+                        path,
+                        commit_msg,
+                        file_content,
+                        file_contents.sha,
+                        branch=branch_name
+                    )
+                except GithubException:
+                    # Create new file
+                    repo.create_file(
+                        path,
+                        commit_msg,
+                        file_content,
+                        branch=branch_name
+                    )
 
-            # Get or create the file
-            try:
-                file_contents = repo.get_contents(file_path, ref=branch_name)
-                # Update existing file
-                repo.update_file(
-                    file_path,
-                    commit_msg,
-                    content,
-                    file_contents.sha,
-                    branch=branch_name
-                )
-            except GithubException:
-                # Create new file
-                repo.create_file(
-                    file_path,
-                    commit_msg,
-                    content,
-                    branch=branch_name
-                )
+            # Update main release notes file
+            update_file(file_path, content)
+
+            # Update additional files if any
+            if additional_files:
+                for path, file_content in additional_files.items():
+                    update_file(path, file_content)
 
             # Create PR with custom title and body
             pr_body_text = pr_body if pr_body else f"Automated release notes update"
@@ -1072,3 +1087,407 @@ class GitHubClient:
         except GithubException as e:
             console.print(f"[red]Error creating PR: {e}[/red]")
             return None
+
+    def get_authenticated_user(self) -> Optional[str]:
+        """
+        Get the username of the currently authenticated user.
+
+        Returns:
+            GitHub username or None if unable to fetch
+        """
+        try:
+            user = self.gh.get_user()
+            return user.login
+        except GithubException as e:
+            console.print(f"[yellow]Warning: Could not fetch authenticated user: {e}[/yellow]")
+            return None
+
+    def assign_issue_to_project(
+        self,
+        issue_url: str,
+        project_id: str,
+        status: Optional[str] = None,
+        custom_fields: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
+        """
+        Assign an issue to a GitHub Project and optionally set fields using GraphQL API.
+
+        Args:
+            issue_url: Full URL of the issue (e.g., https://github.com/owner/repo/issues/123)
+            project_id: GitHub Project ID (number from project URL)
+            status: Status to set in the project (e.g., 'Todo', 'In Progress', 'Done')
+            custom_fields: Dictionary mapping custom field names to values
+
+        Returns:
+            Project item ID if successful, None otherwise
+
+        Example:
+            item_id = client.assign_issue_to_project(
+                issue_url="https://github.com/sequentech/meta/issues/8624",
+                project_id="123",
+                status="In Progress",
+                custom_fields={"Priority": "High", "Sprint": "2024-Q1"}
+            )
+        """
+        import requests
+
+        try:
+            # Step 1: Get the issue node ID
+            issue_node_id = self._get_issue_node_id(issue_url)
+            if not issue_node_id:
+                return None
+
+            # Step 2: Get the project node ID
+            project_node_id = self._get_project_node_id(project_id)
+            if not project_node_id:
+                return None
+
+            # Step 3: Add the issue to the project
+            item_id = self._add_issue_to_project(issue_node_id, project_node_id)
+            if not item_id:
+                return None
+
+            # Step 4: Set status if provided
+            if status:
+                self._set_project_status(project_node_id, item_id, status)
+
+            # Step 5: Set custom fields if provided
+            if custom_fields:
+                for field_name, field_value in custom_fields.items():
+                    self._set_project_custom_field(project_node_id, item_id, field_name, field_value)
+
+            return item_id
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error assigning issue to project: {e}[/yellow]")
+            return None
+
+    def _get_issue_node_id(self, issue_url: str) -> Optional[str]:
+        """Extract issue node ID from URL using GraphQL."""
+        import re
+        import requests
+
+        # Parse issue owner/repo/number from URL
+        match = re.match(r'https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)', issue_url)
+        if not match:
+            console.print(f"[yellow]Warning: Invalid issue URL format: {issue_url}[/yellow]")
+            return None
+
+        owner, repo, number = match.groups()
+
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+                issue(number: $number) {
+                    id
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": {"owner": owner, "repo": repo, "number": int(number)}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error getting issue node ID: {data['errors']}[/yellow]")
+                return None
+
+            return data["data"]["repository"]["issue"]["id"]
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error getting issue node ID: {e}[/yellow]")
+            return None
+
+    def _get_project_node_id(self, project_id: str) -> Optional[str]:
+        """Get project node ID from project number using GraphQL."""
+        import requests
+
+        query = """
+        query($projectNumber: Int!) {
+            node(id: $projectNumber) {
+                ... on ProjectV2 {
+                    id
+                }
+            }
+        }
+        """
+
+        # Try to construct the node ID directly
+        # GitHub Project V2 node IDs follow pattern: PVT_<base64>
+        # For now, we'll try to query by number - this requires org context
+
+        # Alternative: query user's or org's projects
+        # This is complex - for now, assume project_id is already the node ID
+        # or use a simpler approach
+
+        # Simple approach: project_id might already be the node ID (starts with "PVT_")
+        if project_id.startswith("PVT_") or project_id.startswith("PV_"):
+            return project_id
+
+        console.print(f"[yellow]Warning: Project ID should be the GraphQL node ID (starts with PVT_). Got: {project_id}[/yellow]")
+        console.print(f"[yellow]To find your project node ID, use: gh api graphql -f query='{{viewer{{projectsV2(first:10){{nodes{{id number title}}}}}}}}'[/yellow]")
+        return None
+
+    def _add_issue_to_project(self, issue_node_id: str, project_node_id: str) -> Optional[str]:
+        """Add an issue to a project using GraphQL."""
+        import requests
+
+        mutation = """
+        mutation($projectId: ID!, $contentId: ID!) {
+            addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                item {
+                    id
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": mutation, "variables": {"projectId": project_node_id, "contentId": issue_node_id}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error adding issue to project: {data['errors']}[/yellow]")
+                return None
+
+            item_id = data["data"]["addProjectV2ItemById"]["item"]["id"]
+            console.print(f"[green]Added issue to project (item ID: {item_id})[/green]")
+            return item_id
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error adding issue to project: {e}[/yellow]")
+            return None
+
+    def _set_project_status(self, project_node_id: str, item_id: str, status: str) -> bool:
+        """Set the status field of a project item."""
+        import requests
+
+        # First, get the status field ID
+        field_id = self._get_project_field_id(project_node_id, "Status")
+        if not field_id:
+            console.print(f"[yellow]Warning: Could not find 'Status' field in project[/yellow]")
+            return False
+
+        # Get the status option ID
+        option_id = self._get_project_field_option_id(project_node_id, field_id, status)
+        if not option_id:
+            console.print(f"[yellow]Warning: Could not find status option '{status}' in project[/yellow]")
+            return False
+
+        mutation = """
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+            updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: $value
+            }) {
+                projectV2Item {
+                    id
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": mutation, "variables": {
+                    "projectId": project_node_id,
+                    "itemId": item_id,
+                    "fieldId": field_id,
+                    "value": {"singleSelectOptionId": option_id}
+                }},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error setting status: {data['errors']}[/yellow]")
+                return False
+
+            console.print(f"[green]Set project status to '{status}'[/green]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error setting project status: {e}[/yellow]")
+            return False
+
+    def _set_project_custom_field(self, project_node_id: str, item_id: str, field_name: str, field_value: str) -> bool:
+        """Set a custom field of a project item."""
+        # Similar to _set_project_status but handles different field types
+        console.print(f"[dim]Setting custom field '{field_name}' to '{field_value}'...[/dim]")
+        # Implementation would be similar but handle text, number, date fields differently
+        # For now, print a placeholder message
+        console.print(f"[yellow]Note: Custom field setting not fully implemented yet[/yellow]")
+        return True
+
+    def _get_project_field_id(self, project_node_id: str, field_name: str) -> Optional[str]:
+        """Get the field ID for a project field by name."""
+        import requests
+
+        query = """
+        query($projectId: ID!) {
+            node(id: $projectId) {
+                ... on ProjectV2 {
+                    fields(first: 20) {
+                        nodes {
+                            ... on ProjectV2Field {
+                                id
+                                name
+                            }
+                            ... on ProjectV2SingleSelectField {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": {"projectId": project_node_id}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error getting project fields: {data['errors']}[/yellow]")
+                return None
+
+            fields = data["data"]["node"]["fields"]["nodes"]
+            for field in fields:
+                if field.get("name") == field_name:
+                    return field["id"]
+
+            return None
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error getting project field ID: {e}[/yellow]")
+            return None
+
+    def _get_project_field_option_id(self, project_node_id: str, field_id: str, option_name: str) -> Optional[str]:
+        """Get the option ID for a single-select field."""
+        import requests
+
+        query = """
+        query($projectId: ID!) {
+            node(id: $projectId) {
+                ... on ProjectV2 {
+                    fields(first: 20) {
+                        nodes {
+                            ... on ProjectV2SingleSelectField {
+                                id
+                                options {
+                                    id
+                                    name
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": {"projectId": project_node_id}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error getting field options: {data['errors']}[/yellow]")
+                return None
+
+            fields = data["data"]["node"]["fields"]["nodes"]
+            for field in fields:
+                if field.get("id") == field_id and "options" in field:
+                    for option in field["options"]:
+                        if option["name"] == option_name:
+                            return option["id"]
+
+            return None
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error getting field option ID: {e}[/yellow]")
+            return None
+
+    def assign_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        assignee: str
+    ) -> bool:
+        """
+        Assign an issue to a user.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            issue_number: Issue number
+            assignee: GitHub username to assign to
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            issue = repo.get_issue(issue_number)
+            issue.add_to_assignees(assignee)
+            console.print(f"[green]Assigned issue #{issue_number} to @{assignee}[/green]")
+            return True
+        except GithubException as e:
+            console.print(f"[yellow]Warning: Could not assign issue: {e}[/yellow]")
+            return False
+
+    def update_issue_body(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        body: str
+    ) -> bool:
+        """Update the body of an existing issue."""
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            issue = repo.get_issue(issue_number)
+            issue.edit(body=body)
+            console.print(f"[green]Updated issue #{issue_number} body[/green]")
+            return True
+        except GithubException as e:
+            console.print(f"[red]Error updating issue #{issue_number}: {e}[/red]")
+            return False

@@ -300,7 +300,7 @@ def test_docusaurus_file_detection_in_dry_run(test_config, test_notes_file, tmp_
     # Should mention docusaurus file
     assert 'Docusaurus file' in result.output
     assert 'doc_release.md' in result.output  # Just check for filename, not full path
-    assert 'File exists' in result.output
+    assert 'Existing Docusaurus file found' in result.output or 'File exists' in result.output
     assert result.exit_code == 0
 
 
@@ -370,7 +370,7 @@ def test_auto_find_draft_notes_success(test_config, tmp_path):
     draft_file.write_text("# Release 1.0.0\n\nAuto-found draft notes")
 
     # Use relative path with Jinja2 syntax
-    test_config.output.draft_output_path = ".release_tool_cache/draft-releases/{{repo}}/{{version}}.md"
+    test_config.output.draft_output_path = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md"
 
     try:
         runner = CliRunner()

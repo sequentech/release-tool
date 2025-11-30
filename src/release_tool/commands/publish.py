@@ -10,8 +10,9 @@ from rich.table import Table
 from ..config import Config
 from ..db import Database
 from ..github_utils import GitHubClient
-from ..models import SemanticVersion
+from ..models import SemanticVersion, Release
 from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError
+from ..git_ops import GitOperations, determine_release_branch_strategy
 
 console = Console()
 
@@ -30,17 +31,23 @@ def _get_issues_repo(config: Config) -> str:
 def _create_release_ticket(
     config: Config,
     github_client: GitHubClient,
+    db: Database,
     template_context: dict,
+    version: str,
+    override: bool = False,
     dry_run: bool = False,
     debug: bool = False
 ) -> Optional[dict]:
     """
-    Create a GitHub issue for tracking the release.
+    Create or update a GitHub issue for tracking the release.
 
     Args:
         config: Configuration object
         github_client: GitHub client instance
+        db: Database instance for checking/saving associations
         template_context: Template context for rendering ticket templates
+        version: Release version
+        override: If True, reuse existing ticket if found
         dry_run: If True, only show what would be created
         debug: If True, show verbose output
 
@@ -53,6 +60,26 @@ def _create_release_ticket(
         return None
 
     issues_repo = _get_issues_repo(config)
+    repo_full_name = config.repository.code_repo
+
+    # Check for existing ticket association if override is enabled
+    existing_association = db.get_ticket_association(repo_full_name, version) if not dry_run else None
+
+    if existing_association and override:
+        # Reuse existing ticket
+        if debug or not dry_run:
+            console.print(f"[blue]Reusing existing ticket #{existing_association['ticket_number']} (--force)[/blue]")
+            console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
+
+        return {
+            'number': str(existing_association['ticket_number']),
+            'url': existing_association['ticket_url']
+        }
+    elif existing_association and not override:
+        console.print(f"[yellow]Warning: Ticket already exists for {version} (#{existing_association['ticket_number']})[/yellow]")
+        console.print(f"[yellow]Use --force \\[draft|release] to reuse the existing ticket[/yellow]")
+        console.print(f"[dim]  URL: {existing_association['ticket_url']}[/dim]")
+        return None
 
     # Render ticket templates
     try:
@@ -74,6 +101,21 @@ def _create_release_ticket(
         console.print(f"  Title: {title}")
         console.print(f"  Labels: {', '.join(config.output.ticket_templates.labels)}")
 
+        # Show assignee if configured
+        assignee = config.output.ticket_templates.assignee
+        if not assignee and not dry_run:
+            # Get current user if not dry-run
+            assignee = github_client.get_authenticated_user() if github_client else "current user"
+        console.print(f"  Assignee: {assignee or 'current user'}")
+
+        # Show project assignment if configured
+        if config.output.ticket_templates.project_id:
+            console.print(f"  Project ID: {config.output.ticket_templates.project_id}")
+            if config.output.ticket_templates.project_status:
+                console.print(f"  Project Status: {config.output.ticket_templates.project_status}")
+            if config.output.ticket_templates.project_fields:
+                console.print(f"  Project Fields: {config.output.ticket_templates.project_fields}")
+
     if debug:
         console.print(f"\n[dim]Body:[/dim]")
         console.print(f"[dim]{'─' * 60}[/dim]")
@@ -93,6 +135,41 @@ def _create_release_ticket(
         body=body,
         labels=config.output.ticket_templates.labels
     )
+
+    if not result:
+        return None
+
+    # Assign issue to user
+    assignee = config.output.ticket_templates.assignee
+    if not assignee:
+        assignee = github_client.get_authenticated_user()
+
+    if assignee:
+        github_client.assign_issue(
+            repo_full_name=issues_repo,
+            issue_number=int(result['number']),
+            assignee=assignee
+        )
+
+    # Add to project if configured
+    if config.output.ticket_templates.project_id:
+        github_client.assign_issue_to_project(
+            issue_url=result['url'],
+            project_id=config.output.ticket_templates.project_id,
+            status=config.output.ticket_templates.project_status,
+            custom_fields=config.output.ticket_templates.project_fields
+        )
+
+    # Save association to database
+    db.save_ticket_association(
+        repo_full_name=repo_full_name,
+        version=version,
+        ticket_number=int(result['number']),
+        ticket_url=result['url']
+    )
+
+    if debug:
+        console.print(f"[dim]Saved ticket association to database[/dim]")
 
     return result
 
@@ -229,17 +306,19 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version', required=False)
 @click.option('--list', '-l', 'list_drafts', is_flag=True, help='List draft releases ready to be published')
+@click.option('--delete', '-d', 'delete_drafts', is_flag=True, help='Delete draft releases for the specified version')
 @click.option('--notes-file', '-f', type=click.Path(), help='Path to release notes file (markdown, optional - will auto-find if not specified)')
 @click.option('--release/--no-release', 'create_release', default=None, help='Create GitHub release (default: from config)')
 @click.option('--pr/--no-pr', 'create_pr', default=None, help='Create PR with release notes (default: from config)')
-@click.option('--draft/--no-draft', 'draft', default=None, help='Create as draft release (default: from config)')
+@click.option('--release-mode', type=click.Choice(['draft', 'published'], case_sensitive=False), default=None, help='Release mode (default: from config)')
 @click.option('--prerelease', type=click.Choice(['auto', 'true', 'false'], case_sensitive=False), default=None,
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
+@click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
 @click.option('--dry-run', is_flag=True, help='Show what would be published without making changes')
 @click.option('--debug', is_flag=True, help='Show detailed debug information')
 @click.pass_context
-def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
-           create_pr: Optional[bool], draft: Optional[bool], prerelease: Optional[str],
+def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
+           create_pr: Optional[bool], release_mode: Optional[str], prerelease: Optional[str], force: str,
            dry_run: bool, debug: bool):
     """
     Publish a release to GitHub.
@@ -253,7 +332,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
 
       release-tool publish 9.1.0 -f docs/releases/9.1.0.md
 
-      release-tool publish 9.1.0-rc.0 --draft
+      release-tool publish 9.1.0-rc.0 --release-mode draft
 
       release-tool publish 9.1.0 --pr --no-release
 
@@ -266,7 +345,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
     if list_drafts:
         draft_files = _find_draft_releases(config)
         _display_draft_releases(draft_files)
-        
+
         # Show tip with an example version if drafts exist
         if draft_files:
             # Extract version from the first (newest) draft
@@ -277,10 +356,57 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 version_str = filename[:-4]
             elif filename.endswith("-release"):
                 version_str = filename[:-8]
-            
+
             console.print(f"\n[yellow]Tip: Publish a release with:[/yellow]")
             console.print(f"[dim]  release-tool publish {version_str}[/dim]")
-        
+
+        return
+
+    # Handle --delete flag
+    if delete_drafts:
+        if not version:
+            console.print("[red]Error: VERSION required when using --delete[/red]")
+            console.print("\nUsage: release-tool publish --delete VERSION")
+            sys.exit(1)
+
+        # Find drafts for this version
+        matching_drafts = _find_draft_releases(config, version_filter=version)
+
+        if not matching_drafts:
+            console.print(f"[yellow]No draft releases found for version {version}[/yellow]")
+            console.print("\n[dim]Available drafts:[/dim]")
+            all_drafts = _find_draft_releases(config)
+            _display_draft_releases(all_drafts, title="Available Draft Releases")
+            return
+
+        # Display what will be deleted
+        console.print(f"\n[yellow]Found {len(matching_drafts)} draft file(s) for version {version}:[/yellow]")
+        for draft_path in matching_drafts:
+            console.print(f"  - {draft_path}")
+
+        # Confirm deletion (skip confirmation if non-interactive or dry-run)
+        if not dry_run:
+            response = input(f"\nDelete {len(matching_drafts)} file(s)? [y/N]: ").strip().lower()
+            if response not in ['y', 'yes']:
+                console.print("[yellow]Deletion cancelled.[/yellow]")
+                return
+
+        # Delete the files
+        deleted_count = 0
+        for draft_path in matching_drafts:
+            if dry_run:
+                console.print(f"[yellow]Would delete: {draft_path}[/yellow]")
+            else:
+                try:
+                    draft_path.unlink()
+                    console.print(f"[green]✓ Deleted: {draft_path}[/green]")
+                    deleted_count += 1
+                except Exception as e:
+                    console.print(f"[red]Error deleting {draft_path}: {e}[/red]")
+
+        if not dry_run:
+            console.print(f"\n[green]✓ Deleted {deleted_count} of {len(matching_drafts)} draft file(s)[/green]")
+
         return
 
     if not version:
@@ -293,7 +419,15 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
         # Use config defaults when CLI values are None
         create_release = create_release if create_release is not None else config.output.create_github_release
         create_pr = create_pr if create_pr is not None else config.output.create_pr
-        draft = draft if draft is not None else config.output.draft_release
+        
+        # Resolve release mode
+        # If force is set to a mode, it overrides release_mode
+        if force != 'none':
+            mode = force
+        else:
+            mode = release_mode if release_mode is not None else config.output.release_mode
+            
+        is_draft = (mode == 'draft')
 
         # Handle tri-state prerelease: "auto", "true", "false"
         prerelease_value = prerelease if prerelease is not None else config.output.prerelease
@@ -323,7 +457,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
             console.print(f"[dim]Operations that will be performed:[/dim]")
             console.print(f"[dim]  • Create GitHub release: {create_release} (CLI override: {create_release is not None})[/dim]")
             console.print(f"[dim]  • Create PR: {create_pr} (CLI override: {create_pr is not None})[/dim]")
-            console.print(f"[dim]  • Draft release: {draft} (CLI override: {draft is not None})[/dim]")
+            console.print(f"[dim]  • Release mode: {mode} (CLI override: {release_mode is not None or force != 'none'})[/dim]")
+            console.print(f"[dim]  • Force: {force}[/dim]")
             console.print(f"[dim]  • Prerelease setting: {prerelease_value} (CLI override: {prerelease is not None})[/dim]")
             console.print(f"[dim]  • Prerelease auto-detect: {prerelease_auto}[/dim]")
             console.print(f"[dim]  • Documentation output enabled: {doc_output_enabled}[/dim]")
@@ -471,9 +606,42 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print(f"[dim]{'─' * 60}[/dim]")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
-        # Initialize GitHub client (only if not dry-run)
+        # Initialize GitHub client and database
         github_client = None if dry_run else GitHubClient(config)
         repo_name = config.repository.code_repo
+
+        # Calculate issue_repo_name
+        issues_repo = _get_issues_repo(config)
+        issue_repo_name = issues_repo.split('/')[-1] if '/' in issues_repo else issues_repo
+
+        # Initialize GitOperations and determine target_branch
+        git_ops = GitOperations('.')
+        available_versions = git_ops.get_version_tags()
+        
+        target_branch, _, _ = determine_release_branch_strategy(
+            version=target_version,
+            git_ops=git_ops,
+            available_versions=available_versions,
+            branch_template=config.branch_policy.release_branch_template,
+            default_branch=config.repository.default_branch,
+            branch_from_previous=config.branch_policy.branch_from_previous_release
+        )
+
+        # Initialize database connection
+        db = Database(config.database.path)
+        db.connect()
+
+        # Check for existing release
+        repo = db.get_repository(repo_name)
+        if repo:
+            existing_release = db.get_release(repo.id, version)
+            if existing_release:
+                if force == 'none':
+                    console.print(f"[red]Error: Release {version} already exists.[/red]")
+                    console.print(f"[yellow]Use --force \\[draft|published] to overwrite.[/yellow]")
+                    sys.exit(1)
+                elif not dry_run:
+                    console.print(f"[yellow]Warning: Overwriting existing release {version} (--force {force})[/yellow]")
 
         if debug:
             console.print("[bold cyan]Debug Mode: GitHub Operations[/bold cyan]")
@@ -481,6 +649,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
             console.print(f"[dim]Repository:[/dim] {repo_name}")
             console.print(f"[dim]Git tag:[/dim] v{version}")
             console.print(f"[dim]GitHub client initialized:[/dim] {not dry_run}")
+            console.print(f"[dim]Database path:[/dim] {config.database.path}")
+            console.print(f"[dim]Force mode:[/dim] {force}")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
         # Dry-run banner
@@ -491,8 +661,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
 
         # Create GitHub release
         if create_release:
-            status = "draft " if draft else ("prerelease " if prerelease_flag else "")
-            release_type = "draft" if draft else ("prerelease" if prerelease_flag else "final release")
+            status = "draft " if is_draft else ("prerelease " if prerelease_flag else "")
+            release_type = "draft" if is_draft else ("prerelease" if prerelease_flag else "final release")
 
             if dry_run:
                 console.print(f"[yellow]Would create {status}GitHub release:[/yellow]")
@@ -500,7 +670,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 console.print(f"[yellow]  Version: {version}[/yellow]")
                 console.print(f"[yellow]  Tag: v{version}[/yellow]")
                 console.print(f"[yellow]  Type: {release_type.capitalize()}[/yellow]")
-                console.print(f"[yellow]  Status: {'Draft' if draft else 'Published'}[/yellow]")
+                console.print(f"[yellow]  Status: {'Draft' if is_draft else 'Published'}[/yellow]")
                 console.print(f"[yellow]  URL: https://github.com/{repo_name}/releases/tag/v{version}[/yellow]")
 
                 # Show release notes preview (only if not in debug mode to avoid duplication)
@@ -521,12 +691,32 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     release_name,
                     release_notes,
                     prerelease=prerelease_flag,
-                    draft=draft
+                    draft=is_draft,
+                    target_commitish=target_branch
                 )
                 console.print(f"[green]✓ GitHub release created successfully[/green]")
                 console.print(f"[blue]→ https://github.com/{repo_name}/releases/tag/v{version}[/blue]")
         elif dry_run:
             console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
+
+        # Save release to database
+        if not dry_run and repo:
+            release = Release(
+                repo_id=repo.id,
+                version=version,
+                tag_name=f"v{version}",
+                name=f"Release {version}",
+                body=release_notes,
+                created_at=datetime.now(),
+                published_at=datetime.now() if not is_draft else None,
+                is_draft=is_draft,
+                is_prerelease=prerelease_flag,
+                url=f"https://github.com/{repo_name}/releases/tag/v{version}",
+                target_commitish=target_branch
+            )
+            db.upsert_release(release)
+            if debug:
+                console.print(f"[dim]Saved release to database (is_draft={is_draft})[/dim]")
 
         # Create PR
         if create_pr:
@@ -551,23 +741,46 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                 template_context = {
                     'code_repo': config.repository.code_repo.replace('/', '-'),
                     'issue_repo': issues_repo,
+                    'issue_repo_name': issue_repo_name,
+                    'pr_link': 'PR_LINK_PLACEHOLDER',
                     'version': version,
                     'major': str(target_version.major),
                     'minor': str(target_version.minor),
                     'patch': str(target_version.patch),
                     'num_changes': num_changes if num_changes > 0 else 'several',
                     'num_categories': num_categories if num_categories > 0 else 'multiple',
-                    'target_branch': config.output.pr_target_branch
+                    'target_branch': target_branch
                 }
 
                 # Create release tracking ticket if enabled
-                ticket_result = _create_release_ticket(
-                    config=config,
-                    github_client=github_client if not dry_run else None,
-                    template_context=template_context,
-                    dry_run=dry_run,
-                    debug=debug
-                )
+                ticket_result = None
+                
+                # If force=draft, try to find existing ticket interactively first if not in DB
+                if config.output.create_ticket and force == 'draft' and not dry_run:
+                     existing_association = db.get_ticket_association(repo_name, version)
+                     if not existing_association:
+                         ticket_result = _find_existing_ticket_interactive(config, github_client, version)
+                         if ticket_result:
+                             console.print(f"[blue]Reusing existing ticket #{ticket_result['number']}[/blue]")
+                             # Save association
+                             db.save_ticket_association(
+                                repo_full_name=repo_name,
+                                version=version,
+                                ticket_number=int(ticket_result['number']),
+                                ticket_url=ticket_result['url']
+                            )
+
+                if not ticket_result:
+                    ticket_result = _create_release_ticket(
+                        config=config,
+                        github_client=github_client,
+                        db=db,
+                        template_context=template_context,
+                        version=version,
+                        override=(force != 'none'),
+                        dry_run=dry_run,
+                        debug=debug
+                    )
 
                 # Add ticket variables to context if ticket was created
                 if ticket_result:
@@ -628,6 +841,14 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     branch_name = render_template(config.output.pr_templates.branch_template, template_context)
                     pr_title = render_template(config.output.pr_templates.title_template, template_context)
                     pr_body = render_template(config.output.pr_templates.body_template, template_context)
+                    
+                    # Render output paths for PR
+                    release_output_path = render_template(config.output.release_output_path, template_context)
+                    
+                    additional_files = {}
+                    if doc_output_enabled and doc_notes_content:
+                         doc_output_path = render_template(config.output.doc_output_path, template_context)
+                         additional_files[doc_output_path] = doc_notes_content
                 except TemplateError as e:
                     console.print(f"[red]Error rendering PR template: {e}[/red]")
                     if debug:
@@ -640,7 +861,10 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     console.print(f"[dim]Branch name:[/dim] {branch_name}")
                     console.print(f"[dim]PR title:[/dim] {pr_title}")
                     console.print(f"[dim]Target branch:[/dim] {config.output.pr_target_branch}")
-                    console.print(f"[dim]Notes file:[/dim] {notes_path}")
+                    console.print(f"[dim]Release notes path:[/dim] {release_output_path}")
+                    if additional_files:
+                        for path in additional_files:
+                            console.print(f"[dim]Additional file:[/dim] {path}")
                     console.print(f"\n[dim]PR body:[/dim]")
                     console.print(f"[dim]{pr_body}[/dim]")
                     console.print("[dim]" + "=" * 60 + "[/dim]\n")
@@ -649,27 +873,43 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
                     console.print(f"[yellow]Would create pull request:[/yellow]")
                     console.print(f"[yellow]  Branch: {branch_name}[/yellow]")
                     console.print(f"[yellow]  Title: {pr_title}[/yellow]")
-                    console.print(f"[yellow]  Target: {config.output.pr_target_branch}[/yellow]")
-                    console.print(f"[yellow]  Notes file: {notes_path}[/yellow]")
+                    console.print(f"[yellow]  Target: {target_branch}[/yellow]")
+                    console.print(f"[yellow]  Release notes path:[/yellow] {release_output_path}")
+                    if additional_files:
+                        for path in additional_files:
+                            console.print(f"[yellow]  Additional file:[/yellow] {path}")
                     console.print(f"\n[yellow]PR body:[/yellow]")
                     console.print(f"[dim]{pr_body}[/dim]\n")
                 else:
                     console.print(f"[blue]Creating PR with release notes...[/blue]")
-                    github_client.create_pr_for_release_notes(
+                    pr_url = github_client.create_pr_for_release_notes(
                         repo_name,
                         pr_title,
-                        str(notes_path),
+                        release_output_path,
                         release_notes,
                         branch_name,
-                        config.output.pr_target_branch,
-                        pr_body
+                        target_branch,
+                        pr_body,
+                        additional_files=additional_files
                     )
                     console.print(f"[green]✓ Pull request created successfully[/green]")
+
+                    # Update ticket body with real PR link
+                    if ticket_result and pr_url and not dry_run:
+                        try:
+                            repo = github_client.gh.get_repo(issues_repo)
+                            issue = repo.get_issue(int(ticket_result['number']))
+                            
+                            if issue.body and 'PR_LINK_PLACEHOLDER' in issue.body:
+                                new_body = issue.body.replace('PR_LINK_PLACEHOLDER', pr_url)
+                                github_client.update_issue_body(issues_repo, int(ticket_result['number']), new_body)
+                        except Exception as e:
+                            console.print(f"[yellow]Warning: Could not update ticket body: {e}[/yellow]")
         elif dry_run:
             console.print(f"[yellow]Would NOT create pull request (--no-pr or config setting)[/yellow]\n")
 
-        # Handle Docusaurus file if configured
-        if doc_output_enabled:
+        # Handle Docusaurus file if configured (only if PR creation didn't handle it)
+        if doc_output_enabled and not create_pr:
             template_context = {
                 'version': version,
                 'major': str(target_version.major),
@@ -747,3 +987,41 @@ def publish(ctx, version: Optional[str], list_drafts: bool, notes_file: Optional
         if debug:
             raise
         sys.exit(1)
+    finally:
+        # Close database connection if it was opened
+        if 'db' in locals() and db:
+            db.close()
+
+
+def _find_existing_ticket_interactive(config: Config, github_client: GitHubClient, version: str) -> Optional[dict]:
+    """Find existing ticket interactively."""
+    issues_repo = _get_issues_repo(config)
+    query = f"repo:{issues_repo} is:issue {version} in:title"
+    console.print(f"[cyan]Searching for existing tickets in {issues_repo}...[/cyan]")
+    
+    # We need to use the underlying github client to search
+    # This is a bit of a hack, but we don't have a search method in GitHubClient
+    # Assuming github_client.gh is available
+    issues = list(github_client.gh.search_issues(query)[:5])
+    
+    if not issues:
+        console.print("[yellow]No matching tickets found.[/yellow]")
+        return None
+        
+    table = Table(title="Found Tickets")
+    table.add_column("#", style="cyan")
+    table.add_column("Number", style="green")
+    table.add_column("Title", style="white")
+    table.add_column("State", style="yellow")
+    
+    for i, issue in enumerate(issues):
+        table.add_row(str(i+1), str(issue.number), issue.title, issue.state)
+        
+    console.print(table)
+    
+    response = input("\nSelect ticket to reuse (1-5) or 'n' to create new: ").strip().lower()
+    if response.isdigit() and 1 <= int(response) <= len(issues):
+        selected = issues[int(response)-1]
+        return {'number': str(selected.number), 'url': selected.html_url}
+        
+    return None

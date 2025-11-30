@@ -248,7 +248,7 @@ class TestTicket:
             labels=[Label(name="bug")]
         )
         assert ticket.number == 456
-        assert ticket.key == "#456"
+        assert ticket.key == "456"  # No "#" prefix since v1.3 migration
         assert ticket.title == "Fix bug"
         assert len(ticket.labels) == 1
         assert ticket.labels[0].name == "bug"
@@ -282,7 +282,7 @@ class TestReleaseNote:
             authors=[author1, author2],
             pr_numbers=[456]
         )
-        assert note.ticket_key == "#123"
+        assert note.ticket_key == "123"  # No "#" prefix since v1.3 migration
         assert note.title == "Add new feature"
         assert note.category == "Features"
         assert len(note.authors) == 2

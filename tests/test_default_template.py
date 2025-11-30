@@ -71,8 +71,8 @@ def test_default_template_structure():
     grouped = generator.group_by_category(notes)
     output = generator.format_markdown(grouped, "1.0.0")
 
-    # Verify structure: Title
-    assert "# Release 1.0.0" in output
+    # Note: Title "# Release 1.0.0" is no longer in the release template
+    # It appears in the GitHub release UI title instead
 
     # Verify structure: Breaking Changes Descriptions section
     assert "## 💥 Breaking Changes" in output
