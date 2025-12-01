@@ -213,12 +213,22 @@ def _create_release_ticket(
 
         # Add to project if configured (for both new and updated tickets)
         if config.output.ticket_templates.project_id:
-            github_client.assign_issue_to_project(
-                issue_url=result['url'],
-                project_id=config.output.ticket_templates.project_id,
-                status=config.output.ticket_templates.project_status,
-                custom_fields=config.output.ticket_templates.project_fields
-            )
+            # Resolve project ID (number) to node ID
+            org_name = issues_repo.split('/')[0]
+            try:
+                project_number = int(config.output.ticket_templates.project_id)
+                project_node_id = github_client.get_project_node_id(org_name, project_number)
+                
+                if project_node_id:
+                    github_client.assign_issue_to_project(
+                        issue_url=result['url'],
+                        project_id=project_node_id,
+                        status=config.output.ticket_templates.project_status,
+                        custom_fields=config.output.ticket_templates.project_fields,
+                        debug=debug
+                    )
+            except ValueError:
+                console.print(f"[yellow]Warning: Invalid project ID '{config.output.ticket_templates.project_id}'. Expected a number.[/yellow]")
 
     return result
 

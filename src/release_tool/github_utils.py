@@ -350,7 +350,7 @@ class GitHubClient:
             ) as progress:
                 task = progress.add_task("Fetching issues...", total=None)
 
-                # Explicitly paginate through results to fetch 100 at a time
+                # Explicitly paginates through results to fetch 100 at a time
                 while True:
                     try:
                         # Get page (PyGithub caches pages internally)
@@ -1072,11 +1072,25 @@ class GitHubClient:
                 # Branch might already exist
                 pass
 
+            # Track if any changes were made
+            changes_made = False
+
             # Helper to update/create a file
-            def update_file(path: str, file_content: str):
+            def update_file(path: str, file_content: str) -> bool:
                 commit_msg = f"Update {path}"
                 try:
                     file_contents = repo.get_contents(path, ref=branch_name)
+                    
+                    # Check if content is identical
+                    try:
+                        existing_content = file_contents.decoded_content.decode('utf-8')
+                        if existing_content == file_content:
+                            console.print(f"[dim]Content unchanged for {path}, skipping commit[/dim]")
+                            return False
+                    except Exception:
+                        # If comparison fails, proceed with update
+                        pass
+
                     # Update existing file
                     repo.update_file(
                         path,
@@ -1085,6 +1099,7 @@ class GitHubClient:
                         file_contents.sha,
                         branch=branch_name
                     )
+                    return True
                 except GithubException:
                     # Create new file
                     repo.create_file(
@@ -1093,14 +1108,20 @@ class GitHubClient:
                         file_content,
                         branch=branch_name
                     )
+                    return True
 
             # Update main release notes file
-            update_file(file_path, content)
+            if update_file(file_path, content):
+                changes_made = True
 
             # Update additional files if any
             if additional_files:
                 for path, file_content in additional_files.items():
-                    update_file(path, file_content)
+                    if update_file(path, file_content):
+                        changes_made = True
+            
+            if not changes_made:
+                console.print("[yellow]No changes detected in release notes (diff is empty). Skipping commit/push.[/yellow]")
 
             # Create PR with custom title and body
             pr_body_text = pr_body if pr_body else f"Automated release notes update"
@@ -1158,16 +1179,18 @@ class GitHubClient:
         issue_url: str,
         project_id: str,
         status: Optional[str] = None,
-        custom_fields: Optional[Dict[str, str]] = None
+        custom_fields: Optional[Dict[str, str]] = None,
+        debug: bool = False
     ) -> Optional[str]:
         """
         Assign an issue to a GitHub Project and optionally set fields using GraphQL API.
 
         Args:
             issue_url: Full URL of the issue (e.g., https://github.com/owner/repo/issues/123)
-            project_id: GitHub Project ID (number from project URL)
+            project_id: GitHub Project Node ID (e.g. PVT_...)
             status: Status to set in the project (e.g., 'Todo', 'In Progress', 'Done')
             custom_fields: Dictionary mapping custom field names to values
+            debug: Whether to show debug output
 
         Returns:
             Project item ID if successful, None otherwise
@@ -1175,7 +1198,7 @@ class GitHubClient:
         Example:
             item_id = client.assign_issue_to_project(
                 issue_url="https://github.com/sequentech/meta/issues/8624",
-                project_id="123",
+                project_id="PVT_kwDOBSDgG84ACa9s",
                 status="In Progress",
                 custom_fields={"Priority": "High", "Sprint": "2024-Q1"}
             )
@@ -1188,10 +1211,8 @@ class GitHubClient:
             if not issue_node_id:
                 return None
 
-            # Step 2: Get the project node ID
-            project_node_id = self._get_project_node_id(project_id)
-            if not project_node_id:
-                return None
+            # Step 2: Use the provided project ID (which is now the Node ID)
+            project_node_id = project_id
 
             # Step 3: Add the issue to the project
             item_id = self._add_issue_to_project(issue_node_id, project_node_id)
@@ -1200,12 +1221,12 @@ class GitHubClient:
 
             # Step 4: Set status if provided
             if status:
-                self._set_project_status(project_node_id, item_id, status)
+                self._set_project_status(project_node_id, item_id, status, debug=debug)
 
             # Step 5: Set custom fields if provided
             if custom_fields:
                 for field_name, field_value in custom_fields.items():
-                    self._set_project_custom_field(project_node_id, item_id, field_name, field_value)
+                    self._set_project_custom_field(project_node_id, item_id, field_name, field_value, debug=debug)
 
             return item_id
 
@@ -1258,35 +1279,73 @@ class GitHubClient:
             console.print(f"[yellow]Warning: Error getting issue node ID: {e}[/yellow]")
             return None
 
-    def _get_project_node_id(self, project_id: str) -> Optional[str]:
-        """Get project node ID from project number using GraphQL."""
+    def get_project_node_id(self, org_name: str, project_number: int) -> Optional[str]:
+        """
+        Get the project node ID (PVT_...) from the project number.
+        
+        Args:
+            org_name: Organization login (e.g. "sequentech")
+            project_number: Project number (e.g. 1)
+            
+        Returns:
+            Project node ID if found, None otherwise
+        """
         import requests
-
+        
         query = """
-        query($projectNumber: Int!) {
-            node(id: $projectNumber) {
-                ... on ProjectV2 {
-                    id
+        query($org: String!) {
+            organization(login: $org) {
+                projectsV2(first: 20) {
+                    nodes {
+                        id
+                        title
+                        url
+                    }
                 }
             }
         }
         """
-
-        # Try to construct the node ID directly
-        # GitHub Project V2 node IDs follow pattern: PVT_<base64>
-        # For now, we'll try to query by number - this requires org context
-
-        # Alternative: query user's or org's projects
-        # This is complex - for now, assume project_id is already the node ID
-        # or use a simpler approach
-
-        # Simple approach: project_id might already be the node ID (starts with "PVT_")
-        if project_id.startswith("PVT_") or project_id.startswith("PV_"):
-            return project_id
-
-        console.print(f"[yellow]Warning: Project ID should be the GraphQL node ID (starts with PVT_). Got: {project_id}[/yellow]")
-        console.print(f"[yellow]To find your project node ID, use: gh api graphql -f query='{{viewer{{projectsV2(first:10){{nodes{{id number title}}}}}}}}'[/yellow]")
-        return None
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": {"org": org_name}},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if "errors" in data:
+                # Check for permission errors
+                for error in data.get("errors", []):
+                    if "FORBIDDEN" in str(error) or "Resource not accessible by integration" in str(error):
+                        console.print(f"[red]Permission denied accessing organization projects.[/red]")
+                        console.print(f"[yellow]Tip: Try refreshing your token permissions:[/yellow]")
+                        console.print(f"[yellow]  gh auth refresh -s read:org[/yellow]")
+                
+                console.print(f"[yellow]Warning: GraphQL error getting projects: {data['errors']}[/yellow]")
+                return None
+                
+            projects = data.get("data", {}).get("organization", {}).get("projectsV2", {}).get("nodes", [])
+            
+            # Look for matching project number in URL
+            # URL format: https://github.com/orgs/{org}/projects/{number}
+            target_suffix = f"/projects/{project_number}"
+            
+            for project in projects:
+                if project.get("url", "").endswith(target_suffix):
+                    return project["id"]
+                    
+            console.print(f"[yellow]Project number {project_number} not found in organization {org_name}[/yellow]")
+            return None
+            
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error getting project node ID: {e}[/yellow]")
+            return None
 
     def _add_issue_to_project(self, issue_node_id: str, project_node_id: str) -> Optional[str]:
         """Add an issue to a project using GraphQL."""
@@ -1320,13 +1379,13 @@ class GitHubClient:
                 return None
 
             item_id = data["data"]["addProjectV2ItemById"]["item"]["id"]
-            console.print(f"[green]Added issue to project (item ID: {item_id})[/green]")
+            console.print(f"[green]Added issue to project (internal project id: {item_id})[/green]")
             return item_id
         except Exception as e:
             console.print(f"[yellow]Warning: Error adding issue to project: {e}[/yellow]")
             return None
 
-    def _set_project_status(self, project_node_id: str, item_id: str, status: str) -> bool:
+    def _set_project_status(self, project_node_id: str, item_id: str, status: str, debug: bool = False) -> bool:
         """Set the status field of a project item."""
         import requests
 
@@ -1337,7 +1396,7 @@ class GitHubClient:
             return False
 
         # Get the status option ID
-        option_id = self._get_project_field_option_id(project_node_id, field_id, status)
+        option_id = self._get_project_field_option_id(project_node_id, field_id, status, debug=debug)
         if not option_id:
             console.print(f"[yellow]Warning: Could not find status option '{status}' in project[/yellow]")
             return False
@@ -1385,18 +1444,196 @@ class GitHubClient:
             console.print(f"[yellow]Warning: Error setting project status: {e}[/yellow]")
             return False
 
-    def _set_project_custom_field(self, project_node_id: str, item_id: str, field_name: str, field_value: str) -> bool:
-        """Set a custom field of a project item."""
-        # Similar to _set_project_status but handles different field types
-        console.print(f"[dim]Setting custom field '{field_name}' to '{field_value}'...[/dim]")
-        # Implementation would be similar but handle text, number, date fields differently
-        # For now, print a placeholder message
-        console.print(f"[yellow]Note: Custom field setting not fully implemented yet[/yellow]")
-        return True
-
-    def _get_project_field_id(self, project_node_id: str, field_name: str) -> Optional[str]:
-        """Get the field ID for a project field by name."""
+    def _set_project_custom_field(self, project_node_id: str, item_id: str, field_name: str, field_value: str, debug: bool = False) -> bool:
+        """
+        Set a custom field of a project item.
+        
+        Supports:
+        - Text fields
+        - Number fields
+        - Date fields
+        - Single Select fields
+        - Iteration fields (supports "@current" to select current iteration)
+        """
         import requests
+        import json
+        from datetime import datetime, date
+
+        # Get field details (ID, type, options/configuration)
+        field_info = self._get_project_field_details(project_node_id, field_name, debug=debug)
+        if not field_info:
+            console.print(f"[yellow]Warning: Could not find field '{field_name}' in project[/yellow]")
+            return False
+
+        field_id = field_info["id"]
+        field_type = field_info.get("dataType", "TEXT")
+        
+        if debug:
+            console.print(f"[dim]Field '{field_name}' type: {field_type}[/dim]")
+
+        # Prepare the value based on field type
+        value_arg = {}
+        
+        if field_type == "SINGLE_SELECT":
+            # Find option ID
+            options = field_info.get("options", [])
+            option_id = None
+            
+            # 1. Exact match
+            for opt in options:
+                if opt["name"].lower() == field_value.lower():
+                    option_id = opt["id"]
+                    break
+            
+            # 2. Partial match if not found
+            if not option_id:
+                matches = [o for o in options if field_value.lower() in o["name"].lower()]
+                if len(matches) == 1:
+                    option_id = matches[0]["id"]
+                    if debug:
+                        console.print(f"[dim]Using partial match '{matches[0]['name']}' for '{field_value}'[/dim]")
+            
+            if not option_id:
+                console.print(f"[yellow]Warning: Option '{field_value}' not found for field '{field_name}'[/yellow]")
+                return False
+                
+            value_arg = {"singleSelectOptionId": option_id}
+            
+        elif field_type == "ITERATION":
+            # Handle Iteration field
+            iterations = field_info.get("configuration", {}).get("iterations", [])
+            iteration_id = None
+            
+            # Check if user wants "Current" iteration
+            if field_value.lower() in ["@current"]:
+                # Find current iteration based on date
+                today = date.today().isoformat()
+                for iteration in iterations:
+                    start_date = iteration.get("startDate")
+                    duration = iteration.get("duration", 0)
+                    
+                    # Calculate end date (approximate, assuming duration is in days)
+                    # Note: GitHub API returns duration in days
+                    if start_date:
+                        # We rely on GitHub's logic usually, but here we need to check locally
+                        # or we could try to find one that is "active" if the API provided it
+                        # But the API structure provided in _get_project_field_details needs to include dates
+                        pass
+                        
+                # Better approach: The API usually returns iterations in order. 
+                # We need to parse dates to find the current one.
+                from datetime import timedelta
+                
+                now = datetime.now().date()
+                
+                for iteration in iterations:
+                    start_str = iteration.get("startDate")
+                    duration_days = iteration.get("duration", 14) # Default to 2 weeks if missing
+                    
+                    if start_str:
+                        start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+                        end_date = start_date + timedelta(days=duration_days)
+                        
+                        if start_date <= now < end_date:
+                            iteration_id = iteration["id"]
+                            if debug:
+                                console.print(f"[dim]Found current iteration: {iteration['title']} ({start_str} - {end_date})[/dim]")
+                            break
+                
+                if not iteration_id:
+                    console.print(f"[yellow]Warning: Could not determine 'Current' iteration for field '{field_name}'[/yellow]")
+                    return False
+            else:
+                # Find by name
+                for iteration in iterations:
+                    if iteration["title"].lower() == field_value.lower():
+                        iteration_id = iteration["id"]
+                        break
+                
+                if not iteration_id:
+                    # Partial match
+                    matches = [i for i in iterations if field_value.lower() in i["title"].lower()]
+                    if len(matches) == 1:
+                        iteration_id = matches[0]["id"]
+                    else:
+                        console.print(f"[yellow]Warning: Iteration '{field_value}' not found for field '{field_name}'[/yellow]")
+                        return False
+            
+            value_arg = {"iterationId": iteration_id}
+            
+        elif field_type == "NUMBER":
+            try:
+                # GraphQL expects a float for number fields
+                value_arg = {"number": float(field_value)}
+            except ValueError:
+                console.print(f"[yellow]Warning: Value '{field_value}' is not a valid number for field '{field_name}'[/yellow]")
+                return False
+                
+        elif field_type == "DATE":
+            # Validate date format YYYY-MM-DD
+            try:
+                datetime.strptime(field_value, "%Y-%m-%d")
+                value_arg = {"date": field_value}
+            except ValueError:
+                console.print(f"[yellow]Warning: Value '{field_value}' is not a valid date (YYYY-MM-DD) for field '{field_name}'[/yellow]")
+                return False
+                
+        else:
+            # Default to text
+            value_arg = {"text": field_value}
+
+        mutation = """
+        mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+            updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: $value
+            }) {
+                projectV2Item {
+                    id
+                }
+            }
+        }
+        """
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.config.github.token}",
+                "Content-Type": "application/json"
+            }
+            
+            if debug:
+                console.print(f"[dim]Setting field '{field_name}' ({field_id}) to {value_arg}[/dim]")
+            
+            response = requests.post(
+                "https://api.github.com/graphql",
+                json={"query": mutation, "variables": {
+                    "projectId": project_node_id,
+                    "itemId": item_id,
+                    "fieldId": field_id,
+                    "value": value_arg
+                }},
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                console.print(f"[yellow]Warning: GraphQL error setting field '{field_name}': {data['errors']}[/yellow]")
+                return False
+
+            if debug:
+                console.print(f"[green]Successfully set field '{field_name}'[/green]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error setting custom field '{field_name}': {e}[/yellow]")
+            return False
+
+    def _get_project_field_details(self, project_node_id: str, field_name: str, debug: bool = False) -> Optional[dict]:
+        """Get detailed information about a project field."""
+        import requests
+        import json
 
         query = """
         query($projectId: ID!) {
@@ -1407,10 +1644,29 @@ class GitHubClient:
                             ... on ProjectV2Field {
                                 id
                                 name
+                                dataType
                             }
                             ... on ProjectV2SingleSelectField {
                                 id
                                 name
+                                dataType
+                                options {
+                                    id
+                                    name
+                                }
+                            }
+                            ... on ProjectV2IterationField {
+                                id
+                                name
+                                dataType
+                                configuration {
+                                    iterations {
+                                        id
+                                        title
+                                        startDate
+                                        duration
+                                    }
+                                }
                             }
                         }
                     }
@@ -1424,6 +1680,10 @@ class GitHubClient:
                 "Authorization": f"Bearer {self.config.github.token}",
                 "Content-Type": "application/json"
             }
+            
+            if debug:
+                console.print(f"[dim]Fetching project fields...[/dim]")
+            
             response = requests.post(
                 "https://api.github.com/graphql",
                 json={"query": query, "variables": {"projectId": project_node_id}},
@@ -1438,17 +1698,25 @@ class GitHubClient:
 
             fields = data["data"]["node"]["fields"]["nodes"]
             for field in fields:
-                if field.get("name") == field_name:
-                    return field["id"]
+                if field.get("name").lower() == field_name.lower():
+                    return field
 
             return None
         except Exception as e:
-            console.print(f"[yellow]Warning: Error getting project field ID: {e}[/yellow]")
+            console.print(f"[yellow]Warning: Error getting project field details: {e}[/yellow]")
             return None
 
-    def _get_project_field_option_id(self, project_node_id: str, field_id: str, option_name: str) -> Optional[str]:
+    def _get_project_field_id(self, project_node_id: str, field_name: str) -> Optional[str]:
+        """Get the field ID for a project field by name."""
+        # Re-implement using the new detailed method for consistency
+        details = self._get_project_field_details(project_node_id, field_name)
+        return details["id"] if details else None
+
+
+    def _get_project_field_option_id(self, project_node_id: str, field_id: str, option_name: str, debug: bool = False) -> Optional[str]:
         """Get the option ID for a single-select field."""
         import requests
+        import json
 
         query = """
         query($projectId: ID!) {
@@ -1458,6 +1726,7 @@ class GitHubClient:
                         nodes {
                             ... on ProjectV2SingleSelectField {
                                 id
+                                name
                                 options {
                                     id
                                     name
@@ -1475,6 +1744,12 @@ class GitHubClient:
                 "Authorization": f"Bearer {self.config.github.token}",
                 "Content-Type": "application/json"
             }
+            
+            if debug:
+                console.print(f"[dim]GraphQL Query (get options):[/dim]")
+                console.print(f"[dim]{query}[/dim]")
+                console.print(f"[dim]Variables: projectId={project_node_id}[/dim]")
+            
             response = requests.post(
                 "https://api.github.com/graphql",
                 json={"query": query, "variables": {"projectId": project_node_id}},
@@ -1482,6 +1757,10 @@ class GitHubClient:
             )
             response.raise_for_status()
             data = response.json()
+            
+            if debug:
+                console.print(f"[dim]GraphQL Response (get options):[/dim]")
+                console.print(f"[dim]{json.dumps(data, indent=2)}[/dim]")
 
             if "errors" in data:
                 console.print(f"[yellow]Warning: GraphQL error getting field options: {data['errors']}[/yellow]")
@@ -1490,9 +1769,30 @@ class GitHubClient:
             fields = data["data"]["node"]["fields"]["nodes"]
             for field in fields:
                 if field.get("id") == field_id and "options" in field:
-                    for option in field["options"]:
-                        if option["name"] == option_name:
+                    options = field["options"]
+                    target_name = option_name.lower()
+                    
+                    # 1. Exact match (case-insensitive)
+                    for option in options:
+                        if option["name"].lower() == target_name:
                             return option["id"]
+                    
+                    # 2. Partial match
+                    matches = [o for o in options if target_name in o["name"].lower()]
+                    
+                    if len(matches) == 1:
+                        matched = matches[0]
+                        console.print(f"[yellow]Note: Using partial match '{matched['name']}' for status '{option_name}'[/yellow]")
+                        return matched["id"]
+                    elif len(matches) > 1:
+                        names = [o["name"] for o in matches]
+                        console.print(f"[yellow]Warning: Multiple status options match '{option_name}': {', '.join(names)}. Not applying.[/yellow]")
+                        return None
+                    else:
+                        # No matches
+                        available = [o["name"] for o in options]
+                        console.print(f"[yellow]Warning: Status option '{option_name}' not found. Available: {', '.join(available)}[/yellow]")
+                        return None
 
             return None
         except Exception as e:

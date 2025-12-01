@@ -839,12 +839,13 @@ labels = ["release", "devops", "infrastructure"]
 # Example: "johndoe"
 # assignee = "johndoe"
 
-# project_id: GitHub Project V2 ID (number) to add the ticket to
+# project_id: GitHub Project V2 Number to add the ticket to
 # This allows automatically adding the release ticket to a GitHub Project board.
-# The ID is the number found in the project URL: github.com/orgs/ORG/projects/123
+# The value should be the project NUMBER found in the URL (e.g. 1 for .../projects/1),
+# NOT the Node ID (PVT_...).
 # NOTE: This requires the GitHub token to have 'project' scope (for PATs) or
 # appropriate permissions (for GitHub Apps).
-# Example: "123"
+# Example: "1"
 project_id = "1"
 
 # project_status: Status to set in the GitHub Project
@@ -859,10 +860,13 @@ project_status = "In progress"
 # Allows setting additional metadata fields in the project board.
 # This is a key-value map where:
 #   - Key: The exact name of the field in the project (e.g., "Priority", "Sprint")
-#   - Value: The value to set (must match valid options for single-select fields)
+#   - Value: The value to set. Supports:
+#     * Text/Number/Date fields: The value as a string
+#     * Single Select fields: The option name (case-insensitive)
+#     * Iteration fields: The iteration name OR "@current" to automatically select the active iteration
 # This setting is ignored if project_id is not set.
-# Example: { "Priority" = "High", "Team" = "DevOps" }
-# project_fields = { "Team" = "Product", "Estimate" = "3" }
+# Example: { "Priority" = "High", "Estimate" = "3", "Iteration" = "@current" }
+project_fields = { "Team" = "Product", "Estimate" = "3", "Iteration" = "@current" }
 
 # type: Issue type to set
 # Specifies the type of the issue (e.g., "Task", "Bug", "Feature").
