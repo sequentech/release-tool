@@ -19,7 +19,7 @@ def init_config(ctx, assume_yes: bool):
         console.print(f"[red]Error loading config template: {e}[/red]")
         console.print("[yellow]Falling back to minimal config...[/yellow]")
         example_config = """
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "sequentech/step"

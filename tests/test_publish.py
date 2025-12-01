@@ -91,7 +91,7 @@ def test_dry_run_with_draft_and_prerelease(test_config, test_notes_file):
 
     result = runner.invoke(
         publish,
-        ['1.0.0-rc.1', '-f', str(test_notes_file), '--dry-run', '--release', '--draft', '--prerelease', 'true'],
+        ['1.0.0-rc.1', '-f', str(test_notes_file), '--dry-run', '--release', '--release-mode', 'draft', '--prerelease', 'true'],
         obj={'config': test_config}
     )
 
@@ -104,7 +104,7 @@ def test_config_defaults_used_when_no_cli_flags(test_config, test_notes_file):
     """Test that config defaults are used when CLI flags are not provided."""
     # Set config defaults
     test_config.output.create_github_release = True
-    test_config.output.draft_release = True
+    test_config.output.release_mode = "draft"
 
     runner = CliRunner()
 

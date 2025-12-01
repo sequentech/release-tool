@@ -292,7 +292,7 @@ class TestQueryTicketsCLI:
         config_file = tmp_path / "test_config.toml"
         nonexistent_db = tmp_path / "nonexistent.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -319,7 +319,7 @@ path = "{nonexistent_db}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -349,7 +349,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -383,7 +383,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -416,7 +416,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -454,7 +454,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -489,7 +489,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -523,7 +523,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -561,7 +561,7 @@ class TestSmartTicketKeyParsing:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -594,7 +594,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -627,7 +627,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -661,7 +661,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -695,7 +695,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -729,7 +729,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -763,7 +763,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -802,7 +802,7 @@ class TestOutputFormats:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -840,7 +840,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -873,7 +873,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
@@ -937,7 +937,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.3"
+config_version = "1.4"
 
 [repository]
 code_repo = "test/repo"
