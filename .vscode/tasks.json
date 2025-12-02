@@ -58,6 +58,12 @@
             "type": "shell",
             "command": "act -j test --container-architecture linux/amd64",
             "problemMatcher": []
+        },
+        {
+            "label": "Docs: Check Action (act)",
+            "type": "shell",
+            "command": "act -j deploy --container-architecture linux/amd64",
+            "problemMatcher": []
         }
     ]
 }

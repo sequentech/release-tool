@@ -101,25 +101,24 @@ act -j test --container-architecture linux/amd64 -v
 
 **Note**: On Apple M-series chips, use `--container-architecture linux/amd64` to avoid compatibility issues.
 
-### Docker Publish Workflow
+### Documentation Deployment Workflow
 
-File: `.github/workflows/docker-publish.yml`
+File: `.github/workflows/deploy-docs.yml`
 
 **Triggers**:
-- Push to `main` branch → updates `latest` and `main` tags
-- Push of version tags (`v*`) → creates versioned image tags (e.g., `v1.0.0`)
-- Pull requests → builds image for validation only (doesn't push)
+- Push to `main` branch (only when files in `docs/` change)
 
 **What it does**:
-1. Builds the Docker image from the Dockerfile
-2. Tags the image appropriately based on the trigger
-3. Pushes to GitHub Container Registry (GHCR)
+1. Sets up Node.js environment
+2. Installs dependencies in `docs/` directory
+3. Builds the Docusaurus static site
+4. Deploys the `docs/build` directory to the `gh-pages` branch
 
-**Testing locally**:
+**Running locally with act**:
 
 ```bash
-# Test the Docker publish workflow locally (builds but doesn't push)
-act -j build-and-push --container-architecture linux/amd64
+# Run the deploy-docs workflow
+act -j deploy --container-architecture linux/amd64
 ```
 
 ## Docker Image & Registry
