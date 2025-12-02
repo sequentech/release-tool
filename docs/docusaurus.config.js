@@ -23,9 +23,10 @@ const config = {
             /** @type {import('@docusaurus/preset-classic').Options} */
             ({
                 docs: {
-                    path: '../docs',
+                    path: '.',
                     sidebarPath: require.resolve('./sidebars.js'),
-                    editUrl: 'https://github.com/sequentech/release-tool/tree/main/website/',
+                    editUrl: 'https://github.com/sequentech/release-tool/tree/main/docs/',
+                    exclude: ['**/node_modules/**'],
                 },
                 theme: {
                     customCss: require.resolve('./src/css/custom.css'),
@@ -37,6 +38,11 @@ const config = {
     themeConfig:
         /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
         ({
+            colorMode: {
+                defaultMode: 'light',
+                disableSwitch: false,
+                respectPrefersColorScheme: true,
+            },
             navbar: {
                 title: 'Release Tool',
                 items: [

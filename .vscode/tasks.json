@@ -1,14 +1,62 @@
 {
     "version": "2.0.0",
     "tasks": [
+        // --- Release Tool (Docker) ---
         {
-            "label": "Docker: Build Image",
+            "label": "Tool: Build Docker Image",
             "type": "shell",
             "command": "docker build -t release-tool:local .",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        // --- Release Tool (Python) ---
+        {
+            "label": "Tool: Run Tests",
+            "type": "shell",
+            "command": "poetry run pytest",
+            "group": "test",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        // --- Release Tool (Docusaurus) ---
+        {
+            "label": "Docs: Start Server",
+            "type": "shell",
+            "command": "cd docs && npm install && npm start",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "typescript",
+                "pattern": "$tsc",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Compiling...",
+                    "endsPattern": "Client compiled successfully"
+                }
+            },
+            "presentation": {
+                "group": "docs",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "Docs: Build Static Site",
+            "type": "shell",
+            "command": "cd docs && npm install && npm run build",
+            "group": "build"
+        },
+        // --- CI/CD ---
+        {
+            "label": "CI: Run Tests (act)",
+            "type": "shell",
+            "command": "act -j test --container-architecture linux/amd64",
             "problemMatcher": []
         }
     ]
