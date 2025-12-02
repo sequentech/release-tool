@@ -1,0 +1,85 @@
+# Example configuration showcasing the output_template master template feature
+# This example shows how to create custom release notes with migrations section
+
+[repository]
+code_repo = "owner/repo"
+
+[github]
+# token will be read from GITHUB_TOKEN environment variable
+
+# =============================================================================
+# Release Notes Configuration
+# =============================================================================
+[release_notes]
+title_template = "Release {{ version }}"
+
+# Entry template - defines how each individual change is rendered
+# This template is used by render_entry() in the output_template
+entry_template = '''- {{ title }}
+  {% if url %}([#{{ pr_numbers[0] }}]({{ url }})){% endif %}
+  {% if authors %}
+  by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}'''
+
+# Output template - master template for entire release notes
+# Example 1: Custom layout with separate migrations section
+output_template = '''# {{ title }}
+
+## What's Changed
+{% for category in categories %}
+### {{ category.name }}
+{% for note in category.notes %}
+{{ render_entry(note) }}
+{% endfor %}
+{% endfor %}
+
+## Migration Guide
+{% for note in all_notes %}
+{% if note.migration_notes %}
+### {{ note.title }}
+{{ note.migration_notes }}
+{% if note.url %}
+See [PR #{{ note.pr_numbers[0] }}]({{ note.url }}) for details.
+{% endif %}
+{% endif %}
+{% endfor %}
+
+## Contributors
+{% set all_authors = [] %}
+{% for note in all_notes %}
+  {% for author in note.authors %}
+    {% if author not in all_authors %}
+      {% set _ = all_authors.append(author) %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+Thank you to all contributors:
+{% for author in all_authors %}
+- {{ author.mention }}{% if author.company %} ({{ author.company }}){% endif %}
+{% endfor %}'''
+
+# Categories for grouping changes
+[[release_notes.categories]]
+name = "Features"
+labels = ["feature", "enhancement"]
+order = 1
+
+[[release_notes.categories]]
+name = "Bug Fixes"
+labels = ["bug", "fix"]
+order = 2
+
+[[release_notes.categories]]
+name = "Documentation"
+labels = ["docs"]
+order = 3
+
+[[release_notes.categories]]
+name = "Other"
+labels = []
+order = 99
+
+[output]
+output_path = "docs/releases/{version}.md"
+download_media = true
+assets_path = "docs/releases/assets/{version}"

@@ -1,3 +1,10 @@
 notes.*
 
+*.db
+release_tool.toml
+results.log
+
+.release_tool_cache/
 __pycache__/
+node_modules
+.docusaurus
