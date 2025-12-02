@@ -41,5 +41,8 @@ jobs:
     - name: Install project
       run: poetry install --no-interaction
 
-    - name: Run tests
-      run: poetry run pytest tests/
+    - name: Run tests (excluding Docker tests)
+      run: poetry run pytest tests/ --ignore=tests/test_docker.py
+
+    - name: Run Docker tests
+      run: poetry run pytest tests/test_docker.py -v
