@@ -10,9 +10,13 @@ const config = {
     title: 'Release Tool',
     tagline: 'Semantic Versioning & Release Management',
     url: 'https://sequentech.github.io',
-    baseUrl: '/release-tool/',
+    baseUrl: process.env.BASE_URL || '/release-tool/',
     onBrokenLinks: 'throw',
-    onBrokenMarkdownLinks: 'warn',
+    markdown: {
+        hooks: {
+            onBrokenMarkdownLinks: 'warn',
+        },
+    },
     favicon: 'img/favicon.ico',
     organizationName: 'sequentech',
     projectName: 'release-tool',

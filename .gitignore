@@ -8,3 +8,4 @@ results.log
 __pycache__/
 node_modules
 .docusaurus
+docs/build/

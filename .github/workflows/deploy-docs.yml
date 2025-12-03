@@ -1,37 +1,96 @@
-name: Deploy Documentation
+# SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Documentation Preview
+concurrency: preview-${{ github.ref }}
 
 on:
   push:
     branches:
       - main
+      - 'release/*'
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
     paths:
+      - '.github/workflows/deploy-docs.yml'
       - 'docs/**'
+    branches:
+      - main
+      - 'release/*'
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set Node.js 24
+        uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version: 24
 
-      - name: Install Dependencies
-        working-directory: docs
-        run: npm ci
+      - name: Set BASE_URL and Build Docusaurus Preview
+        id: build_docusaurus
+        working-directory: ./docs
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            URL_PATH="/release-tool/pr-preview/pr-$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")"
+          elif [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref_name }}" == "main" ]; then
+            URL_PATH="/release-tool/"
+          elif [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref_name }}" == release/* ]]; then
+            URL_PATH="/release-tool/release/${{ github.ref_name }}"
+          fi
+          echo "BASE_URL=$URL_PATH" >> $GITHUB_ENV
+          export BASE_URL=$URL_PATH
+          npm ci
+          npm run build
 
-      - name: Build Website
-        working-directory: docs
-        run: npm run build
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Publish (PR)
+        uses: rossjrw/pr-preview-action@v1
+        if: github.event_name == 'pull_request'
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/build
+          pages-base-url: sequentech.github.io/release-tool
+          source-dir: ./docs/build/
+          preview-branch: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+          clean-exclude: |
+            .
+            release/*
+          umbrella-dir: pr-preview
+
+      - name: Publish (main)
+        uses: JamesIves/github-pages-deploy-action@v4
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        with:
+          folder: ./docs/build/
+          branch: gh-pages
+          target-folder: .
+          commit-message: "Deploy preview for ${{ github.ref_name }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          clean-exclude: |
+            pr-preview/*
+            release/*
+
+      - name: Publish (release)
+        uses: JamesIves/github-pages-deploy-action@v4
+        if: github.event_name == 'push' && startsWith(github.ref_name, 'release/')
+        with:
+          folder: ./docs/build/
+          branch: gh-pages
+          target-folder: "release/${{ github.ref_name }}"
+          commit-message: "Deploy preview for ${{ github.ref_name }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          clean-exclude: |
+            .
+            pr-preview/*
+            release/*
