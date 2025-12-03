@@ -400,6 +400,14 @@ class SyncConfig(BaseModel):
         default=None,
         description="Local path to clone code repository. Defaults to .release_tool_cache/{repo_name}"
     )
+    clone_method: Literal["https", "ssh", "auto"] = Field(
+        default="auto",
+        description="Method for cloning repositories: 'https' (with token), 'ssh' (git@github.com), or 'auto' (try https first, fallback to ssh)"
+    )
+    clone_url_template: Optional[str] = Field(
+        default=None,
+        description="Custom clone URL template. Use {repo_full_name} placeholder. Example: 'https://github.enterprise.com/{repo_full_name}.git'"
+    )
     show_progress: bool = Field(
         default=True,
         description="Show progress updates during sync (e.g., 'syncing 13 / 156 tickets')"

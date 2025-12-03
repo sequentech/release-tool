@@ -6,6 +6,7 @@
 
 import asyncio
 import subprocess
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
@@ -277,6 +278,31 @@ class SyncManager:
 
         return to_fetch
 
+    def _get_clone_url(self, repo_full_name: str, method: str) -> str:
+        """
+        Construct clone URL based on the specified method.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            method: Clone method ('https', 'ssh', or 'auto')
+
+        Returns:
+            Clone URL string
+        """
+        # Use custom template if provided
+        if self.config.sync.clone_url_template:
+            return self.config.sync.clone_url_template.format(repo_full_name=repo_full_name)
+
+        # Use method-specific URL format
+        if method == 'ssh':
+            return f"git@github.com:{repo_full_name}.git"
+        else:  # https or auto
+            # Check if token is valid (not None and not empty string)
+            if self.config.github.token and self.config.github.token.strip():
+                return f"https://{self.config.github.token}@github.com/{repo_full_name}.git"
+            else:
+                return f"https://github.com/{repo_full_name}.git"
+
     def _sync_git_repository(self, repo_full_name: str) -> str:
         """
         Clone or update the git repository for offline operation.
@@ -334,27 +360,71 @@ class SyncManager:
             # Ensure parent directory exists
             repo_path.parent.mkdir(parents=True, exist_ok=True)
 
-            try:
-                # Construct clone URL (use https with token if available)
-                if self.config.github.token:
-                    clone_url = f"https://{self.config.github.token}@github.com/{repo_full_name}.git"
+            # If directory exists but is not a git repo (checked above), remove it
+            if repo_path.exists():
+                shutil.rmtree(repo_path)
+
+            clone_method = self.config.sync.clone_method
+            last_error = None
+
+            # Try cloning with the configured method
+            methods_to_try = []
+            if clone_method == 'auto':
+                # Try HTTPS first (with token if available), then SSH
+                methods_to_try = ['https', 'ssh']
+            else:
+                methods_to_try = [clone_method]
+
+            for method in methods_to_try:
+                try:
+                    clone_url = self._get_clone_url(repo_full_name, method)
+
+                    if self.config.sync.show_progress and len(methods_to_try) > 1:
+                        console.print(f"  [dim]Trying {method.upper()} clone...[/dim]")
+
+                    subprocess.run(
+                        ['git', 'clone', clone_url, str(repo_path)],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+
+                    if self.config.sync.show_progress:
+                        console.print(f"  [green]✓[/green] Cloned repository using {method.upper()}")
+
+                    return str(repo_path)
+
+                except subprocess.CalledProcessError as e:
+                    last_error = e
+                    if len(methods_to_try) > 1:
+                        # In auto mode, try next method
+                        if self.config.sync.show_progress:
+                            console.print(f"  [yellow]Failed with {method.upper()}, trying next method...[/yellow]")
+                        continue
+                    else:
+                        # Only one method configured, fail immediately
+                        break
+
+            # All methods failed
+            error_msg = f"Failed to clone repository using {', '.join(methods_to_try).upper()}"
+            console.print(f"[red]Error: {error_msg}[/red]")
+            if last_error:
+                console.print(f"[red]Last error output: {last_error.stderr}[/red]")
+
+            # Provide helpful suggestions
+            console.print("\n[yellow]Troubleshooting tips:[/yellow]")
+            if 'https' in methods_to_try:
+                if self.config.github.token and self.config.github.token.strip():
+                    console.print("  - Check that GITHUB_TOKEN has 'contents: read' permission")
+                    console.print("  - Verify the token is valid and not expired")
                 else:
-                    clone_url = f"https://github.com/{repo_full_name}.git"
+                    console.print("  - Set GITHUB_TOKEN environment variable for private repositories")
+                    console.print("  - Example: export GITHUB_TOKEN='ghp_your_token'")
+            if 'ssh' in methods_to_try:
+                console.print("  - Ensure SSH keys are configured: ssh -T git@github.com")
+                console.print("  - For GitHub Actions, add SSH key using webfactory/ssh-agent action")
 
-                subprocess.run(
-                    ['git', 'clone', clone_url, str(repo_path)],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-
-                if self.config.sync.show_progress:
-                    console.print(f"  [green]✓[/green] Cloned repository")
-
-            except subprocess.CalledProcessError as e:
-                console.print(f"[red]Error: Failed to clone repository: {e}[/red]")
-                console.print(f"[red]Error output: {e.stderr}[/red]")
-                raise
+            raise RuntimeError(error_msg)
 
         return str(repo_path)
 

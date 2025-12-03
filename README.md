@@ -30,6 +30,125 @@ poetry install
 poetry install --with dev
 ```
 
+## GitHub Actions Setup
+
+When running `release-tool` in GitHub Actions, you need to configure proper authentication for accessing repositories, issues, and pull requests.
+
+### Required Permissions
+
+The GitHub token (`GITHUB_TOKEN`) needs the following permissions:
+
+- **contents: read** - For cloning repositories and reading commit history
+- **issues: read** - For fetching issue data
+- **pull-requests: read** - For fetching pull request data
+- **contents: write** - (Optional) For creating releases and pushing changes
+- **pull-requests: write** - (Optional) For creating PRs with release notes
+
+### Authentication Methods
+
+The tool supports multiple authentication methods for cloning repositories:
+
+#### 1. HTTPS with Token (Recommended for GitHub Actions)
+
+```yaml
+# .github/workflows/release.yml
+name: Generate Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  contents: write        # For cloning and creating releases
+  issues: read          # For fetching issues
+  pull-requests: read   # For fetching PRs
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install release-tool
+        run: pip install release-tool
+
+      - name: Generate release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release-tool sync
+          release-tool generate ${{ github.event.inputs.version }} --upload
+```
+
+#### 2. SSH Authentication (For Private Repos with SSH Keys)
+
+If you need to use SSH (e.g., for private repos without token access), configure your `release_tool.toml`:
+
+```toml
+[sync]
+clone_method = "ssh"  # Options: "https", "ssh", "auto" (default)
+```
+
+Then set up SSH keys in your workflow:
+
+```yaml
+- name: Setup SSH
+  uses: webfactory/ssh-agent@v0.9.0
+  with:
+    ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+- name: Run release-tool
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Still needed for API calls
+  run: |
+    release-tool sync
+    release-tool generate ${{ github.event.inputs.version }}
+```
+
+#### 3. Auto Mode (Default)
+
+By default, the tool uses `clone_method = "auto"` which:
+1. First tries HTTPS with token authentication
+2. Falls back to SSH if HTTPS fails
+
+This provides the most flexibility across different environments.
+
+### Custom GitHub Enterprise
+
+For GitHub Enterprise or custom Git servers:
+
+```toml
+[github]
+api_url = "https://github.enterprise.com/api/v3"
+
+[sync]
+clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
+```
+
+### Troubleshooting
+
+If you encounter clone errors:
+
+1. **Empty token error** (`https://@github.com/...`):
+   - Ensure `GITHUB_TOKEN` is set in your environment
+   - Check workflow permissions are correctly configured
+
+2. **Permission denied**:
+   - Verify token has required permissions
+   - For private repos, ensure token can access the repository
+
+3. **SSH authentication failed**:
+   - Confirm SSH keys are properly configured
+   - Test with: `ssh -T git@github.com`
+
 ## Quick Start
 
 1. **Initialize configuration**:
@@ -105,6 +224,15 @@ The tool is configured via a TOML file (`release_tool.toml`). Key sections:
 code_repo = "owner/repo"  # Required
 ticket_repo = "owner/tickets"  # Optional: separate repo for tickets
 default_branch = "main"
+```
+
+### Sync Configuration
+```toml
+[sync]
+clone_code_repo = true  # Whether to clone the repository locally
+clone_method = "auto"   # Options: "https", "ssh", "auto" (default)
+clone_url_template = ""  # Custom clone URL template (optional)
+# Example: "https://github.enterprise.com/{repo_full_name}.git"
 ```
 
 ### Ticket Policy

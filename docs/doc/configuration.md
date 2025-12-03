@@ -70,6 +70,59 @@ Sensitive information like tokens should be set via environment variables:
 ### `github`
 
 - `owner`: The GitHub account that owns the repositories.
+- `token`: (Optional) GitHub Personal Access Token. Recommended to use `GITHUB_TOKEN` environment variable instead.
+- `api_url`: (Optional) GitHub API URL. Default is `https://api.github.com`. Use for GitHub Enterprise.
+
+### `sync`
+
+Configuration for syncing data from GitHub.
+
+#### `clone_code_repo`
+- **Type**: `bool`
+- **Description**: Whether to clone the code repository locally for offline operation.
+- **Default**: `true`
+
+#### `code_repo_path`
+- **Type**: `str` (optional)
+- **Description**: Local path where to clone/sync the code repository. If not specified, defaults to `.release_tool_cache/{repo_name}`.
+
+#### `clone_method`
+- **Type**: `str`
+- **Description**: Method for cloning repositories.
+- **Values**:
+  - `"https"`: Clone using HTTPS with GitHub token authentication (recommended for GitHub Actions)
+  - `"ssh"`: Clone using SSH (requires SSH keys configured)
+  - `"auto"`: Try HTTPS first, fallback to SSH if it fails (default)
+- **Default**: `"auto"`
+- **Example**:
+  ```toml
+  [sync]
+  clone_method = "https"  # For GitHub Actions
+  ```
+
+#### `clone_url_template`
+- **Type**: `str` (optional)
+- **Description**: Custom clone URL template for GitHub Enterprise or custom Git servers. Use `{repo_full_name}` as placeholder.
+- **Example**:
+  ```toml
+  [sync]
+  clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
+  ```
+
+#### `cutoff_date`
+- **Type**: `str` (optional)
+- **Description**: Only fetch tickets/PRs created after this date (ISO format: YYYY-MM-DD). Speeds up initial sync.
+- **Example**: `"2024-01-01"`
+
+#### `parallel_workers`
+- **Type**: `int`
+- **Description**: Number of parallel workers for GitHub API calls.
+- **Default**: `20`
+
+#### `show_progress`
+- **Type**: `bool`
+- **Description**: Show progress updates during sync.
+- **Default**: `true`
 
 ### `policies`
 

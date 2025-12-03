@@ -80,6 +80,32 @@ clone_code_repo = true
 # Default: null (uses .release_tool_cache/{repo_name})
 # code_repo_path = "/path/to/local/repo"
 
+# clone_method: Method for cloning repositories
+# Options:
+#   - "https": Clone using HTTPS with GitHub token authentication
+#              Recommended for GitHub Actions with GITHUB_TOKEN
+#   - "ssh": Clone using SSH (git@github.com:owner/repo.git)
+#            Requires SSH keys to be configured
+#   - "auto": Try HTTPS first, fallback to SSH if it fails (DEFAULT)
+#             Provides flexibility across different environments
+# Default: "auto"
+# Use case:
+#   - GitHub Actions: Use "https" or "auto" (default)
+#   - Local development with SSH keys: Use "ssh" or "auto"
+#   - GitHub Enterprise: Use "https" with custom clone_url_template
+clone_method = "auto"
+
+# clone_url_template: Custom clone URL template for non-standard Git hosting
+# Use {repo_full_name} as a placeholder for the repository (e.g., "owner/repo")
+# This is useful for GitHub Enterprise or custom Git servers
+# If not specified, uses standard GitHub URLs based on clone_method
+# Default: null (uses github.com)
+# Examples:
+#   - GitHub Enterprise: "https://github.enterprise.com/{repo_full_name}.git"
+#   - Custom Git server: "https://git.company.com/{repo_full_name}.git"
+#   - SSH on custom port: "ssh://git@gitlab.company.com:2222/{repo_full_name}.git"
+# clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
+
 # show_progress: Show progress updates during sync
 # When true, displays messages like "syncing 13 / 156 tickets (10% done)"
 # Default: true
