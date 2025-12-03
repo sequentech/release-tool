@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkrelease_tool_website=globalThis.webpackChunkrelease_tool_website||[]).push([[634],{192:(e,s,t)=>{t.r(s),t.d(s,{default:()=>a});t(6540);var o=t(6347),l=t(6025),r=t(4848);function a(){return(0,r.jsx)(o.rd,{to:(0,l.Ay)("/docs/intro")})}}}]);
