@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+//
+// SPDX-License-Identifier: MIT
+
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
 const sidebars = {
     tutorialSidebar: [

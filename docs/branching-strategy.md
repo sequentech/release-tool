@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Branching Strategy
 
 The release tool implements an automated branching strategy that creates and manages release branches according to semantic versioning best practices.

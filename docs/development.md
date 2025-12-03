@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Development Guide
 
 This guide covers development workflows, testing, Docker image management, and CI/CD for the `release-tool` project.
@@ -119,6 +125,26 @@ File: `.github/workflows/deploy-docs.yml`
 ```bash
 # Run the deploy-docs workflow
 act -j deploy --container-architecture linux/amd64
+```
+
+### REUSE Compliance Check
+
+File: `.github/workflows/reuse.yml`
+
+**Triggers**:
+- Push to `main` branch
+- Pull requests to `main` branch
+
+**What it does**:
+1. Checks the repository for REUSE compliance (licenses and copyright headers).
+
+**Running locally**:
+
+You can run the check locally using the VS Code task "Tool: Check REUSE Compliance" or manually:
+
+```bash
+poetry run python -m pip install reuse
+poetry run reuse lint
 ```
 
 ## Docker Image & Registry

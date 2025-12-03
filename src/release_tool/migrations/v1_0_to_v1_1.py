@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+#
+# SPDX-License-Identifier: MIT
+
 """Migration from config version 1.0 to 1.1.
 
 Changes in 1.1:

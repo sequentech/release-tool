@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+#
+# SPDX-License-Identifier: MIT
+
 # Example configuration showcasing the output_template master template feature
 # This example shows how to create custom release notes with migrations section
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+#
+# SPDX-License-Identifier: MIT
+
 """Policy implementations for ticket extraction, consolidation, and release notes."""
 
 import re

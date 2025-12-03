@@ -1,0 +1,63 @@
+version = 1
+SPDX-PackageName = "release-tool"
+SPDX-PackageDownloadLocation = "https://github.com/sequentech/release-tool"
+
+[[annotations]]
+path = "**/**.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "poetry.lock"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ".gitignore"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ".claude/**/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "docs/static/img/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "docs/package.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "docs/package-lock.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ".vscode/**.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ".github/dependabot.yml"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ".github/dependabot.yml.tpl"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Sequent Tech Inc <legal@sequentech.io>"
+SPDX-License-Identifier = "MIT"

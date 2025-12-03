@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+
+SPDX-License-Identifier: MIT
+-->
+
 # release-tool
 
 A comprehensive tool to manage releases using semantic versioning for efficient release workflows. Written in Python with full type safety and designed to be flexible and configurable for different team workflows.

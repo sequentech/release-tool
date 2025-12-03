@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Output Template Examples
 
 This document showcases different ways to use the `output_template` feature to customize your release notes layout.

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
+
+SPDX-License-Identifier: MIT
+-->
+
 ---
 sidebar_position: 5
 ---

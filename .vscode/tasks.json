@@ -64,6 +64,12 @@
             "type": "shell",
             "command": "act -j deploy --container-architecture linux/amd64",
             "problemMatcher": []
+        },
+        {
+            "label": "Tool: Check REUSE Compliance",
+            "type": "shell",
+            "command": "poetry run python -m pip install reuse && poetry run reuse lint",
+            "problemMatcher": []
         }
     ]
 }
