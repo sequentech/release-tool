@@ -31,7 +31,7 @@ const config = {
             /** @type {import('@docusaurus/preset-classic').Options} */
             ({
                 docs: {
-                    path: '.',
+                    path: 'doc',
                     sidebarPath: require.resolve('./sidebars.js'),
                     editUrl: 'https://github.com/sequentech/release-tool/tree/main/docs/',
                     exclude: ['**/node_modules/**'],

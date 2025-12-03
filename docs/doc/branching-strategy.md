@@ -1,3 +1,8 @@
+---
+id: branching-strategy
+title: Branching Strategy
+---
+
 <!--
 SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
 
