@@ -4,7 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-    target-branch: "master"
+    target-branch: "main"
     # Disable version updates for npm dependencies, only enabling security
     # updates. See 
     # https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/configuring-dependabot-security-updates#overriding-the-default-behavior-with-a-configuration-file

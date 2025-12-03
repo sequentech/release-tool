@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: gcp-selfhosted-ubuntu24
     steps:
       - uses: actions/checkout@v6
 
