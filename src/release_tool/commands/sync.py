@@ -22,8 +22,16 @@ def sync(ctx, repository, repo_path):
     Fetches tickets, PRs, releases, and commits from GitHub and stores them locally.
     Uses highly parallelized fetching with incremental sync.
     """
+    # Get debug flag from global context
+    debug = ctx.obj.get('debug', False)
+
     config: Config = ctx.obj['config']
     repo_name = repository or config.repository.code_repo
+
+    if debug:
+        console.print(f"[dim]Debug mode enabled[/dim]")
+        console.print(f"[dim]Repository: {repo_name}[/dim]")
+        console.print(f"[dim]Config path: {config.database.path}[/dim]")
 
     # Initialize components
     db = Database(config.database.path)

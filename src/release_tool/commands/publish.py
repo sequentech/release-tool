@@ -378,11 +378,10 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
 @click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
 @click.option('--dry-run', is_flag=True, help='Show what would be published without making changes')
-@click.option('--debug', is_flag=True, help='Show detailed debug information')
 @click.pass_context
 def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
            create_pr: Optional[bool], release_mode: Optional[str], prerelease: Optional[str], force: str,
-           dry_run: bool, debug: bool):
+           dry_run: bool):
     """
     Publish a release to GitHub.
 
@@ -403,6 +402,9 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
       release-tool publish 9.1.0 -f notes.md --debug
     """
+    # Get debug flag from global context
+    debug = ctx.obj.get('debug', False)
+
     config: Config = ctx.obj['config']
 
     if list_drafts:

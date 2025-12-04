@@ -38,12 +38,18 @@ console = Console()
     is_flag=True,
     help='Assume "yes" for all confirmation prompts'
 )
+@click.option(
+    '--debug',
+    is_flag=True,
+    help='Show detailed debug output'
+)
 @click.pass_context
-def cli(ctx, config: Optional[str], auto: bool, assume_yes: bool):
+def cli(ctx, config: Optional[str], auto: bool, assume_yes: bool, debug: bool):
     """Release tool for managing semantic versioned releases."""
     ctx.ensure_object(dict)
     ctx.obj['auto'] = auto
     ctx.obj['assume_yes'] = assume_yes
+    ctx.obj['debug'] = debug
     # Don't load config for init-config and update-config commands
     if ctx.invoked_subcommand not in ['init-config', 'update-config']:
         try:

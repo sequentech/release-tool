@@ -46,11 +46,10 @@ def _get_issues_repo(config: Config) -> str:
 @click.option('--new', type=click.Choice(['major', 'minor', 'patch', 'rc'], case_sensitive=False), help='Auto-bump version')
 @click.option('--detect-mode', type=click.Choice(['all', 'published'], case_sensitive=False), default='published', help='Detection mode for existing releases (default: published)')
 @click.option('--format', type=click.Choice(['markdown', 'json'], case_sensitive=False), default='markdown', help='Output format (default: markdown)')
-@click.option('--debug', is_flag=True, help='Show detailed pattern matching debug output')
 @click.pass_context
 def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path: Optional[str],
              output: Optional[str], dry_run: bool, new: Optional[str], detect_mode: str,
-             format: str, debug: bool):
+             format: str):
     """
     Generate release notes for a version.
 
@@ -74,6 +73,9 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
       release-tool generate 9.2 --new patch
     """
+    # Get debug flag from global context
+    debug = ctx.obj.get('debug', False)
+
     if not version and not new:
         console.print("[red]Error: VERSION argument or --new option is required[/red]")
         return
