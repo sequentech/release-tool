@@ -291,17 +291,34 @@ class SyncManager:
         """
         # Use custom template if provided
         if self.config.sync.clone_url_template:
-            return self.config.sync.clone_url_template.format(repo_full_name=repo_full_name)
+            url = self.config.sync.clone_url_template.format(repo_full_name=repo_full_name)
+            if self.config.sync.show_progress:
+                console.print(f"  [dim]Using custom clone URL template[/dim]")
+            return url
 
         # Use method-specific URL format
         if method == 'ssh':
-            return f"git@github.com:{repo_full_name}.git"
+            url = f"git@github.com:{repo_full_name}.git"
+            if self.config.sync.show_progress:
+                console.print(f"  [dim]Clone URL (SSH): {url}[/dim]")
+            return url
         else:  # https or auto
             # Check if token is valid (not None and not empty string)
             if self.config.github.token and self.config.github.token.strip():
-                return f"https://{self.config.github.token}@github.com/{repo_full_name}.git"
+                # Mask token for debug output
+                token = self.config.github.token
+                masked_token = f"{token[:7]}...{token[-4:]}" if len(token) > 11 else "***"
+                url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
+                if self.config.sync.show_progress:
+                    console.print(f"  [dim]Clone URL (HTTPS): https://x-access-token:{masked_token}@github.com/{repo_full_name}.git[/dim]")
+                    console.print(f"  [dim]Token length: {len(token)} chars[/dim]")
+                return url
             else:
-                return f"https://github.com/{repo_full_name}.git"
+                url = f"https://github.com/{repo_full_name}.git"
+                if self.config.sync.show_progress:
+                    console.print(f"  [yellow]Clone URL (HTTPS, no token): {url}[/yellow]")
+                    console.print(f"  [yellow]Warning: No GitHub token available, private repos will fail[/yellow]")
+                return url
 
     def _sync_git_repository(self, repo_full_name: str) -> str:
         """
@@ -375,6 +392,11 @@ class SyncManager:
             else:
                 methods_to_try = [clone_method]
 
+            if self.config.sync.show_progress:
+                console.print(f"  [dim]Clone method: {clone_method}[/dim]")
+                console.print(f"  [dim]Will try methods in order: {', '.join(methods_to_try)}[/dim]")
+                console.print(f"  [dim]Repository: {repo_full_name}[/dim]")
+
             for method in methods_to_try:
                 try:
                     clone_url = self._get_clone_url(repo_full_name, method)
@@ -382,7 +404,21 @@ class SyncManager:
                     if self.config.sync.show_progress and len(methods_to_try) > 1:
                         console.print(f"  [dim]Trying {method.upper()} clone...[/dim]")
 
-                    subprocess.run(
+                    # Show the git command (with masked token)
+                    if self.config.sync.show_progress:
+                        masked_url = clone_url
+                        if 'x-access-token:' in clone_url:
+                            # Mask the token in the URL
+                            parts = clone_url.split('x-access-token:')
+                            if len(parts) > 1:
+                                token_and_rest = parts[1]
+                                token_end = token_and_rest.index('@')
+                                token = token_and_rest[:token_end]
+                                masked = f"{token[:7]}...{token[-4:]}" if len(token) > 11 else "***"
+                                masked_url = f"{parts[0]}x-access-token:{masked}{token_and_rest[token_end:]}"
+                        console.print(f"  [dim]Running: git clone {masked_url} {repo_path}[/dim]")
+
+                    result = subprocess.run(
                         ['git', 'clone', clone_url, str(repo_path)],
                         check=True,
                         capture_output=True,
@@ -391,11 +427,20 @@ class SyncManager:
 
                     if self.config.sync.show_progress:
                         console.print(f"  [green]✓[/green] Cloned repository using {method.upper()}")
+                        if result.stdout:
+                            console.print(f"  [dim]Git output: {result.stdout.strip()}[/dim]")
 
                     return str(repo_path)
 
                 except subprocess.CalledProcessError as e:
                     last_error = e
+                    if self.config.sync.show_progress:
+                        console.print(f"  [red]Git clone failed with exit code {e.returncode}[/red]")
+                        if e.stdout:
+                            console.print(f"  [red]Git stdout: {e.stdout.strip()}[/red]")
+                        if e.stderr:
+                            console.print(f"  [red]Git stderr: {e.stderr.strip()}[/red]")
+
                     if len(methods_to_try) > 1:
                         # In auto mode, try next method
                         if self.config.sync.show_progress:
