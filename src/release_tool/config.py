@@ -455,7 +455,7 @@ class OutputConfig(BaseModel):
         default="docs/releases/{version}.md",
         description="File path template for GitHub release notes (supports {version}, {major}, {minor}, {patch})"
     )
-    doc_output_path: Optional[str] = Field(
+    doc_output_path: Union[bool, Optional[str]] = Field(
         default=None,
         description="File path template for Docusaurus/documentation release notes (supports {version}, {major}, {minor}, {patch}). "
                     "If set, doc_output_template must also be configured."

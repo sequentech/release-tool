@@ -496,7 +496,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
         # Handle tri-state prerelease: "auto", "true", "false"
         prerelease_value = prerelease if prerelease is not None else config.output.prerelease
-        doc_output_enabled = config.output.doc_output_path is not None
+        doc_output_enabled = config.output.doc_output_path not in [False, None]
 
         # Convert string values to appropriate types
         if isinstance(prerelease_value, str):

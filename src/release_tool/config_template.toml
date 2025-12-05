@@ -712,7 +712,7 @@ release_output_path = "docs/releases/{{version}}.md"
 #   - "website/docs/releases/{{version}}.md"
 #   - "docs/releases/v{{major}}.{{minor}}.{{patch}}.md"
 #
-# You can set it to None to disable it so that only GitHub release notes are generated
+# You can set it to false or not set it to disable it so that only GitHub release notes are generated
 doc_output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
 
 # draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
