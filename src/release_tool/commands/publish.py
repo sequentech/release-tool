@@ -750,7 +750,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                 console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
 
                 release_name = f"Release {version}"
-                github_client.create_release(
+                release_url = github_client.create_release(
                     repo_name,
                     version,
                     release_name,
@@ -759,8 +759,14 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     draft=is_draft,
                     target_commitish=target_branch
                 )
-                console.print(f"[green]✓ GitHub release created successfully[/green]")
-                console.print(f"[blue]→ https://github.com/{repo_name}/releases/tag/v{version}[/blue]")
+
+                if release_url:
+                    console.print(f"[green]✓ GitHub release created successfully[/green]")
+                    console.print(f"[blue]→ {release_url}[/blue]")
+                else:
+                    console.print(f"[red]✗ Failed to create GitHub release[/red]")
+                    console.print(f"[red]Error: Release creation failed. See error message above for details.[/red]")
+                    sys.exit(1)
         elif dry_run:
             console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
 
@@ -993,7 +999,9 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                             except Exception as e:
                                 console.print(f"[yellow]Warning: Could not update ticket body with PR link: {e}[/yellow]")
                     else:
-                        console.print(f"[red]Failed to create or find PR[/red]")
+                        console.print(f"[red]✗ Failed to create or find PR[/red]")
+                        console.print(f"[red]Error: PR creation failed. See error message above for details.[/red]")
+                        sys.exit(1)
         elif dry_run:
             console.print(f"[yellow]Would NOT create pull request (--no-pr or config setting)[/yellow]\n")
 

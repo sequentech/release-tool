@@ -5,6 +5,7 @@
 """Main CLI for the release tool."""
 
 import sys
+import logging
 from typing import Optional
 import click
 from rich.console import Console
@@ -70,6 +71,21 @@ cli.add_command(tickets)
 
 
 def main():
+    # Suppress PyGithub 403 logging for /user endpoint
+    # The 403 error is expected when GITHUB_TOKEN lacks user:read scope
+    # We handle this gracefully in get_authenticated_user() with a warning
+    class SupressUserEndpoint403Filter(logging.Filter):
+        def filter(self, record):
+            # Suppress "Request GET /user failed with 403: Forbidden" messages
+            if '403' in record.getMessage() and '/user' in record.getMessage():
+                return False
+            return True
+
+    # Apply filter to github module loggers
+    for logger_name in ['github', 'github.Requester']:
+        logger = logging.getLogger(logger_name)
+        logger.addFilter(SupressUserEndpoint403Filter())
+
     cli(obj={})
 
 
