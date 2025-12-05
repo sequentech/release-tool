@@ -312,7 +312,7 @@ class CommitConsolidator:
                 # No ticket and no PR - standalone commit
                 commit_key = f"commit-{commit.sha[:8]}"
                 if self.debug:
-                    console.print(f"  [dim]✅ Standalone commit (no ticket or PR)[/dim]")
+                    console.print(f"  [dim]- Standalone commit (no ticket or PR)[/dim]")
 
                 consolidated[commit_key] = ConsolidatedChange(
                     type="commit",

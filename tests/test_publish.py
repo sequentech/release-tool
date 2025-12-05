@@ -159,8 +159,8 @@ def test_debug_mode_shows_verbose_output(test_config, test_notes_file):
     with patch('release_tool.commands.publish.GitHubClient'):
         result = runner.invoke(
             publish,
-            ['1.0.0', '-f', str(test_notes_file), '--debug', '--dry-run'],
-            obj={'config': test_config}
+            ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
+            obj={'config': test_config, 'debug': True}
         )
 
         # Should show debug output
@@ -183,8 +183,8 @@ def test_debug_mode_shows_docusaurus_preview(test_config, test_notes_file, tmp_p
 
     result = runner.invoke(
         publish,
-        ['1.0.0', '-f', str(test_notes_file), '--debug', '--dry-run'],
-        obj={'config': test_config}
+        ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
+        obj={'config': test_config, 'debug': True}
     )
 
     # Should show doc file info in debug mode
@@ -201,8 +201,8 @@ def test_error_handling_with_debug(test_config, test_notes_file):
     with patch('release_tool.commands.publish.SemanticVersion.parse', side_effect=Exception("Test error")):
         result = runner.invoke(
             publish,
-            ['invalid', '-f', str(test_notes_file), '--debug'],
-            obj={'config': test_config}
+            ['invalid', '-f', str(test_notes_file)],
+            obj={'config': test_config, 'debug': True}
         )
 
         # Should show the exception
