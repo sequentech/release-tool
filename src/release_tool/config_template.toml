@@ -603,7 +603,7 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 {% for note in migration_notes %}
 <br>### {{ note.title }}<br>
 {{ note.migration_notes }}
-{% if note.url %}See {{ note.url }} for details.{% endif %}
+{% if note.url and note.short_repo_link %}See [{{ note.short_repo_link }}]({{ note.url }}) for details.{% elif note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}
@@ -613,7 +613,7 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 {% for note in non_breaking_with_desc %}
 <br>### {{ note.title }}
 {{ note.description }}
-{% if note.url %}See {{ note.url }} for details.{% endif %}
+{% if note.url and note.short_repo_link %}See [{{ note.short_repo_link }}]({{ note.url }}) for details.{% elif note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}
