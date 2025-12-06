@@ -35,21 +35,56 @@ class MediaDownloader:
         self,
         description: str,
         version: str,
-        output_path: str
+        output_path: str,
+        convert_html_to_markdown: bool = False
     ) -> str:
         """
         Process description text to download media and update references.
 
         Args:
-            description: Markdown text with potential media URLs
+            description: Markdown text with potential media URLs (may contain HTML img tags)
             version: Version string for path substitution
             output_path: Path to the output release notes file
+            convert_html_to_markdown: If True, convert HTML img tags to Markdown format
 
         Returns:
             Updated description with local media references
         """
         if not self.download_enabled or not description:
             return description
+
+        # Process HTML img tags if requested (for doc output)
+        if convert_html_to_markdown:
+            # Pattern for HTML img tags: <img ... />
+            # We need to extract src and alt in any order
+            html_img_pattern = r'<img\s+([^>]*?)\s*/>'
+            
+            def replace_html_img(match):
+                img_attrs = match.group(1)
+                
+                # Extract src attribute
+                src_match = re.search(r'src="([^"]+)"', img_attrs)
+                if not src_match:
+                    return match.group(0)  # No src, keep original
+                url = src_match.group(1)
+                
+                # Extract alt attribute (optional)
+                alt_match = re.search(r'alt="([^"]*)"', img_attrs)
+                alt_text = alt_match.group(1) if alt_match else "Image"
+                
+                # Skip if already a local path
+                if not url.startswith(('http://', 'https://')):
+                    return match.group(0)
+                
+                # Download media and get local path
+                local_path = self._download_media(url, version, output_path)
+                if local_path:
+                    return f'![{alt_text}]({local_path})'
+                
+                # If download fails, keep original
+                return match.group(0)
+            
+            description = re.sub(html_img_pattern, replace_html_img, description)
 
         # Find all image and video references in markdown
         # Matches: ![alt](url) and videos with .mp4, .webm, etc.

@@ -729,7 +729,8 @@ class ReleaseNoteGenerator:
         note: ReleaseNote,
         version: str,
         output_path: Optional[str],
-        media_downloader
+        media_downloader,
+        convert_html_to_markdown: bool = False
     ) -> Dict[str, Any]:
         """
         Prepare a release note for template rendering.
@@ -743,11 +744,11 @@ class ReleaseNoteGenerator:
         if media_downloader and output_path:
             if note.description:
                 processed_description = media_downloader.process_description(
-                    note.description, version, output_path
+                    note.description, version, output_path, convert_html_to_markdown
                 )
             if note.migration_notes:
                 processed_migration = media_downloader.process_description(
-                    note.migration_notes, version, output_path
+                    note.migration_notes, version, output_path, convert_html_to_markdown
                 )
 
         # Convert Author objects to dicts for template access
@@ -814,8 +815,16 @@ class ReleaseNoteGenerator:
 
         # If doc_output_template is configured, generate Docusaurus version as well
         if self.config.release_notes.doc_output_template:
+            # Create separate media downloader for doc output with correct paths
+            doc_media_downloader = None
+            if self.config.output.download_media and doc_output_path:
+                doc_media_downloader = MediaDownloader(
+                    self.config.output.assets_path,
+                    download_enabled=True
+                )
+            
             doc_notes = self._format_with_doc_template(
-                grouped_notes, version, doc_output_path, media_downloader, release_notes
+                grouped_notes, version, doc_output_path, doc_media_downloader, release_notes
             )
             return (release_notes, doc_notes)
 
@@ -942,7 +951,8 @@ class ReleaseNoteGenerator:
             notes_data = []
             for note in notes:
                 note_dict = self._prepare_note_for_template(
-                    note, version, output_path, media_downloader
+                    note, version, output_path, media_downloader,
+                    convert_html_to_markdown=True  # Convert HTML img tags to Markdown for docs
                 )
                 notes_data.append(note_dict)
                 all_notes_data.append(note_dict)
