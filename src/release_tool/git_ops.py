@@ -215,6 +215,50 @@ class GitOperations:
         else:
             self.repo.git.push(remote, branch_name)
 
+    def create_tag(self, tag_name: str, ref: str = "HEAD", message: Optional[str] = None) -> None:
+        """
+        Create a git tag.
+
+        Args:
+            tag_name: Name of the tag to create
+            ref: Reference to tag (default: "HEAD")
+            message: Optional tag message for annotated tags
+        """
+        if message:
+            self.repo.create_tag(tag_name, ref=ref, message=message)
+        else:
+            self.repo.create_tag(tag_name, ref=ref)
+
+    def push_tag(self, tag_name: str, remote: str = "origin") -> None:
+        """
+        Push a tag to remote repository.
+
+        Args:
+            tag_name: Name of the tag to push
+            remote: Remote name (default: "origin")
+        """
+        self.repo.git.push(remote, tag_name)
+
+    def tag_exists(self, tag_name: str, remote: bool = False) -> bool:
+        """
+        Check if a tag exists.
+
+        Args:
+            tag_name: Name of the tag to check
+            remote: Check remote tags if True, local if False
+
+        Returns:
+            True if tag exists, False otherwise
+        """
+        if remote:
+            try:
+                self.repo.git.ls_remote("--tags", "origin", tag_name)
+                return True
+            except Exception:
+                return False
+        else:
+            return tag_name in [tag.name for tag in self.repo.tags]
+
     def find_release_branches(self, major: int, minor: Optional[int] = None) -> List[str]:
         """
         Find release branches matching a pattern.
