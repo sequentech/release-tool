@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 from collections import defaultdict
@@ -870,6 +871,11 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                         if debug:
                             console.print(f"[dim]Tag push skipped (already up to date or would fail): {e}[/dim]")
 
+                # Wait for GitHub to index the tag (prevent "untagged" releases)
+                if debug:
+                    console.print(f"[dim]Waiting for GitHub to index tag {tag_name}...[/dim]")
+                time.sleep(2)  # 2 second delay to allow GitHub to process the tag
+                
                 # Check if release already exists on GitHub
                 existing_gh_release = github_client.get_release_by_tag(repo_name, tag_name)
                 

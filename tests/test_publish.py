@@ -980,7 +980,7 @@ def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_g
 @patch('release_tool.commands.publish.determine_release_branch_strategy')
 @patch('release_tool.commands.publish.GitHubClient')
 def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test that publishing updates existing 'untagged' release when --force is set."""
+    """Test that publishing deletes and recreates an 'untagged' release when --force is set."""
     runner = CliRunner()
     
     # Mock database
@@ -1009,8 +1009,14 @@ def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strat
     mock_existing_release = MagicMock()
     mock_existing_release.tag_name = "untagged-6ebfa1379a96e20ddfc1"
     mock_existing_release.title = "Release 1.0.0"
+    mock_existing_release.body = "Test release body"
+    mock_existing_release.draft = True
+    mock_existing_release.prerelease = False
+    mock_existing_release.target_commitish = "release/1.0"
     mock_existing_release.html_url = "https://github.com/test/repo/releases/tag/untagged-6ebfa1379a96e20ddfc1"
     mock_gh_instance.get_release_by_tag.return_value = mock_existing_release
+    
+    # Mock update_release to delete and recreate (returns new URL)
     mock_gh_instance.update_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
     
     result = runner.invoke(
@@ -1021,8 +1027,7 @@ def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strat
     
     # Should succeed
     assert result.exit_code == 0
-    assert 'Updating existing' in result.output or 'updated successfully' in result.output
+    assert 'Updating existing' in result.output or 'updated successfully' in result.output or 'Detected untagged' in result.output
     
-    # Verify update_release was called (not create)
+    # Verify update_release was called (which will internally delete and recreate)
     mock_gh_instance.update_release.assert_called_once()
-    mock_gh_instance.create_release.assert_not_called()

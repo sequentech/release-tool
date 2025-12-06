@@ -980,6 +980,9 @@ class GitHubClient:
     ) -> Optional[str]:
         """Update an existing GitHub release.
         
+        If the release is "untagged", it will be deleted and recreated with the proper tag,
+        since GitHub doesn't properly update untagged releases to tagged ones.
+        
         Args:
             repo_full_name: Repository in "owner/repo" format
             tag_name: Tag name of the release to update
@@ -997,6 +1000,33 @@ class GitHubClient:
             if not release:
                 console.print(f"[red]Error: Release with tag {tag_name} not found[/red]")
                 return None
+
+            # Check if this is an untagged release
+            is_untagged = release.tag_name.startswith("untagged-")
+            
+            if is_untagged:
+                # Delete the untagged release and recreate it properly
+                console.print(f"[yellow]Detected untagged release, deleting and recreating with proper tag...[/yellow]")
+                try:
+                    release.delete_release()
+                    console.print(f"[dim]✓ Deleted untagged release[/dim]")
+                except GithubException as e:
+                    console.print(f"[red]Error deleting untagged release: {e}[/red]")
+                    return None
+                
+                # Extract version from tag_name (remove 'v' prefix if present)
+                version = tag_name.lstrip('v')
+                
+                # Create new release with proper tag
+                return self.create_release(
+                    repo_full_name=repo_full_name,
+                    version=version,
+                    name=name or release.title,
+                    body=body or release.body,
+                    draft=draft if draft is not None else release.draft,
+                    prerelease=prerelease if prerelease is not None else release.prerelease,
+                    target_commitish=target_commitish or release.target_commitish
+                )
 
             # Try to update the release - wrap in try/except to catch deleted releases
             try:
