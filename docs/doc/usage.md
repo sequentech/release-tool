@@ -86,6 +86,9 @@ release-tool publish 9.1.0
 
 # Or explicitly specify a notes file
 release-tool publish 9.1.0 -f .release_tool_cache/draft-releases/owner-repo/9.1.0.md
+
+# Associate with a specific GitHub issue/ticket
+release-tool publish 9.1.0 --ticket 123
 ```
 
 This will:
@@ -93,6 +96,7 @@ This will:
 - Create a git tag `v9.1.0`
 - Create a GitHub release with the release notes
 - Optionally create a PR with release notes (use `--pr`)
+- Optionally associate with a GitHub issue for tracking (use `--ticket`)
 
 #### Testing Before Publishing
 
@@ -171,6 +175,7 @@ release-tool publish 9.1.0 --prerelease auto  # Auto-detect
 | `list-releases` | Lists releases from the database with filters |
 | `publish <version>` | Creates a GitHub release (auto-finds draft notes) |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
+| `publish <version> --ticket <number>` | Associate release with a GitHub issue |
 | `publish --list` or `publish -l` | List all available draft releases |
 | `publish --dry-run` | Preview publish operation without making changes |
 | `publish --debug` | Show detailed debugging information |

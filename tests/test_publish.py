@@ -698,3 +698,124 @@ def test_branch_creation_disabled_by_config(test_config, test_notes_file):
         # Should succeed (but will likely fail at GitHub release creation due to missing branch)
         # For this test we're just verifying branch creation was skipped
         assert result.exit_code == 0
+
+
+def test_ticket_parameter_associates_with_issue(test_config, test_notes_file):
+    """Test that --ticket parameter properly associates release with a GitHub issue."""
+    runner = CliRunner()
+    
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database') as mock_db_class:
+        
+        # Mock database
+        mock_db = MagicMock()
+        mock_db_class.return_value = mock_db
+        mock_db.get_repository.return_value = None
+        mock_db.get_ticket_association.return_value = None  # No existing association
+        
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+        mock_git_instance.tag_exists.return_value = False
+        mock_git_instance.branch_exists.return_value = True
+        
+        # Mock strategy
+        mock_strategy.return_value = ("release/0.0", "main", False)
+        
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1"
+        
+        # Mock the issue retrieval
+        mock_issue = MagicMock()
+        mock_issue.number = 123
+        mock_issue.html_url = "https://github.com/test/repo/issues/123"
+        mock_gh_instance.gh.get_repo.return_value.get_issue.return_value = mock_issue
+        
+        # Enable ticket creation and PR creation in config
+        test_config.output.create_ticket = True
+        test_config.output.create_pr = True
+        
+        result = runner.invoke(
+            publish,
+            ['0.0.1', '-f', str(test_notes_file), '--release', '--pr', '--ticket', '123'],
+            obj={'config': test_config}
+        )
+        
+        assert result.exit_code == 0
+        
+        # Verify the issue was retrieved (can be called multiple times during PR creation)
+        mock_gh_instance.gh.get_repo.return_value.get_issue.assert_called_with(123)
+        
+        # Verify the ticket association was saved to database
+        assert mock_db.save_ticket_association.called
+        # Find the call with ticket_number=123
+        calls = [call for call in mock_db.save_ticket_association.call_args_list 
+                 if 'ticket_number' in call[1] and call[1]['ticket_number'] == 123]
+        assert len(calls) > 0
+        call_args = calls[0]
+        assert call_args[1]['version'] == '0.0.1'
+        assert call_args[1]['ticket_url'] == "https://github.com/test/repo/issues/123"
+
+
+def test_auto_select_open_ticket_for_draft_release(test_config, test_notes_file):
+    """Test that publishing with --force draft auto-selects the first open ticket."""
+    runner = CliRunner()
+    
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database') as mock_db_class, \
+         patch('release_tool.commands.publish._find_existing_ticket_auto') as mock_find_ticket:
+        
+        # Mock database
+        mock_db = MagicMock()
+        mock_db_class.return_value = mock_db
+        mock_db.get_repository.return_value = None
+        mock_db.get_ticket_association.return_value = None  # No existing association
+        
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+        mock_git_instance.tag_exists.return_value = False
+        mock_git_instance.branch_exists.return_value = True
+        
+        # Mock strategy
+        mock_strategy.return_value = ("release/0.0", "main", False)
+        
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
+        
+        # Mock automatic ticket finding (returns first open ticket)
+        mock_find_ticket.return_value = {
+            'number': '456',
+            'url': 'https://github.com/test/repo/issues/456'
+        }
+        
+        # Enable ticket creation and PR creation in config
+        test_config.output.create_ticket = True
+        test_config.output.create_pr = True
+        
+        result = runner.invoke(
+            publish,
+            ['0.0.1-rc.0', '-f', str(test_notes_file), '--release', '--pr', '--force', 'draft'],
+            obj={'config': test_config}
+        )
+        
+        assert result.exit_code == 0
+        
+        # Verify auto-selection was called
+        mock_find_ticket.assert_called_once()
+        
+        # Verify the ticket association was saved
+        mock_db.save_ticket_association.assert_called()
+        call_args = mock_db.save_ticket_association.call_args
+        assert call_args[1]['ticket_number'] == 456
+        assert call_args[1]['version'] == '0.0.1-rc.0'

@@ -377,10 +377,11 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
 @click.option('--prerelease', type=click.Choice(['auto', 'true', 'false'], case_sensitive=False), default=None,
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
 @click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
+@click.option('--ticket', type=int, default=None, help='Ticket/issue number to associate with this release')
 @click.option('--dry-run', is_flag=True, help='Show what would be published without making changes')
 @click.pass_context
 def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
-           create_pr: Optional[bool], release_mode: Optional[str], prerelease: Optional[str], force: str,
+           create_pr: Optional[bool], release_mode: Optional[str], prerelease: Optional[str], force: str, ticket: Optional[int],
            dry_run: bool):
     """
     Publish a release to GitHub.
@@ -914,13 +915,32 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                 # Create release tracking ticket if enabled
                 ticket_result = None
                 
-                # If force=draft, try to find existing ticket interactively first if not in DB
-                if config.output.create_ticket and force == 'draft' and not dry_run:
+                # If ticket number provided explicitly, use it directly
+                if config.output.create_ticket and ticket and not dry_run:
+                    try:
+                        issue = github_client.gh.get_repo(issues_repo).get_issue(ticket)
+                        ticket_result = {'number': str(issue.number), 'url': issue.html_url}
+                        console.print(f"[blue]Using provided ticket #{ticket}[/blue]")
+                        # Save association to database
+                        db.save_ticket_association(
+                            repo_full_name=repo_name,
+                            version=version,
+                            ticket_number=ticket,
+                            ticket_url=issue.html_url
+                        )
+                        if debug:
+                            console.print(f"[dim]Saved ticket association to database[/dim]")
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Could not use ticket #{ticket}: {e}[/yellow]")
+                        ticket_result = None
+                
+                # If force=draft, try to find existing ticket automatically (non-interactive)
+                if config.output.create_ticket and force == 'draft' and not dry_run and not ticket_result:
                      existing_association = db.get_ticket_association(repo_name, version)
                      if not existing_association:
-                         ticket_result = _find_existing_ticket_interactive(config, github_client, version)
+                         ticket_result = _find_existing_ticket_auto(config, github_client, version, debug)
                          if ticket_result:
-                             console.print(f"[blue]Reusing existing ticket #{ticket_result['number']}[/blue]")
+                             console.print(f"[blue]Auto-selected open ticket #{ticket_result['number']}[/blue]")
                              # Save association
                              db.save_ticket_association(
                                 repo_full_name=repo_name,
@@ -1171,35 +1191,27 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             db.close()
 
 
-def _find_existing_ticket_interactive(config: Config, github_client: GitHubClient, version: str) -> Optional[dict]:
-    """Find existing ticket interactively."""
+def _find_existing_ticket_auto(config: Config, github_client: GitHubClient, version: str, debug: bool = False) -> Optional[dict]:
+    """Find existing ticket automatically (non-interactive, picks first open ticket)."""
     issues_repo = _get_issues_repo(config)
-    query = f"repo:{issues_repo} is:issue {version} in:title"
-    console.print(f"[cyan]Searching for existing tickets in {issues_repo}...[/cyan]")
+    # Search only for OPEN issues
+    query = f"repo:{issues_repo} is:issue is:open {version} in:title"
     
-    # We need to use the underlying github client to search
-    # This is a bit of a hack, but we don't have a search method in GitHubClient
-    # Assuming github_client.gh is available
+    if debug:
+        console.print(f"[dim]Searching for open tickets matching version {version}...[/dim]")
+    
+    # Search for open issues matching the version
     issues = list(github_client.gh.search_issues(query)[:5])
     
     if not issues:
-        console.print("[yellow]No matching tickets found.[/yellow]")
+        if debug:
+            console.print("[dim]No matching open tickets found.[/dim]")
         return None
-        
-    table = Table(title="Found Tickets")
-    table.add_column("#", style="cyan")
-    table.add_column("Number", style="green")
-    table.add_column("Title", style="white")
-    table.add_column("State", style="yellow")
     
-    for i, issue in enumerate(issues):
-        table.add_row(str(i+1), str(issue.number), issue.title, issue.state)
-        
-    console.print(table)
+    # Automatically use the first open ticket found
+    selected = issues[0]
     
-    response = input("\nSelect ticket to reuse (1-5) or 'n' to create new: ").strip().lower()
-    if response.isdigit() and 1 <= int(response) <= len(issues):
-        selected = issues[int(response)-1]
-        return {'number': str(selected.number), 'url': selected.html_url}
-        
-    return None
+    if debug:
+        console.print(f"[dim]Found open ticket #{selected.number}: {selected.title}[/dim]")
+    
+    return {'number': str(selected.number), 'url': selected.html_url}
