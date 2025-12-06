@@ -144,3 +144,50 @@ def test_category_label_matching_with_ticket_prefix():
     # normal (no prefix) should match from either
     assert category.matches_label("normal", "pr")
     assert category.matches_label("normal", "ticket")
+
+
+def test_invalid_inclusion_policy_raises_error():
+    """Test that invalid release_notes_inclusion_policy values raise ValidationError."""
+    from pydantic import ValidationError
+
+    # Invalid value "invalid-type"
+    with pytest.raises(ValidationError) as exc_info:
+        Config.from_dict({
+            "repository": {"code_repo": "test/repo"},
+            "ticket_policy": {
+                "release_notes_inclusion_policy": ["tickets", "invalid-type"]
+            }
+        })
+
+    assert "release_notes_inclusion_policy" in str(exc_info.value)
+
+
+def test_valid_inclusion_policy_values():
+    """Test that all valid inclusion policy values are accepted."""
+    # Test each valid value individually
+    for value in ["tickets", "pull-requests", "commits"]:
+        config = Config.from_dict({
+            "repository": {"code_repo": "test/repo"},
+            "ticket_policy": {
+                "release_notes_inclusion_policy": [value]
+            }
+        })
+        assert value in config.ticket_policy.release_notes_inclusion_policy
+
+    # Test all values together
+    config = Config.from_dict({
+        "repository": {"code_repo": "test/repo"},
+        "ticket_policy": {
+            "release_notes_inclusion_policy": ["tickets", "pull-requests", "commits"]
+        }
+    })
+    assert len(config.ticket_policy.release_notes_inclusion_policy) == 3
+
+
+def test_default_inclusion_policy():
+    """Test that default inclusion policy is ["tickets", "pull-requests"]."""
+    config = Config.from_dict({
+        "repository": {"code_repo": "test/repo"}
+    })
+
+    assert config.ticket_policy.release_notes_inclusion_policy == ["tickets", "pull-requests"]

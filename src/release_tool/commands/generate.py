@@ -586,6 +586,13 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 debug
             )
 
+            # Filter by inclusion policy
+            consolidated_changes = _filter_by_inclusion_policy(
+                consolidated_changes,
+                config,
+                debug
+            )
+
             # Generate release notes
             note_generator = ReleaseNoteGenerator(config)
             release_notes = []
@@ -888,6 +895,73 @@ def _check_inter_release_duplicates(
         raise RuntimeError(f"Inter-release duplicate tickets found ({len(duplicate_tickets)} total). Policy: error")
 
     return consolidated_changes
+
+
+def _filter_by_inclusion_policy(
+    consolidated_changes: List,
+    config,
+    debug: bool
+) -> List:
+    """
+    Filter consolidated changes based on release_notes_inclusion_policy.
+
+    This policy controls which types of changes appear in release notes:
+    - "tickets": Include changes associated with a ticket/issue
+    - "pull-requests": Include changes from pull requests (even without a ticket)
+    - "commits": Include direct commits (no PR, no ticket)
+
+    Args:
+        consolidated_changes: List of ConsolidatedChange objects
+        config: Config with release_notes_inclusion_policy in ticket_policy
+        debug: Debug mode flag
+
+    Returns:
+        Filtered list based on policy
+
+    Example:
+        With default ["tickets", "pull-requests"]:
+        - Commits with tickets → Included (type="ticket")
+        - PRs with tickets → Included (type="ticket")
+        - PRs without tickets → Included (type="pr")
+        - Commits without PRs or tickets → EXCLUDED (type="commit")
+    """
+    from rich.console import Console
+    console = Console()
+
+    policy = set(config.ticket_policy.release_notes_inclusion_policy)
+
+    filtered = []
+    excluded_count = {"commit": 0, "pr": 0, "ticket": 0}
+
+    for change in consolidated_changes:
+        include = False
+
+        # Check if change type is in policy
+        if change.type == "ticket" and "tickets" in policy:
+            include = True
+        elif change.type == "pr" and "pull-requests" in policy:
+            include = True
+        elif change.type == "commit" and "commits" in policy:
+            include = True
+
+        if include:
+            filtered.append(change)
+        else:
+            excluded_count[change.type] += 1
+
+    if debug and any(excluded_count.values()):
+        console.print(f"\n[dim]Filtered by release_notes_inclusion_policy:[/dim]")
+        for change_type, count in excluded_count.items():
+            if count > 0:
+                type_label = {
+                    "commit": "standalone commit(s)",
+                    "pr": "pull request(s) without tickets",
+                    "ticket": "ticket-linked change(s)"
+                }.get(change_type, change_type)
+                console.print(f"  [dim]• Excluded {count} {type_label}[/dim]")
+        console.print(f"  [dim]• Policy: {sorted(policy)}[/dim]")
+
+    return filtered
 
 
 def _display_partial_section(partials: List[PartialTicketMatch], section_title: str) -> List[str]:

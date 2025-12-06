@@ -212,6 +212,22 @@ class TicketPolicyConfig(BaseModel):
         default=r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)',
         description="Regex to extract migration notes from ticket body"
     )
+    release_notes_inclusion_policy: List[str] = Field(
+        default_factory=lambda: ["tickets", "pull-requests"],
+        description="Types of changes to include in release notes: 'tickets', 'pull-requests', 'commits'"
+    )
+
+    @model_validator(mode='after')
+    def validate_inclusion_policy(self):
+        """Validate release_notes_inclusion_policy values."""
+        valid_values = {"tickets", "pull-requests", "commits"}
+        for value in self.release_notes_inclusion_policy:
+            if value not in valid_values:
+                raise ValueError(
+                    f"Invalid value in release_notes_inclusion_policy: '{value}'. "
+                    f"Must be one of {valid_values}"
+                )
+        return self
 
 
 class VersionPolicyConfig(BaseModel):
