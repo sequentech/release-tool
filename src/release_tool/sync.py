@@ -351,8 +351,8 @@ class SyncManager:
                 # Reset to latest version of default branch
                 # Use branch_policy.default_branch (fallback to repository.default_branch for backward compatibility)
                 default_branch = self.config.branch_policy.default_branch
-                if self.config.repository.default_branch:
-                    # Legacy config support
+                if not default_branch and self.config.repository.default_branch:
+                    # Legacy config support - only use if branch_policy.default_branch is not set
                     default_branch = self.config.repository.default_branch
                 subprocess.run(
                     ['git', 'reset', '--hard', f'origin/{default_branch}'],
