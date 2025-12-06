@@ -242,15 +242,19 @@ class GitOperations:
         else:
             self.repo.create_tag(tag_name, ref=ref)
 
-    def push_tag(self, tag_name: str, remote: str = "origin") -> None:
+    def push_tag(self, tag_name: str, remote: str = "origin", force: bool = False) -> None:
         """
         Push a tag to remote repository.
 
         Args:
             tag_name: Name of the tag to push
             remote: Remote name (default: "origin")
+            force: Whether to force push the tag (default: False)
         """
-        self.repo.git.push(remote, tag_name)
+        if force:
+            self.repo.git.push(remote, tag_name, "--force")
+        else:
+            self.repo.git.push(remote, tag_name)
 
     def tag_exists(self, tag_name: str, remote: bool = False) -> bool:
         """

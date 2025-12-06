@@ -796,32 +796,79 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     console.print(f"[dim]{preview}[/dim]\n")
             else:
                 # Create and push git tag before creating GitHub release
-                if not git_ops.tag_exists(tag_name, remote=False):
+                tag_exists_locally = git_ops.tag_exists(tag_name, remote=False)
+                tag_exists_remotely = git_ops.tag_exists(tag_name, remote=True)
+                should_force_tag = force != 'none'
+                
+                # Handle local tag
+                if not tag_exists_locally:
                     if debug:
                         console.print(f"[dim]Creating git tag {tag_name} at {target_branch}...[/dim]")
                     try:
                         git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
                         if debug:
                             console.print(f"[dim]✓ Created local tag {tag_name}[/dim]")
+                        else:
+                            console.print(f"[blue]✓ Created local tag {tag_name}[/blue]")
                     except Exception as e:
                         console.print(f"[red]Error creating git tag: {e}[/red]")
+                        sys.exit(1)
+                elif should_force_tag:
+                    # Delete and recreate local tag when forcing
+                    if debug:
+                        console.print(f"[dim]Force: Deleting and recreating local tag {tag_name} at {target_branch}...[/dim]")
+                    try:
+                        git_ops.repo.delete_tag(tag_name)
+                        git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
+                        if debug:
+                            console.print(f"[dim]✓ Force-created local tag {tag_name}[/dim]")
+                        else:
+                            console.print(f"[blue]✓ Force-created local tag {tag_name}[/blue]")
+                    except Exception as e:
+                        console.print(f"[red]Error force-creating git tag: {e}[/red]")
                         sys.exit(1)
                 elif debug:
                     console.print(f"[dim]Tag {tag_name} already exists locally[/dim]")
 
                 # Push tag to remote
-                if not git_ops.tag_exists(tag_name, remote=True):
+                if not tag_exists_remotely:
                     if debug:
                         console.print(f"[dim]Pushing tag {tag_name} to remote...[/dim]")
                     try:
                         git_ops.push_tag(tag_name)
                         if debug:
                             console.print(f"[dim]✓ Pushed tag {tag_name} to remote[/dim]")
+                        else:
+                            console.print(f"[blue]✓ Pushed tag {tag_name} to remote[/blue]")
                     except Exception as e:
                         console.print(f"[red]Error pushing git tag: {e}[/red]")
                         sys.exit(1)
-                elif debug:
-                    console.print(f"[dim]Tag {tag_name} already exists on remote[/dim]")
+                elif should_force_tag:
+                    # Force push tag when forcing
+                    if debug:
+                        console.print(f"[dim]Force-pushing tag {tag_name} to remote...[/dim]")
+                    try:
+                        git_ops.push_tag(tag_name, force=True)
+                        if debug:
+                            console.print(f"[dim]✓ Force-pushed tag {tag_name} to remote[/dim]")
+                        else:
+                            console.print(f"[blue]✓ Force-pushed tag {tag_name} to remote[/blue]")
+                    except Exception as e:
+                        console.print(f"[red]Error force-pushing git tag: {e}[/red]")
+                        sys.exit(1)
+                else:
+                    if debug:
+                        console.print(f"[dim]Tag {tag_name} already exists on remote[/dim]")
+                    # Even if tag exists, still try to push in case local is ahead
+                    # This handles the case where the tag might exist but not be on the correct commit
+                    try:
+                        git_ops.push_tag(tag_name)
+                        if debug:
+                            console.print(f"[dim]✓ Pushed tag {tag_name} to remote (update)[/dim]")
+                    except Exception as e:
+                        # Non-fatal - tag might already be at correct commit
+                        if debug:
+                            console.print(f"[dim]Tag push skipped (already up to date or would fail): {e}[/dim]")
 
                 console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
 
