@@ -489,6 +489,7 @@ def test_branch_creation_when_needed(test_config, test_notes_file):
         mock_git_ops.return_value = mock_git_instance
         mock_git_instance.get_version_tags.return_value = []
         mock_git_instance.tag_exists.return_value = False  # Tag doesn't exist
+        mock_git_instance.branch_exists.return_value = False  # Branch doesn't exist (neither local nor remote)
 
         # Mock strategy to return should_create_branch=True
         mock_strategy.return_value = ("release/0.0", "main", True)

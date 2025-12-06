@@ -692,19 +692,30 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             branch_from_previous=config.branch_policy.branch_from_previous_release
         )
 
-        # Create and push release branch if needed (before creating GitHub release)
+        # Handle release branch creation/fetching (before creating GitHub release)
         if should_create_branch and config.branch_policy.create_branches:
             if debug:
-                console.print(f"[dim]Release branch {target_branch} doesn't exist. Creating from {source_branch}...[/dim]")
+                console.print(f"[dim]Release branch {target_branch} doesn't exist locally. Creating from {source_branch}...[/dim]")
 
             if not dry_run:
                 try:
-                    # Create branch locally from source branch
-                    git_ops.create_branch(target_branch, source_branch)
-                    # Push to remote
-                    git_ops.push_branch(target_branch)
-                    if debug:
-                        console.print(f"[dim]✓ Created and pushed {target_branch} to remote[/dim]")
+                    # Check if branch exists remotely first
+                    if git_ops.branch_exists(target_branch, remote=True):
+                        # Branch exists remotely, fetch it instead of creating
+                        if debug:
+                            console.print(f"[dim]Branch exists remotely, fetching {target_branch}...[/dim]")
+                        try:
+                            git_ops.repo.git.fetch('origin', f"{target_branch}:{target_branch}")
+                            if debug:
+                                console.print(f"[dim]✓ Fetched {target_branch} from remote[/dim]")
+                        except Exception as fetch_error:
+                            console.print(f"[yellow]Warning: Could not fetch {target_branch}: {fetch_error}[/yellow]")
+                    else:
+                        # Branch doesn't exist remotely, create and push
+                        git_ops.create_branch(target_branch, source_branch)
+                        git_ops.push_branch(target_branch)
+                        if debug:
+                            console.print(f"[dim]✓ Created and pushed {target_branch} to remote[/dim]")
                 except Exception as e:
                     console.print(f"[yellow]Warning: Could not create/push release branch: {e}[/yellow]")
                     console.print(f"[yellow]Continuing with release creation...[/yellow]")
@@ -712,7 +723,17 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                 console.print(f"[yellow]Would create and push branch {target_branch} from {source_branch}[/yellow]")
         else:
             if debug:
-                console.print(f"[yellow]Not creating branches should_create_branch={target_branch}, config.branch_policy.create_branches={config.branch_policy.create_branches}[/yellow]")
+                console.print(f"[dim]Using existing release branch {target_branch}[/dim]")
+                
+            # Even if not creating, ensure we have the branch locally if it exists remotely
+            if not dry_run and not git_ops.branch_exists(target_branch) and git_ops.branch_exists(target_branch, remote=True):
+                try:
+                    git_ops.repo.git.fetch('origin', f"{target_branch}:{target_branch}")
+                    if debug:
+                        console.print(f"[dim]✓ Fetched {target_branch} from remote[/dim]")
+                except Exception as e:
+                    if debug:
+                        console.print(f"[dim]Could not fetch {target_branch}: {e}[/dim]")
 
         # Initialize database connection
         db = Database(config.database.path)
