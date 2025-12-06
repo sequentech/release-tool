@@ -203,6 +203,48 @@ inter_release_duplicate_action = "warn"
 # RECOMMENDED: true (makes release notes more concise and readable)
 consolidation_enabled = true
 
+# release_notes_inclusion_policy: Control which types of changes appear in release notes
+# This is a list of change types to include. Valid values: "tickets", "pull-requests", "commits"
+#
+# Change Types:
+#   - "tickets": Include commits/PRs that are associated with a ticket/issue
+#   - "pull-requests": Include PRs even if they don't have an associated ticket
+#   - "commits": Include direct commits that have no PR and no ticket
+#
+# How it works:
+#   - Changes are categorized by type: "ticket", "pr", or "commit"
+#   - Only changes whose type is in this list will appear in release notes
+#   - Excluded changes won't appear in any category (including "Other")
+#   - Excluded changes won't be counted in statistics
+#   - Excluded changes are completely absent from the final output
+#
+# Common configurations:
+#   1. Default ["tickets", "pull-requests"] (RECOMMENDED):
+#      ✅ Include: Commits/PRs with tickets
+#      ✅ Include: PRs without tickets
+#      ❌ EXCLUDE: Standalone commits (no PR, no ticket)
+#      Use case: Standard workflow where all significant work goes through PRs
+#
+#   2. Tickets only ["tickets"]:
+#      ✅ Include: Commits/PRs with tickets
+#      ❌ EXCLUDE: PRs without tickets
+#      ❌ EXCLUDE: Standalone commits
+#      Use case: Strict ticket tracking, ignore untracked work
+#
+#   3. Everything ["tickets", "pull-requests", "commits"]:
+#      ✅ Include: All changes regardless of type
+#      Use case: Small teams, less formal process, want complete history
+#
+#   4. PRs only ["pull-requests"]:
+#      ✅ Include: PRs without tickets
+#      ❌ EXCLUDE: Commits/PRs with tickets
+#      ❌ EXCLUDE: Standalone commits
+#      Use case: Unusual - only show untracked PRs
+#
+# Default: ["tickets", "pull-requests"]
+# This default works well for most teams using PR-based workflows
+release_notes_inclusion_policy = ["tickets", "pull-requests"]
+
 # description_section_regex: Regex to extract description from ticket body
 # Uses Python regex with capturing group (group 1 is extracted)
 # Looks for sections like "## Description" or "## Summary" in ticket text
