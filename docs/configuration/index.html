@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Configuration | Release Tool</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://sequentech.github.io/release-tool/docs/configuration"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Release Tool"><meta data-rh="true" name="description" content="&lt;!--"><meta data-rh="true" property="og:description" content="&lt;!--"><link data-rh="true" rel="icon" href="/release-tool/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://sequentech.github.io/release-tool/docs/configuration"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/configuration" hreflang="en"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/configuration" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://sequentech.github.io/release-tool/docs/configuration"}]}</script><link rel="stylesheet" href="/release-tool/assets/css/styles.d2ccc06d.css">
-<script src="/release-tool/assets/js/runtime~main.ee33b64d.js" defer="defer"></script>
+<script src="/release-tool/assets/js/runtime~main.f63ecc62.js" defer="defer"></script>
 <script src="/release-tool/assets/js/main.ffe177b9.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -101,10 +101,23 @@
 </ul>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="categories"><code>categories</code><a href="#categories" class="hash-link" aria-label="Direct link to categories" title="Direct link to categories" translate="no">​</a></h4>
 <ul>
-<li class=""><strong>Type</strong>: <code>List[str]</code></li>
-<li class=""><strong>Description</strong>: An ordered list of category names. Release notes will be grouped into these categories in the order specified.</li>
-<li class=""><strong>Default</strong>: <code>[&quot;Features&quot;, &quot;Bug Fixes&quot;, &quot;Other&quot;]</code></li>
+<li class=""><strong>Type</strong>: <code>List[CategoryConfig]</code></li>
+<li class=""><strong>Description</strong>: A list of category configurations for grouping release notes. Each category has a name, labels, order, and alias.</li>
+<li class=""><strong>Structure</strong>:<!-- -->
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">[[release_notes.categories]]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">name = &quot;🚀 Features&quot;       # Display name shown in release notes</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">labels = [&quot;feature&quot;, &quot;enhancement&quot;]  # Labels that match this category</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">order = 1                 # Display order (lower numbers appear first)</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">alias = &quot;features&quot;        # Short identifier for templates</span><br></span></code></pre></div></div>
+</li>
 </ul>
+<h5 class="anchor anchorTargetStickyNavbar_Vzrq" id="fallback-category">Fallback Category<a href="#fallback-category" class="hash-link" aria-label="Direct link to Fallback Category" title="Direct link to Fallback Category" translate="no">​</a></h5>
+<p><strong>IMPORTANT</strong>: One category must have <code>alias = &quot;other&quot;</code> to serve as the fallback for tickets/PRs that don&#x27;t match any other category&#x27;s labels.</p>
+<ul>
+<li class=""><strong>Name</strong>: You can name it anything (e.g., &quot;Other&quot;, &quot;Miscellaneous&quot;, &quot;Other Changes&quot;)</li>
+<li class=""><strong>Labels</strong>: Should be empty <code>[]</code> to catch unmatched items</li>
+<li class=""><strong>Order</strong>: Should be high (e.g., <code>99</code>) to appear last</li>
+<li class=""><strong>Alias</strong>: <strong>MUST be <code>&quot;other&quot;</code></strong> for the tool to recognize it as the fallback</li>
+</ul>
+<p>Example:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">[[release_notes.categories]]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">name = &quot;Other&quot;              # Customizable name</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">labels = []                 # Empty to catch all unmatched</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">order = 99                  # Display last</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">alias = &quot;other&quot;             # REQUIRED - do not change</span><br></span></code></pre></div></div>
+<p>The tool automatically assigns any ticket or PR without matching labels to the category with <code>alias=&quot;other&quot;</code>.</p>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="version_gap_policy"><code>version_gap_policy</code><a href="#version_gap_policy" class="hash-link" aria-label="Direct link to version_gap_policy" title="Direct link to version_gap_policy" translate="no">​</a></h4>
 <ul>
 <li class=""><strong>Type</strong>: <code>str</code></li>
