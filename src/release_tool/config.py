@@ -281,7 +281,7 @@ class ReleaseNoteConfig(BaseModel):
                 alias="security"
             ),
             CategoryConfig(
-                name="Other Changes",
+                name="Other",
                 labels=[],
                 order=99,
                 alias="other"

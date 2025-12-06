@@ -356,6 +356,23 @@ class ReleaseNoteGenerator:
     def __init__(self, config: Config):
         self.config = config
 
+    def _get_fallback_category_name(self) -> str:
+        """
+        Get the fallback category name by finding the category with alias='other'.
+
+        This allows users to name the fallback category whatever they want (e.g., "Other",
+        "Miscellaneous", "Other Changes") as long as they set alias="other".
+
+        Returns:
+            The name of the category with alias='other', or "Other" as hardcoded fallback
+            if no category has that alias.
+        """
+        for category in self.config.release_notes.categories:
+            if category.alias == "other":
+                return category.name
+        # Fallback to hardcoded "Other" if no category with alias='other' found
+        return "Other"
+
     def create_release_note(
         self,
         change: ConsolidatedChange,
@@ -521,7 +538,7 @@ class ReleaseNoteGenerator:
                 if category_config.matches_label(label, "pr"):
                     return category_config.name
 
-        return "Other"
+        return self._get_fallback_category_name()
 
     def _extract_section(self, text: str, regex: Optional[str]) -> Optional[str]:
         """Extract a section from text using regex."""
@@ -580,12 +597,80 @@ class ReleaseNoteGenerator:
             grouped[category_name] = []
 
         for note in notes:
-            category = note.category or "Other"
+            category = note.category or self._get_fallback_category_name()
             if category not in grouped:
                 grouped[category] = []
             grouped[category].append(note)
 
         return grouped
+
+    def _validate_all_notes_rendered(
+        self,
+        grouped_notes: Dict[str, List[ReleaseNote]],
+        rendered_note_count: int,
+        context: str = "template rendering"
+    ) -> None:
+        """
+        Validate that all notes from grouped_notes were rendered in the output.
+
+        This helps detect configuration issues where notes are categorized with a name
+        that doesn't match any configured category (e.g., hardcoded "Other" fallback
+        vs config defining "Other Changes").
+
+        Args:
+            grouped_notes: Dict of category name -> list of notes
+            rendered_note_count: Number of notes actually added to template context
+            context: Description of where this validation is called from (for error messages)
+
+        Warns:
+            If rendered count doesn't match total in grouped_notes, issues warning with:
+            - Number of missing notes
+            - Categories in grouped_notes not found in configured categories
+            - Suggestion to check category name configuration
+        """
+        from rich.console import Console
+        console = Console()
+
+        # Count total notes in grouped_notes
+        total_notes = sum(len(notes) for notes in grouped_notes.values())
+
+        # Check if counts match
+        if rendered_note_count == total_notes:
+            return  # All good!
+
+        # We have missing notes - find out which categories are orphaned
+        configured_categories = set(self.config.get_ordered_categories())
+        grouped_categories = set(grouped_notes.keys())
+        orphaned_categories = grouped_categories - configured_categories
+
+        missing_count = total_notes - rendered_note_count
+
+        # Build warning message
+        msg_lines = []
+        msg_lines.append("")
+        msg_lines.append(f"[yellow]⚠️  Warning: {missing_count} note(s) not rendered during {context}[/yellow]")
+        msg_lines.append("")
+        msg_lines.append(f"  [dim]Total notes in grouped_notes:[/dim] {total_notes}")
+        msg_lines.append(f"  [dim]Notes added to template:[/dim] {rendered_note_count}")
+        msg_lines.append("")
+
+        if orphaned_categories:
+            msg_lines.append(f"  [yellow]Categories in grouped_notes but not in config:[/yellow]")
+            for cat in orphaned_categories:
+                note_count = len(grouped_notes[cat])
+                msg_lines.append(f"    • [bold]{cat}[/bold] ({note_count} note(s))")
+            msg_lines.append("")
+            msg_lines.append("  [dim]Possible causes:[/dim]")
+            msg_lines.append("    1. Category name mismatch between hardcoded fallback and config")
+            msg_lines.append("    2. Notes categorized with name not defined in config categories")
+            msg_lines.append("")
+            msg_lines.append("  [dim]To fix:[/dim]")
+            msg_lines.append("    • Check that config defines category with exact name(s) above")
+            msg_lines.append("    • Verify fallback category 'Other' is defined in config")
+            msg_lines.append("    • Add missing categories to [[release_notes.categories]]")
+            msg_lines.append("")
+
+        console.print("\n".join(msg_lines))
 
     def _process_html_like_whitespace(self, text: str, preserve_br: bool = False) -> str:
         """
@@ -787,6 +872,13 @@ class ReleaseNoteGenerator:
                 'notes': notes_data
             })
 
+        # Validate that all notes were rendered
+        self._validate_all_notes_rendered(
+            grouped_notes,
+            len(all_notes_data),
+            context="master template rendering"
+        )
+
         # Render title
         title_template = Template(self.config.release_notes.title_template)
         title = title_template.render(version=version)
@@ -910,6 +1002,7 @@ class ReleaseNoteGenerator:
         from jinja2 import Template
 
         lines = []
+        rendered_note_count = 0
 
         # Title
         title_template = Template(self.config.release_notes.title_template)
@@ -949,7 +1042,16 @@ class ReleaseNoteGenerator:
                     lines.append(f"  {note_dict['description'][:200]}...")
                     lines.append("")
 
+                rendered_note_count += 1
+
             lines.append("")
+
+        # Validate that all notes were rendered
+        self._validate_all_notes_rendered(
+            grouped_notes,
+            rendered_note_count,
+            context="legacy layout rendering"
+        )
 
         output = "\n".join(lines)
 

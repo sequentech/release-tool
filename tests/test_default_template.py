@@ -247,7 +247,17 @@ def test_default_categories_match_backup_config():
     assert "🛠 Bug Fixes" in category_names
     assert "📖 Documentation" in category_names
     assert "🛡 Security Updates" in category_names
-    assert "Other Changes" in category_names
+
+    # CRITICAL: Must have a category with alias="other" for fallback
+    # The category name can be anything (e.g., "Other", "Miscellaneous"),
+    # but the alias must be "other" for the tool to detect it as the fallback category
+    assert "Other" in category_names
+
+    # Verify the "Other" category configuration
+    other_cat = next(c for c in config.release_notes.categories if c.name == "Other")
+    assert other_cat.labels == []  # Should have no labels (catches all unmatched)
+    assert other_cat.order == 99  # Should be last in order
+    assert other_cat.alias == "other"  # REQUIRED - tool detects fallback by this alias
 
     # Check labels
     features_cat = next(c for c in config.release_notes.categories if c.name == "🚀 Features")

@@ -666,8 +666,17 @@ labels = ["security"]
 order = 5
 alias = "security"
 
+# IMPORTANT: Fallback Category
+# The category with alias="other" serves as the fallback for any tickets/PRs
+# that don't match any other category labels. You can name it whatever you want
+# (e.g., "Other", "Miscellaneous", "Other Changes"), but the alias MUST be "other".
+#
+# - name: Display name for this category (customizable)
+# - labels: Should be empty [] to catch unmatched items
+# - order: Should be high (e.g., 99) to appear last
+# - alias: MUST be "other" for the tool to recognize this as the fallback category
 [[release_notes.categories]]
-name = "Other Changes"
+name = "Other"
 labels = []
 order = 99
 alias = "other"

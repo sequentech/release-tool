@@ -134,9 +134,36 @@ This section controls the behavior of the release tool's logic.
 - **Example**: `["([A-Z]+-\\d+)"]` matches tickets like `JIRA-123`.
 
 #### `categories`
-- **Type**: `List[str]`
-- **Description**: An ordered list of category names. Release notes will be grouped into these categories in the order specified.
-- **Default**: `["Features", "Bug Fixes", "Other"]`
+- **Type**: `List[CategoryConfig]`
+- **Description**: A list of category configurations for grouping release notes. Each category has a name, labels, order, and alias.
+- **Structure**:
+  ```toml
+  [[release_notes.categories]]
+  name = "🚀 Features"       # Display name shown in release notes
+  labels = ["feature", "enhancement"]  # Labels that match this category
+  order = 1                 # Display order (lower numbers appear first)
+  alias = "features"        # Short identifier for templates
+  ```
+
+##### Fallback Category
+
+**IMPORTANT**: One category must have `alias = "other"` to serve as the fallback for tickets/PRs that don't match any other category's labels.
+
+- **Name**: You can name it anything (e.g., "Other", "Miscellaneous", "Other Changes")
+- **Labels**: Should be empty `[]` to catch unmatched items
+- **Order**: Should be high (e.g., `99`) to appear last
+- **Alias**: **MUST be `"other"`** for the tool to recognize it as the fallback
+
+Example:
+```toml
+[[release_notes.categories]]
+name = "Other"              # Customizable name
+labels = []                 # Empty to catch all unmatched
+order = 99                  # Display last
+alias = "other"             # REQUIRED - do not change
+```
+
+The tool automatically assigns any ticket or PR without matching labels to the category with `alias="other"`.
 
 #### `version_gap_policy`
 - **Type**: `str`
