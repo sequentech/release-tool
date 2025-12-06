@@ -116,6 +116,7 @@ def test_config_defaults_used_when_no_cli_flags(test_config, test_notes_file):
          patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.get_release_by_tag.return_value = None  # No existing release
         mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
         
         # Mock git operations for tag creation
@@ -148,6 +149,7 @@ def test_cli_flags_override_config(test_config, test_notes_file):
          patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.get_release_by_tag.return_value = None  # No existing release
         mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
         
         # Mock git operations for tag creation
@@ -253,6 +255,7 @@ def test_auto_detect_prerelease_version(test_config, test_notes_file):
          patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.get_release_by_tag.return_value = None  # No existing release
         mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0-rc.1"
         
         # Mock git operations for tag creation
@@ -355,6 +358,7 @@ def test_prerelease_explicit_true(test_config, test_notes_file):
          patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.get_release_by_tag.return_value = None  # No existing release
         mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
         
         # Mock git operations for tag creation
@@ -384,6 +388,7 @@ def test_prerelease_explicit_false(test_config, test_notes_file):
          patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
+        mock_client.get_release_by_tag.return_value = None  # No existing release
         mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0-rc.1"
         
         # Mock git operations for tag creation
@@ -497,6 +502,7 @@ def test_branch_creation_when_needed(test_config, test_notes_file):
         # Mock GitHub client
         mock_gh_instance = MagicMock()
         mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
@@ -545,6 +551,7 @@ def test_branch_creation_not_called_when_exists(test_config, test_notes_file):
         # Mock GitHub client
         mock_gh_instance = MagicMock()
         mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1"
 
         result = runner.invoke(
@@ -622,6 +629,7 @@ def test_branch_creation_error_handling(test_config, test_notes_file):
         mock_git_ops.return_value = mock_git_instance
         mock_git_instance.get_version_tags.return_value = []
         mock_git_instance.tag_exists.return_value = False  # Tag doesn't exist
+        mock_git_instance.branch_exists.return_value = False  # Branch doesn't exist (neither local nor remote)
 
         # Mock strategy to return should_create_branch=True
         mock_strategy.return_value = ("release/0.0", "main", True)
@@ -632,6 +640,7 @@ def test_branch_creation_error_handling(test_config, test_notes_file):
         # Mock GitHub client
         mock_gh_instance = MagicMock()
         mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
@@ -640,16 +649,12 @@ def test_branch_creation_error_handling(test_config, test_notes_file):
             obj={'config': test_config}
         )
 
-        # Check exit code first to see what happened
-        if result.exit_code != 0:
-            print(f"\nError output: {result.output}")
-            
         # Should show warning about branch creation failure
-            assert 'Warning: Could not create/push release branch' in result.output
-            assert 'Continuing with release creation' in result.output
+        assert 'Warning: Could not create/push release branch' in result.output
+        assert 'Continuing with release creation' in result.output
 
-            # Should still proceed with release creation (exit code 0)
-            assert result.exit_code == 0
+        # Should still proceed with release creation (exit code 0)
+        assert result.exit_code == 0
 def test_branch_creation_disabled_by_config(test_config, test_notes_file):
     """Test that branch creation is skipped when disabled in config."""
     # Modify config to disable branch creation
@@ -679,6 +684,7 @@ def test_branch_creation_disabled_by_config(test_config, test_notes_file):
         # Mock GitHub client
         mock_gh_instance = MagicMock()
         mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
@@ -728,6 +734,7 @@ def test_ticket_parameter_associates_with_issue(test_config, test_notes_file):
         # Mock GitHub client
         mock_gh_instance = MagicMock()
         mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1"
         
         # Mock the issue retrieval
@@ -819,3 +826,150 @@ def test_auto_select_open_ticket_for_draft_release(test_config, test_notes_file)
         call_args = mock_db.save_ticket_association.call_args
         assert call_args[1]['ticket_number'] == 456
         assert call_args[1]['version'] == '0.0.1-rc.0'
+
+
+@patch('release_tool.commands.publish.Database')
+@patch('release_tool.commands.publish.GitOperations')
+@patch('release_tool.commands.publish.determine_release_branch_strategy')
+@patch('release_tool.commands.publish.GitHubClient')
+def test_existing_release_without_force_errors(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
+    """Test that publishing fails when release exists and --force is not set."""
+    runner = CliRunner()
+    
+    # Mock database
+    mock_db_instance = MagicMock()
+    mock_db.return_value = mock_db_instance
+    mock_repo = MagicMock()
+    mock_repo.id = 1
+    mock_db_instance.get_repository.return_value = mock_repo
+    mock_db_instance.get_release.return_value = None  # No DB release yet
+    
+    # Mock git operations
+    mock_git_instance = MagicMock()
+    mock_git_ops.return_value = mock_git_instance
+    mock_git_instance.get_version_tags.return_value = []
+    mock_git_instance.tag_exists.return_value = True  # Tag already exists
+    mock_git_instance.branch_exists.return_value = True
+    
+    # Mock strategy
+    mock_strategy.return_value = ("release/1.0", "main", False)
+    
+    # Mock GitHub client - existing release
+    mock_gh_instance = MagicMock()
+    mock_gh_client.return_value = mock_gh_instance
+    
+    # Mock existing release
+    mock_existing_release = MagicMock()
+    mock_existing_release.html_url = "https://github.com/test/repo/releases/tag/v1.0.0"
+    mock_gh_instance.get_release_by_tag.return_value = mock_existing_release
+    
+    result = runner.invoke(
+        publish,
+        ['1.0.0', '-f', str(test_notes_file), '--release'],
+        obj={'config': test_config}
+    )
+    
+    # Should fail with error
+    assert result.exit_code == 1
+    assert 'already exists' in result.output
+    assert 'Use --force' in result.output
+
+
+@patch('release_tool.commands.publish.Database')
+@patch('release_tool.commands.publish.GitOperations')
+@patch('release_tool.commands.publish.determine_release_branch_strategy')
+@patch('release_tool.commands.publish.GitHubClient')
+def test_existing_release_with_force_updates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
+    """Test that publishing updates existing release when --force is set."""
+    runner = CliRunner()
+    
+    # Mock database
+    mock_db_instance = MagicMock()
+    mock_db.return_value = mock_db_instance
+    mock_repo = MagicMock()
+    mock_repo.id = 1
+    mock_db_instance.get_repository.return_value = mock_repo
+    mock_db_instance.get_release.return_value = None
+    
+    # Mock git operations
+    mock_git_instance = MagicMock()
+    mock_git_ops.return_value = mock_git_instance
+    mock_git_instance.get_version_tags.return_value = []
+    mock_git_instance.tag_exists.return_value = True
+    mock_git_instance.branch_exists.return_value = True
+    
+    # Mock strategy
+    mock_strategy.return_value = ("release/1.0", "main", False)
+    
+    # Mock GitHub client
+    mock_gh_instance = MagicMock()
+    mock_gh_client.return_value = mock_gh_instance
+    
+    # Mock existing release
+    mock_existing_release = MagicMock()
+    mock_existing_release.html_url = "https://github.com/test/repo/releases/tag/v1.0.0"
+    mock_gh_instance.get_release_by_tag.return_value = mock_existing_release
+    mock_gh_instance.update_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
+    
+    result = runner.invoke(
+        publish,
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--force', 'published'],
+        obj={'config': test_config}
+    )
+    
+    # Should succeed
+    assert result.exit_code == 0
+    assert 'Updating existing' in result.output or 'updated successfully' in result.output
+    
+    # Verify update_release was called
+    mock_gh_instance.update_release.assert_called_once()
+    call_args = mock_gh_instance.update_release.call_args
+    assert call_args[0][0] == 'test/repo'
+    assert call_args[0][1] == 'v1.0.0'
+
+
+@patch('release_tool.commands.publish.Database')
+@patch('release_tool.commands.publish.GitOperations')
+@patch('release_tool.commands.publish.determine_release_branch_strategy')
+@patch('release_tool.commands.publish.GitHubClient')
+def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
+    """Test that publishing creates new release when it doesn't exist."""
+    runner = CliRunner()
+    
+    # Mock database
+    mock_db_instance = MagicMock()
+    mock_db.return_value = mock_db_instance
+    mock_repo = MagicMock()
+    mock_repo.id = 1
+    mock_db_instance.get_repository.return_value = mock_repo
+    mock_db_instance.get_release.return_value = None
+    
+    # Mock git operations
+    mock_git_instance = MagicMock()
+    mock_git_ops.return_value = mock_git_instance
+    mock_git_instance.get_version_tags.return_value = []
+    mock_git_instance.tag_exists.return_value = False
+    mock_git_instance.branch_exists.return_value = True
+    
+    # Mock strategy
+    mock_strategy.return_value = ("release/1.0", "main", False)
+    
+    # Mock GitHub client - no existing release
+    mock_gh_instance = MagicMock()
+    mock_gh_client.return_value = mock_gh_instance
+    mock_gh_instance.get_release_by_tag.return_value = None  # No existing release
+    mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
+    
+    result = runner.invoke(
+        publish,
+        ['1.0.0', '-f', str(test_notes_file), '--release'],
+        obj={'config': test_config}
+    )
+    
+    # Should succeed
+    assert result.exit_code == 0
+    assert 'created successfully' in result.output
+    
+    # Verify create_release was called (not update)
+    mock_gh_instance.create_release.assert_called_once()
+    mock_gh_instance.update_release.assert_not_called()

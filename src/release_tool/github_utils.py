@@ -924,6 +924,79 @@ class GitHubClient:
             console.print(f"[yellow]Warning: Could not fetch releases: {e}[/yellow]")
             return []
 
+    def get_release_by_tag(
+        self,
+        repo_full_name: str,
+        tag_name: str
+    ) -> Optional[Any]:
+        """Get a GitHub release by tag name.
+        
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            tag_name: Tag name (e.g., "v1.0.0")
+            
+        Returns:
+            GitHub release object if found, None otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            release = repo.get_release(tag_name)
+            return release
+        except GithubException:
+            # Release not found
+            return None
+
+    def update_release(
+        self,
+        repo_full_name: str,
+        tag_name: str,
+        name: Optional[str] = None,
+        body: Optional[str] = None,
+        draft: Optional[bool] = None,
+        prerelease: Optional[bool] = None,
+        target_commitish: Optional[str] = None
+    ) -> Optional[str]:
+        """Update an existing GitHub release.
+        
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            tag_name: Tag name of the release to update
+            name: New release name (optional)
+            body: New release body (optional)
+            draft: New draft status (optional)
+            prerelease: New prerelease status (optional)
+            target_commitish: New target commitish (optional)
+            
+        Returns:
+            Release URL if successful, None otherwise
+        """
+        try:
+            release = self.get_release_by_tag(repo_full_name, tag_name)
+            if not release:
+                console.print(f"[red]Error: Release with tag {tag_name} not found[/red]")
+                return None
+
+            # Update only provided fields
+            if name is not None:
+                release.update_release(name=name, message=body or release.body, 
+                                      draft=draft if draft is not None else release.draft,
+                                      prerelease=prerelease if prerelease is not None else release.prerelease,
+                                      tag_name=tag_name,
+                                      target_commitish=target_commitish or release.target_commitish)
+            elif body is not None or draft is not None or prerelease is not None or target_commitish is not None:
+                release.update_release(name=release.title, 
+                                      message=body if body is not None else release.body,
+                                      draft=draft if draft is not None else release.draft,
+                                      prerelease=prerelease if prerelease is not None else release.prerelease,
+                                      tag_name=tag_name,
+                                      target_commitish=target_commitish or release.target_commitish)
+
+            console.print(f"[green]Updated release: {release.html_url}[/green]")
+            return release.html_url
+        except GithubException as e:
+            console.print(f"[red]Error updating release: {e}[/red]")
+            return None
+
     def create_release(
         self,
         repo_full_name: str,

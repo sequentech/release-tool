@@ -870,32 +870,66 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                         if debug:
                             console.print(f"[dim]Tag push skipped (already up to date or would fail): {e}[/dim]")
 
-                console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
-
-                release_name = f"Release {version}"
-                release_url = github_client.create_release(
-                    repo_name,
-                    version,
-                    release_name,
-                    release_notes,
-                    prerelease=prerelease_flag,
-                    draft=is_draft,
-                    target_commitish=target_branch
-                )
-
-                if release_url:
-                    console.print(f"[green]✓ GitHub release created successfully[/green]")
-                    console.print(f"[blue]→ {release_url}[/blue]")
-                    
-                    # Verify the release URL doesn't contain "untagged"
-                    if "untagged" in release_url:
-                        console.print(f"[yellow]⚠ Warning: Release created but appears to be untagged. This may indicate the git tag was not properly created.[/yellow]")
-                        console.print(f"[yellow]  Expected tag: {tag_name}[/yellow]")
-                        console.print(f"[yellow]  Please verify the tag exists: git tag -l {tag_name}[/yellow]")
+                # Check if release already exists on GitHub
+                existing_gh_release = github_client.get_release_by_tag(repo_name, tag_name)
+                
+                if existing_gh_release:
+                    if force == 'none':
+                        console.print(f"[red]Error: GitHub release {tag_name} already exists.[/red]")
+                        console.print(f"[yellow]Use --force [draft|published] to update the existing release.[/yellow]")
+                        console.print(f"[dim]  URL: {existing_gh_release.html_url}[/dim]")
+                        sys.exit(1)
+                    else:
+                        # Update existing release
+                        console.print(f"[blue]Updating existing {status}GitHub release for {version}...[/blue]")
+                        if debug:
+                            console.print(f"[dim]Existing release URL: {existing_gh_release.html_url}[/dim]")
+                        
+                        release_name = f"Release {version}"
+                        release_url = github_client.update_release(
+                            repo_name,
+                            tag_name,
+                            name=release_name,
+                            body=release_notes,
+                            prerelease=prerelease_flag,
+                            draft=is_draft,
+                            target_commitish=target_branch
+                        )
+                        
+                        if release_url:
+                            console.print(f"[green]✓ GitHub release updated successfully[/green]")
+                            console.print(f"[blue]→ {release_url}[/blue]")
+                        else:
+                            console.print(f"[red]✗ Failed to update GitHub release[/red]")
+                            sys.exit(1)
                 else:
-                    console.print(f"[red]✗ Failed to create GitHub release[/red]")
-                    console.print(f"[red]Error: Release creation failed. See error message above for details.[/red]")
-                    sys.exit(1)
+                    # Create new release
+                    console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
+
+                    release_name = f"Release {version}"
+                    release_url = github_client.create_release(
+                        repo_name,
+                        version,
+                        release_name,
+                        release_notes,
+                        prerelease=prerelease_flag,
+                        draft=is_draft,
+                        target_commitish=target_branch
+                    )
+
+                    if release_url:
+                        console.print(f"[green]✓ GitHub release created successfully[/green]")
+                        console.print(f"[blue]→ {release_url}[/blue]")
+                        
+                        # Verify the release URL doesn't contain "untagged"
+                        if "untagged" in release_url:
+                            console.print(f"[yellow]⚠ Warning: Release created but appears to be untagged. This may indicate the git tag was not properly created.[/yellow]")
+                            console.print(f"[yellow]  Expected tag: {tag_name}[/yellow]")
+                            console.print(f"[yellow]  Please verify the tag exists: git tag -l {tag_name}[/yellow]")
+                    else:
+                        console.print(f"[red]✗ Failed to create GitHub release[/red]")
+                        console.print(f"[red]Error: Release creation failed. See error message above for details.[/red]")
+                        sys.exit(1)
         elif dry_run:
             console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
 
