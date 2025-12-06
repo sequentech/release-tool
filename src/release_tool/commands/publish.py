@@ -688,7 +688,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             git_ops=git_ops,
             available_versions=available_versions,
             branch_template=config.branch_policy.release_branch_template,
-            default_branch=config.repository.default_branch,
+            default_branch=config.branch_policy.default_branch,
             branch_from_previous=config.branch_policy.branch_from_previous_release
         )
 
