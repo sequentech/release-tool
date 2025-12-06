@@ -275,19 +275,19 @@ release_notes_inclusion_policy = ["tickets", "pull-requests"]
 # Uses Python regex with capturing group (group 1 is extracted)
 # Looks for sections like "## Description" or "## Summary" in ticket text
 # The tool gracefully handles tickets without description sections
-# Default: r'(?:## Description|## Summary)\\n(.*?)(?=\\n##|\\Z)'
+# Default: r'(?:## Description|## Summary)\n(.*?)(?=\n##|\Z)'
 # Set to empty string "" to disable description extraction
-# NOTE: In TOML, backslashes must be doubled: \\n becomes \\\\n, \\Z becomes \\\\Z
-description_section_regex = "(?:## Description|## Summary)\\\\n(.*?)(?=\\\\n##|\\\\Z)"
+# NOTE: In TOML, backslashes must be doubled: \n becomes \\n, \Z becomes \\Z
+description_section_regex = "(?:## Description|## Summary)\\n(.*?)(?=\\n##|\\Z)"
 
 # migration_section_regex: Regex to extract migration notes from ticket body
 # Useful for database migrations, breaking changes, upgrade steps
 # Looks for sections like "## Migration" or "## Migration Notes"
 # The tool gracefully handles tickets without migration sections
-# Default: r'(?:## Migration|## Migration Notes)\\n(.*?)(?=\\n##|\\Z)'
+# Default: r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)'
 # Set to empty string "" to disable migration notes extraction
-# NOTE: In TOML, backslashes must be doubled: \\n becomes \\\\n, \\Z becomes \\\\Z
-migration_section_regex = "(?:## Migration|## Migration Notes)\\\\n(.*?)(?=\\\\n##|\\\\Z)"
+# NOTE: In TOML, backslashes must be doubled: \n becomes \\n, \Z becomes \\Z
+migration_section_regex = "(?:## Migration|## Migration Notes)\\n(.*?)(?=\\n##|\\Z)"
 
 # =============================================================================
 # Version Comparison and Gap Detection Policy

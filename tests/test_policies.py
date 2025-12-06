@@ -800,3 +800,331 @@ class TestURLHandlingAndShortLinks:
         assert note.url == note.ticket_url
         assert note.short_link == "#8624"
         assert note.short_repo_link == "sequentech/meta#8624"
+
+
+class TestDescriptionAndMigrationExtraction:
+    """Tests for extracting description and migration notes from ticket bodies."""
+
+    def test_extract_description_section(self, test_config):
+        """Test extraction of Description section from ticket body."""
+        ticket_body = """## Description
+This is the description text.
+It can span multiple lines.
+
+## Other Section
+Something else here."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=123,
+            key="123",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/123"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="123",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is not None
+        assert "This is the description text" in note.description
+        assert "It can span multiple lines" in note.description
+        assert "Other Section" not in note.description
+
+    def test_extract_summary_section(self, test_config):
+        """Test extraction of Summary section (alternative to Description)."""
+        ticket_body = """## Summary
+This is a summary of the changes.
+
+## Details
+More information here."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=124,
+            key="124",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/124"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="124",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is not None
+        assert "This is a summary of the changes" in note.description
+        assert "Details" not in note.description
+
+    def test_extract_migration_notes_section(self, test_config):
+        """Test extraction of Migration section from ticket body."""
+        ticket_body = """## Description
+Some description.
+
+## Migration
+Run the following command:
+```
+python manage.py migrate
+```
+
+## Other Section
+Something else."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=125,
+            key="125",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/125"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="125",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.migration_notes is not None
+        assert "Run the following command" in note.migration_notes
+        assert "python manage.py migrate" in note.migration_notes
+        assert "Other Section" not in note.migration_notes
+
+    def test_extract_migration_notes_alternative_heading(self, test_config):
+        """Test extraction of Migration Notes section (alternative heading)."""
+        ticket_body = """## Description
+Some description.
+
+## Migration Notes
+Database schema changes required:
+- Add new column
+- Update indexes
+
+## Testing
+Test steps."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=126,
+            key="126",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/126"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="126",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.migration_notes is not None
+        assert "Database schema changes required" in note.migration_notes
+        assert "Add new column" in note.migration_notes
+        assert "Testing" not in note.migration_notes
+
+    def test_no_description_section(self, test_config):
+        """Test ticket without Description section returns None."""
+        ticket_body = """## Other Section
+Some content.
+
+## Another Section
+More content."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=127,
+            key="127",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/127"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="127",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is None
+
+    def test_no_migration_section(self, test_config):
+        """Test ticket without Migration section returns None."""
+        ticket_body = """## Description
+Some description.
+
+## Other Section
+Some content."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=128,
+            key="128",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/128"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="128",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.migration_notes is None
+
+    def test_case_insensitive_section_matching(self, test_config):
+        """Test that section matching is case-insensitive."""
+        ticket_body = """## description
+Lowercase description heading.
+
+## MIGRATION
+Uppercase migration heading."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=129,
+            key="129",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/129"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="129",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is not None
+        assert "Lowercase description heading" in note.description
+        assert note.migration_notes is not None
+        assert "Uppercase migration heading" in note.migration_notes
+
+    def test_extract_both_description_and_migration(self, test_config):
+        """Test extracting both description and migration notes from same ticket."""
+        ticket_body = """## Description
+This feature adds new functionality.
+
+## Migration
+Run: python manage.py migrate
+
+## Testing
+Test instructions."""
+
+        ticket = Ticket(
+            repo_id=1,
+            number=130,
+            key="130",
+            title="Test ticket",
+            state="closed",
+            body=ticket_body,
+            url="https://github.com/test/repo/issues/130"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="130",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is not None
+        assert "This feature adds new functionality" in note.description
+        assert note.migration_notes is not None
+        assert "Run: python manage.py migrate" in note.migration_notes
+        assert "Testing" not in note.description
+        assert "Testing" not in note.migration_notes
+
+    def test_empty_ticket_body(self, test_config):
+        """Test ticket with empty body."""
+        ticket = Ticket(
+            repo_id=1,
+            number=131,
+            key="131",
+            title="Test ticket",
+            state="closed",
+            body="",
+            url="https://github.com/test/repo/issues/131"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="131",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is None
+        assert note.migration_notes is None
+
+    def test_none_ticket_body(self, test_config):
+        """Test ticket with None body."""
+        ticket = Ticket(
+            repo_id=1,
+            number=132,
+            key="132",
+            title="Test ticket",
+            state="closed",
+            body=None,
+            url="https://github.com/test/repo/issues/132"
+        )
+
+        change = ConsolidatedChange(
+            type="ticket",
+            ticket_key="132",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, ticket)
+
+        assert note.description is None
+        assert note.migration_notes is None
