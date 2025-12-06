@@ -682,8 +682,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
         # Initialize GitOperations and determine target_branch
         git_ops = GitOperations('.')
         available_versions = git_ops.get_version_tags()
-        
-        target_branch, _, _ = determine_release_branch_strategy(
+
+        target_branch, source_branch, should_create_branch = determine_release_branch_strategy(
             version=target_version,
             git_ops=git_ops,
             available_versions=available_versions,
@@ -691,6 +691,25 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             default_branch=config.repository.default_branch,
             branch_from_previous=config.branch_policy.branch_from_previous_release
         )
+
+        # Create and push release branch if needed (before creating GitHub release)
+        if should_create_branch and config.branch_policy.create_branches:
+            if debug:
+                console.print(f"[dim]Release branch {target_branch} doesn't exist. Creating from {source_branch}...[/dim]")
+
+            if not dry_run:
+                try:
+                    # Create branch locally from source branch
+                    git_ops.create_branch(target_branch, source_branch)
+                    # Push to remote
+                    git_ops.push_branch(target_branch)
+                    if debug:
+                        console.print(f"[dim]✓ Created and pushed {target_branch} to remote[/dim]")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not create/push release branch: {e}[/yellow]")
+                    console.print(f"[yellow]Continuing with release creation...[/yellow]")
+            elif debug:
+                console.print(f"[yellow]Would create and push branch {target_branch} from {source_branch}[/yellow]")
 
         # Initialize database connection
         db = Database(config.database.path)

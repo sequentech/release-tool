@@ -201,6 +201,20 @@ class GitOperations:
 
         self.repo.git.checkout(branch_name)
 
+    def push_branch(self, branch_name: str, remote: str = "origin", set_upstream: bool = True) -> None:
+        """
+        Push a branch to remote repository.
+
+        Args:
+            branch_name: Name of the branch to push
+            remote: Remote name (default: "origin")
+            set_upstream: Whether to set upstream tracking (default: True)
+        """
+        if set_upstream:
+            self.repo.git.push("-u", remote, branch_name)
+        else:
+            self.repo.git.push(remote, branch_name)
+
     def find_release_branches(self, major: int, minor: Optional[int] = None) -> List[str]:
         """
         Find release branches matching a pattern.
