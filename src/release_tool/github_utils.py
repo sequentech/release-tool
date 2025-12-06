@@ -931,6 +931,10 @@ class GitHubClient:
     ) -> Optional[Any]:
         """Get a GitHub release by tag name.
         
+        Searches for releases in two ways:
+        1. Direct lookup by tag name
+        2. Search all releases for matching tag_name (handles "untagged" releases)
+        
         Args:
             repo_full_name: Repository in "owner/repo" format
             tag_name: Tag name (e.g., "v1.0.0")
@@ -940,10 +944,28 @@ class GitHubClient:
         """
         try:
             repo = self.gh.get_repo(repo_full_name)
-            release = repo.get_release(tag_name)
-            return release
+            
+            # First try direct lookup by tag
+            try:
+                release = repo.get_release(tag_name)
+                return release
+            except GithubException:
+                pass
+            
+            # If direct lookup fails, search through all releases
+            # This handles "untagged" releases that may have the tag in their name
+            releases = repo.get_releases()
+            for release in releases:
+                # Check if the release's tag_name matches (even for untagged)
+                if release.tag_name == tag_name:
+                    return release
+                # Also check if this is an untagged release with our version in the name
+                if release.tag_name.startswith("untagged-") and tag_name in release.title:
+                    return release
+            
+            return None
         except GithubException:
-            # Release not found
+            # Repository not found or other error
             return None
 
     def update_release(

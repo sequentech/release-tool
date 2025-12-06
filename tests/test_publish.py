@@ -973,3 +973,56 @@ def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_g
     # Verify create_release was called (not update)
     mock_gh_instance.create_release.assert_called_once()
     mock_gh_instance.update_release.assert_not_called()
+
+
+@patch('release_tool.commands.publish.Database')
+@patch('release_tool.commands.publish.GitOperations')
+@patch('release_tool.commands.publish.determine_release_branch_strategy')
+@patch('release_tool.commands.publish.GitHubClient')
+def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
+    """Test that publishing updates existing 'untagged' release when --force is set."""
+    runner = CliRunner()
+    
+    # Mock database
+    mock_db_instance = MagicMock()
+    mock_db.return_value = mock_db_instance
+    mock_repo = MagicMock()
+    mock_repo.id = 1
+    mock_db_instance.get_repository.return_value = mock_repo
+    mock_db_instance.get_release.return_value = None
+    
+    # Mock git operations
+    mock_git_instance = MagicMock()
+    mock_git_ops.return_value = mock_git_instance
+    mock_git_instance.get_version_tags.return_value = []
+    mock_git_instance.tag_exists.return_value = True
+    mock_git_instance.branch_exists.return_value = True
+    
+    # Mock strategy
+    mock_strategy.return_value = ("release/1.0", "main", False)
+    
+    # Mock GitHub client with an "untagged" release
+    mock_gh_instance = MagicMock()
+    mock_gh_client.return_value = mock_gh_instance
+    
+    # Mock existing untagged release
+    mock_existing_release = MagicMock()
+    mock_existing_release.tag_name = "untagged-6ebfa1379a96e20ddfc1"
+    mock_existing_release.title = "Release 1.0.0"
+    mock_existing_release.html_url = "https://github.com/test/repo/releases/tag/untagged-6ebfa1379a96e20ddfc1"
+    mock_gh_instance.get_release_by_tag.return_value = mock_existing_release
+    mock_gh_instance.update_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
+    
+    result = runner.invoke(
+        publish,
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--force', 'published'],
+        obj={'config': test_config}
+    )
+    
+    # Should succeed
+    assert result.exit_code == 0
+    assert 'Updating existing' in result.output or 'updated successfully' in result.output
+    
+    # Verify update_release was called (not create)
+    mock_gh_instance.update_release.assert_called_once()
+    mock_gh_instance.create_release.assert_not_called()
