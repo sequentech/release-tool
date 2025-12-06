@@ -29,7 +29,7 @@ V1_0_DEFAULT_OUTPUT_TEMPLATE = (
     "{% for note in breaking_with_desc %}\n"
     "### {{ note.title }}\n"
     "{{ note.description }}\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -39,7 +39,7 @@ V1_0_DEFAULT_OUTPUT_TEMPLATE = (
     "{% for note in migration_notes %}\n"
     "### {{ note.title }}\n"
     "{{ note.migration_notes }}\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -49,7 +49,7 @@ V1_0_DEFAULT_OUTPUT_TEMPLATE = (
     "{% for note in non_breaking_with_desc %}\n"
     "### {{ note.title }}\n"
     "{{ note.description }}\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -76,7 +76,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE_STR = (
     "\n"
     "{{ note.description }}\n"
     "\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -90,7 +90,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE_STR = (
     "\n"
     "{{ note.migration_notes }}\n"
     "\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -104,7 +104,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE_STR = (
     "\n"
     "{{ note.description }}\n"
     "\n"
-    "{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}\n"
+    "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
     "\n"
     "{% endfor %}\n"
     "{% endif %}\n"
@@ -133,7 +133,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE = '''# {{ title }}
 
 {{ note.description }}
 
-{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+{% if note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}
@@ -147,7 +147,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE = '''# {{ title }}
 
 {{ note.migration_notes }}
 
-{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+{% if note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}
@@ -161,7 +161,7 @@ V1_1_DEFAULT_OUTPUT_TEMPLATE = '''# {{ title }}
 
 {{ note.description }}
 
-{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+{% if note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}

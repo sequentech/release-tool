@@ -117,7 +117,7 @@ output_template = '''# {{ title }}
 {% for note in breaking_with_desc %}
 ### {{ note.title }}
 {{ note.description }}
-{% if note.url %}See [#{{ note.pr_numbers[0] }}]({{ note.url }}) for details.{% endif %}
+{% if note.url %}See {{ note.url }} for details.{% endif %}
 
 {% endfor %}
 {% endif %}
