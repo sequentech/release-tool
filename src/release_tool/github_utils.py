@@ -998,23 +998,38 @@ class GitHubClient:
                 console.print(f"[red]Error: Release with tag {tag_name} not found[/red]")
                 return None
 
-            # Update only provided fields
-            if name is not None:
-                release.update_release(name=name, message=body or release.body, 
-                                      draft=draft if draft is not None else release.draft,
-                                      prerelease=prerelease if prerelease is not None else release.prerelease,
-                                      tag_name=tag_name,
-                                      target_commitish=target_commitish or release.target_commitish)
-            elif body is not None or draft is not None or prerelease is not None or target_commitish is not None:
-                release.update_release(name=release.title, 
-                                      message=body if body is not None else release.body,
-                                      draft=draft if draft is not None else release.draft,
-                                      prerelease=prerelease if prerelease is not None else release.prerelease,
-                                      tag_name=tag_name,
-                                      target_commitish=target_commitish or release.target_commitish)
+            # Try to update the release - wrap in try/except to catch deleted releases
+            try:
+                # Update only provided fields
+                if name is not None:
+                    release.update_release(name=name, message=body or release.body, 
+                                          draft=draft if draft is not None else release.draft,
+                                          prerelease=prerelease if prerelease is not None else release.prerelease,
+                                          tag_name=tag_name,
+                                          target_commitish=target_commitish or release.target_commitish)
+                elif body is not None or draft is not None or prerelease is not None or target_commitish is not None:
+                    release.update_release(name=release.title, 
+                                          message=body if body is not None else release.body,
+                                          draft=draft if draft is not None else release.draft,
+                                          prerelease=prerelease if prerelease is not None else release.prerelease,
+                                          tag_name=tag_name,
+                                          target_commitish=target_commitish or release.target_commitish)
+            except GithubException as e:
+                # Release might have been deleted - treat as not found
+                console.print(f"[yellow]Warning: Found stale release reference, but it no longer exists on GitHub[/yellow]")
+                console.print(f"[red]Error updating release: {e}[/red]")
+                return None
 
-            console.print(f"[green]Updated release: {release.html_url}[/green]")
-            return release.html_url
+            # Fetch the release again to get the updated URL (GitHub may have changed it from untagged to tagged)
+            repo = self.gh.get_repo(repo_full_name)
+            try:
+                updated_release = repo.get_release(tag_name)
+                console.print(f"[green]Updated release: {updated_release.html_url}[/green]")
+                return updated_release.html_url
+            except GithubException:
+                # If direct lookup fails, return the original release URL
+                console.print(f"[green]Updated release: {release.html_url}[/green]")
+                return release.html_url
         except GithubException as e:
             console.print(f"[red]Error updating release: {e}[/red]")
             return None
