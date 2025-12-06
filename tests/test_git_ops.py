@@ -252,3 +252,46 @@ class TestGetLatestTag:
 
         latest = git_ops.get_latest_tag(final_only=True)
         assert latest is None
+
+
+class TestPushBranch:
+    """Tests for push_branch method."""
+
+    def test_push_branch_with_upstream(self):
+        """Test pushing branch with upstream tracking enabled."""
+        from unittest.mock import Mock, MagicMock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.repo = MagicMock()
+        git_ops.repo.git = Mock()
+
+        git_ops.push_branch("release/0.0", remote="origin", set_upstream=True)
+
+        git_ops.repo.git.push.assert_called_once_with("-u", "origin", "release/0.0")
+
+    def test_push_branch_without_upstream(self):
+        """Test pushing branch without upstream tracking."""
+        from unittest.mock import Mock, MagicMock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.repo = MagicMock()
+        git_ops.repo.git = Mock()
+
+        git_ops.push_branch("release/0.0", remote="origin", set_upstream=False)
+
+        git_ops.repo.git.push.assert_called_once_with("origin", "release/0.0")
+
+    def test_push_branch_custom_remote(self):
+        """Test pushing branch to custom remote."""
+        from unittest.mock import Mock, MagicMock
+        from release_tool.git_ops import GitOperations
+
+        git_ops = GitOperations(".")
+        git_ops.repo = MagicMock()
+        git_ops.repo.git = Mock()
+
+        git_ops.push_branch("release/0.0", remote="upstream", set_upstream=True)
+
+        git_ops.repo.git.push.assert_called_once_with("-u", "upstream", "release/0.0")

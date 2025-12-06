@@ -420,3 +420,189 @@ def test_auto_find_draft_notes_not_found(test_config):
         # Should error and list available drafts
         assert 'No draft release notes found' in result.output
         assert result.exit_code == 1
+
+
+def test_branch_creation_when_needed(test_config, test_notes_file):
+    """Test that release branch is created and pushed when it doesn't exist."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database'):
+
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+
+        # Mock strategy to return should_create_branch=True
+        mock_strategy.return_value = ("release/0.0", "main", True)
+
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
+
+        result = runner.invoke(
+            publish,
+            ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
+            obj={'config': test_config}
+        )
+
+        # Should call create_branch with correct parameters
+        mock_git_instance.create_branch.assert_called_once_with("release/0.0", "main")
+
+        # Should call push_branch
+        mock_git_instance.push_branch.assert_called_once_with("release/0.0")
+
+        # Should succeed
+        assert result.exit_code == 0
+
+
+def test_branch_creation_not_called_when_exists(test_config, test_notes_file):
+    """Test that branch creation is skipped when branch already exists."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database'):
+
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+
+        # Mock strategy to return should_create_branch=False (branch exists)
+        mock_strategy.return_value = ("release/0.0", "main", False)
+
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1"
+
+        result = runner.invoke(
+            publish,
+            ['0.0.1', '-f', str(test_notes_file), '--release'],
+            obj={'config': test_config}
+        )
+
+        # Should NOT call create_branch or push_branch
+        mock_git_instance.create_branch.assert_not_called()
+        mock_git_instance.push_branch.assert_not_called()
+
+        # Should succeed
+        assert result.exit_code == 0
+
+
+def test_branch_creation_in_dry_run(test_config, test_notes_file):
+    """Test that dry-run shows branch creation without actually creating it."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database'):
+
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+
+        # Mock strategy to return should_create_branch=True
+        mock_strategy.return_value = ("release/0.0", "main", True)
+
+        result = runner.invoke(
+            publish,
+            ['0.0.1-rc.0', '-f', str(test_notes_file), '--dry-run', '--release', '--debug'],
+            obj={'config': test_config}
+        )
+
+        # Should NOT actually call create_branch or push_branch in dry-run
+        mock_git_instance.create_branch.assert_not_called()
+        mock_git_instance.push_branch.assert_not_called()
+
+        # Should show what would be created
+        assert 'Would create and push branch release/0.0 from main' in result.output
+
+        # Should succeed
+        assert result.exit_code == 0
+
+
+def test_branch_creation_error_handling(test_config, test_notes_file):
+    """Test that branch creation errors are handled gracefully."""
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database'):
+
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+
+        # Mock strategy to return should_create_branch=True
+        mock_strategy.return_value = ("release/0.0", "main", True)
+
+        # Make create_branch raise an exception
+        mock_git_instance.create_branch.side_effect = Exception("Branch creation failed")
+
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
+
+        result = runner.invoke(
+            publish,
+            ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
+            obj={'config': test_config}
+        )
+
+        # Should show warning about branch creation failure
+        assert 'Warning: Could not create/push release branch' in result.output
+        assert 'Continuing with release creation' in result.output
+
+        # Should still proceed with release creation (exit code 0)
+        assert result.exit_code == 0
+
+
+def test_branch_creation_disabled_by_config(test_config, test_notes_file):
+    """Test that branch creation is skipped when disabled in config."""
+    # Modify config to disable branch creation
+    test_config.branch_policy.create_branches = False
+
+    runner = CliRunner()
+
+    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.publish.Database'):
+
+        # Mock git operations
+        mock_git_instance = MagicMock()
+        mock_git_ops.return_value = mock_git_instance
+        mock_git_instance.get_version_tags.return_value = []
+
+        # Mock strategy to return should_create_branch=True
+        mock_strategy.return_value = ("release/0.0", "main", True)
+
+        # Mock GitHub client
+        mock_gh_instance = MagicMock()
+        mock_gh_client.return_value = mock_gh_instance
+        mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
+
+        result = runner.invoke(
+            publish,
+            ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
+            obj={'config': test_config}
+        )
+
+        # Should NOT call create_branch or push_branch when disabled in config
+        mock_git_instance.create_branch.assert_not_called()
+        mock_git_instance.push_branch.assert_not_called()
+
+        # Should succeed (but will likely fail at GitHub release creation due to missing branch)
+        # For this test we're just verifying branch creation was skipped
+        assert result.exit_code == 0

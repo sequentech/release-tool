@@ -710,6 +710,9 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                     console.print(f"[yellow]Continuing with release creation...[/yellow]")
             elif debug:
                 console.print(f"[yellow]Would create and push branch {target_branch} from {source_branch}[/yellow]")
+        else:
+            if debug:
+                console.print(f"[yellow]Not creating branches should_create_branch={target_branch}, config.branch_policy.create_branches={config.branch_policy.create_branches}[/yellow]")
 
         # Initialize database connection
         db = Database(config.database.path)
