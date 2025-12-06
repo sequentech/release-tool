@@ -378,6 +378,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(f"[blue]Generating release notes for version {version}[/blue]")
 
             # Determine release branch strategy
+            # Fetch remote refs first to ensure accurate branch detection
+            git_ops.fetch_remote_refs()
             available_versions = git_ops.get_version_tags()
             release_branch, source_branch, should_create_branch = determine_release_branch_strategy(
                 target_version,

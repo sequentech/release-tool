@@ -171,6 +171,19 @@ class GitOperations:
             # Return current branch as last resort
             return self.get_current_branch()
 
+    def fetch_remote_refs(self, remote: str = "origin") -> None:
+        """
+        Fetch remote references to ensure we have up-to-date remote branch info.
+        
+        Args:
+            remote: Remote name (default: "origin")
+        """
+        try:
+            self.repo.git.fetch(remote)
+        except Exception as e:
+            # Non-fatal - remote might not exist in tests or offline scenarios
+            pass
+
     def get_all_branches(self, remote: bool = False) -> List[str]:
         """Get all branch names (local or remote)."""
         if remote:

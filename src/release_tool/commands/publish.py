@@ -681,6 +681,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
         # Initialize GitOperations and determine target_branch
         git_ops = GitOperations('.')
+        # Fetch remote refs first to ensure accurate branch detection
+        git_ops.fetch_remote_refs()
         available_versions = git_ops.get_version_tags()
 
         target_branch, source_branch, should_create_branch = determine_release_branch_strategy(
