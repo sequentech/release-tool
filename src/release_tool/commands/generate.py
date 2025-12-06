@@ -393,7 +393,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             if should_create_branch:
                 console.print(f"[yellow]→ Branch does not exist, will create from: {source_branch}[/yellow]")
             else:
-                console.print(f"[blue]→ Using existing branch (source: {source_branch})[/blue]")
+                console.print(f"[blue]→ Using existing branch (analyzing commits from {release_branch})[/blue]")
 
             # Create branch if needed (unless dry-run)
             if should_create_branch and config.branch_policy.create_branches:
@@ -458,13 +458,23 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             if should_create_branch:
                 head_ref = source_branch
             else:
+                # For existing branches, always use the release branch
                 head_ref = release_branch
                 
-            # If the branch exists remotely but not locally, we might need to prefix with origin/
-            # However, git_ops usually handles local branches. 
-            # If we are in dry-run and the branch exists only on remote, we should use origin/branch
-            if not should_create_branch and not git_ops.branch_exists(head_ref) and git_ops.branch_exists(head_ref, remote=True):
-                head_ref = f"origin/{head_ref}"
+                # Ensure we can access the branch - fetch if it exists remotely but not locally
+                if not git_ops.branch_exists(head_ref) and git_ops.branch_exists(head_ref, remote=True):
+                    if not dry_run:
+                        try:
+                            # Fetch the remote branch
+                            git_ops.repo.git.fetch('origin', f"{head_ref}:{head_ref}")
+                            console.print(f"[dim]Fetched {head_ref} from remote[/dim]")
+                        except Exception as e:
+                            # If fetch fails, use origin/ prefix
+                            console.print(f"[yellow]Could not fetch {head_ref}, using origin/{head_ref}: {e}[/yellow]")
+                            head_ref = f"origin/{head_ref}"
+                    else:
+                        # In dry-run, just use origin/ prefix
+                        head_ref = f"origin/{head_ref}"
 
             comparison_version, commits = get_release_commit_range(
                 git_ops,
