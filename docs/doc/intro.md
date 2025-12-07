@@ -19,6 +19,8 @@ The **Release Tool** is a CLI application designed to manage releases using sema
 - **Release Notes Generation**: Groups and formats release notes from Pull Requests and tickets.
 - **Policy-Driven**: Highly configurable policies for versioning, ticket extraction, and grouping.
 - **GitHub Integration**: Syncs data from GitHub and creates releases.
+- **GitHub Actions Bot**: Automate releases with ChatOps and auto-publishing ([Release Bot](release-bot.md)).
+- **Multiple Release Modes**: Draft, published, and just-publish modes for different workflows.
 - **SQLite Storage**: Caches repository data locally for efficiency.
 
 ## Goals

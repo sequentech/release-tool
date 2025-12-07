@@ -91,7 +91,30 @@ release-tool publish 9.1.0 -f .release_tool_cache/draft-releases/owner-repo/9.1.
 release-tool publish 9.1.0 --ticket 123
 ```
 
-This will:
+#### Release Modes
+
+Control how the release is published with `--release-mode`:
+
+```bash
+# Create a draft release (default in many configs)
+release-tool publish 9.1.0 --release-mode draft
+
+# Create a published release (full tag/notes creation)
+release-tool publish 9.1.0 --release-mode published
+
+# Mark existing release as published (no tag operations)
+release-tool publish 9.1.0 --release-mode just-publish
+```
+
+**Mode Details**:
+- `draft`: Creates GitHub release with `draft: true` (not public)
+- `published`: Creates/updates full release with tags and notes
+- `just-publish`: Only marks existing release as published (no tag/note changes)
+  - ✅ Perfect for automation (e.g., PR merge triggers)
+  - ✅ Preserves all existing release properties
+  - ❌ Fails if no existing release found
+
+**Standard publish** will:
 - Auto-find draft release notes (or use specified file)
 - Create a git tag `v9.1.0`
 - Create a GitHub release with the release notes
@@ -176,6 +199,7 @@ release-tool publish 9.1.0 --prerelease auto  # Auto-detect
 | `publish <version>` | Creates a GitHub release (auto-finds draft notes) |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
 | `publish <version> --ticket <number>` | Associate release with a GitHub issue |
+| `publish <version> --release-mode draft\|published\|just-publish` | Control release creation mode |
 | `publish --list` or `publish -l` | List all available draft releases |
 | `publish --dry-run` | Preview publish operation without making changes |
 | `publish --debug` | Show detailed debugging information |
