@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Release Bot | Release Tool</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://sequentech.github.io/release-tool/docs/release-bot"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Release Bot | Release Tool"><meta data-rh="true" name="description" content="&lt;!--"><meta data-rh="true" property="og:description" content="&lt;!--"><link data-rh="true" rel="icon" href="/release-tool/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://sequentech.github.io/release-tool/docs/release-bot"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/release-bot" hreflang="en"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/release-bot" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Release Bot","item":"https://sequentech.github.io/release-tool/docs/release-bot"}]}</script><link rel="stylesheet" href="/release-tool/assets/css/styles.d2ccc06d.css">
-<script src="/release-tool/assets/js/runtime~main.4c038268.js" defer="defer"></script>
+<script src="/release-tool/assets/js/runtime~main.c6d8e391.js" defer="defer"></script>
 <script src="/release-tool/assets/js/main.1735fd8e.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -75,13 +75,16 @@
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="automatic-publishing">Automatic Publishing<a href="#automatic-publishing" class="hash-link" aria-label="Direct link to Automatic Publishing" title="Direct link to Automatic Publishing" translate="no">​</a></h3>
 <p>The bot automatically publishes releases based on two triggers:</p>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="pr-merge-auto-publishing">PR Merge Auto-Publishing<a href="#pr-merge-auto-publishing" class="hash-link" aria-label="Direct link to PR Merge Auto-Publishing" title="Direct link to PR Merge Auto-Publishing" translate="no">​</a></h4>
-<p>When a PR with branch pattern <code>release/**</code> is merged:</p>
-<p><strong>Example</strong>: PR from branch <code>release/v1.2.3</code> → merges to <code>main</code></p>
+<p>When a PR from a release branch is merged:</p>
+<p><strong>Example</strong>: PR from branch <code>release/1.2</code> → merges to <code>main</code></p>
 <p><strong>Bot Actions</strong>:</p>
 <ol>
-<li class="">Extract version from branch name: <code>1.2.3</code>
+<li class="">Extract version from branch name using config pattern<!-- -->
 <ul>
-<li class="">Fallback: Parse PR title if branch doesn&#x27;t contain version</li>
+<li class="">Pattern is read from <code>branch_policy.release_branch_template</code> in <code>.release_tool.toml</code></li>
+<li class="">Default pattern: <code>release/{major}.{minor}</code> matches branches like <code>release/1.2</code>, <code>release/2.0</code></li>
+<li class="">Custom patterns supported: <code>release/v{major}.{minor}.{patch}</code> matches <code>release/v1.2.3</code></li>
+<li class="">Fallback: Parse PR title if branch doesn&#x27;t match pattern</li>
 </ul>
 </li>
 <li class="">Search PR body for ticket references:<!-- -->
@@ -254,7 +257,14 @@ Ticket closed → Bot auto-publishes v1.2.3</p>
 <table><thead><tr><th>Input</th><th>Description</th><th>Default</th></tr></thead><tbody><tr><td><code>github_token</code></td><td>GitHub token for API access</td><td>Required</td></tr><tr><td><code>version</code></td><td>Specific version to release</td><td>Auto-detected</td></tr><tr><td><code>new_version_type</code></td><td>Auto-bump: patch/minor/major/rc</td><td><code>none</code></td></tr><tr><td><code>from_version</code></td><td>Compare from this version</td><td>Latest</td></tr><tr><td><code>force</code></td><td>Force overwrite: none/draft/published</td><td><code>none</code></td></tr><tr><td><code>debug</code></td><td>Enable verbose logging</td><td><code>false</code></td></tr><tr><td><code>config_path</code></td><td>Path to config file</td><td><code>.release_tool.toml</code></td></tr></tbody></table>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="config-file-settings">Config File Settings<a href="#config-file-settings" class="hash-link" aria-label="Direct link to Config File Settings" title="Direct link to Config File Settings" translate="no">​</a></h3>
 <p>Control default behavior in <code>.release_tool.toml</code>:</p>
-<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">[output]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">create_github_release = true</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">release_mode = &quot;draft&quot;  # or &quot;published&quot;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">prerelease = &quot;auto&quot;</span><br></span></code></pre></div></div>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">[output]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">create_github_release = true</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">release_mode = &quot;draft&quot;  # or &quot;published&quot;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">prerelease = &quot;auto&quot;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">[branch_policy]</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># Branch pattern for release branches (used by bot to detect PR merges)</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">release_branch_template = &quot;release/{major}.{minor}&quot;  # Default</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># Other examples:</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># release_branch_template = &quot;release/v{major}.{minor}.{patch}&quot;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain"># release_branch_template = &quot;releases/{major}.{minor}&quot;</span><br></span></code></pre></div></div>
+<p><strong>Branch Pattern Detection</strong>: The bot uses <code>release_branch_template</code> to detect which PR merges should trigger auto-publishing. The template supports Jinja2-style placeholders:</p>
+<ul>
+<li class=""><code>{major}</code> - Major version number</li>
+<li class=""><code>{minor}</code> - Minor version number</li>
+<li class=""><code>{patch}</code> - Patch version number</li>
+</ul>
+<p>The bot converts this template to a regex pattern to match incoming PR branches.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="troubleshooting">Troubleshooting<a href="#troubleshooting" class="hash-link" aria-label="Direct link to Troubleshooting" title="Direct link to Troubleshooting" translate="no">​</a></h2>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="pr-merge-doesnt-auto-publish">PR Merge Doesn&#x27;t Auto-Publish<a href="#pr-merge-doesnt-auto-publish" class="hash-link" aria-label="Direct link to PR Merge Doesn&#x27;t Auto-Publish" title="Direct link to PR Merge Doesn&#x27;t Auto-Publish" translate="no">​</a></h3>
 <p><strong>Symptoms</strong>: PR merges but release not published</p>
