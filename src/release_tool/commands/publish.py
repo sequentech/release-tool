@@ -374,7 +374,7 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
 @click.option('--notes-file', '-f', type=click.Path(), help='Path to release notes file (markdown, optional - will auto-find if not specified)')
 @click.option('--release/--no-release', 'create_release', default=None, help='Create GitHub release (default: from config)')
 @click.option('--pr/--no-pr', 'create_pr', default=None, help='Create PR with release notes (default: from config)')
-@click.option('--release-mode', type=click.Choice(['draft', 'published'], case_sensitive=False), default=None, help='Release mode (default: from config)')
+@click.option('--release-mode', type=click.Choice(['draft', 'published', 'just-publish'], case_sensitive=False), default=None, help='Release mode: draft, published, or just-publish (mark existing as published without recreating)')
 @click.option('--prerelease', type=click.Choice(['auto', 'true', 'false'], case_sensitive=False), default=None,
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
 @click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
@@ -493,7 +493,9 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             mode = force
         else:
             mode = release_mode if release_mode is not None else config.output.release_mode
-            
+        
+        # Handle just-publish mode: only mark existing release as published
+        is_just_publish = (mode == 'just-publish')
         is_draft = (mode == 'draft')
 
         # Handle tri-state prerelease: "auto", "true", "false"
@@ -773,190 +775,231 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
         # Create GitHub release
         if create_release:
-            status = "draft " if is_draft else ("prerelease " if prerelease_flag else "")
-            release_type = "draft" if is_draft else ("prerelease" if prerelease_flag else "final release")
             tag_name = f"v{version}"
-
-            if dry_run:
-                console.print(f"[yellow]Would create git tag and {status}GitHub release:[/yellow]")
-                console.print(f"[yellow]  Repository: {repo_name}[/yellow]")
-                console.print(f"[yellow]  Version: {version}[/yellow]")
-                console.print(f"[yellow]  Tag: {tag_name}[/yellow]")
-                console.print(f"[yellow]  Target: {target_branch}[/yellow]")
-                console.print(f"[yellow]  Type: {release_type.capitalize()}[/yellow]")
-                console.print(f"[yellow]  Status: {'Draft' if is_draft else 'Published'}[/yellow]")
-                console.print(f"[yellow]  URL: https://github.com/{repo_name}/releases/tag/{tag_name}[/yellow]")
-
-                # Show release notes preview (only if not in debug mode to avoid duplication)
-                if not debug:
-                    preview_length = 500
-                    preview = release_notes[:preview_length]
-                    if len(release_notes) > preview_length:
-                        preview += "\n[... truncated ...]"
-                    console.print(f"\n[yellow]Release notes preview ({len(release_notes)} characters):[/yellow]")
-                    console.print(f"[dim]{preview}[/dim]\n")
-            else:
-                # Create and push git tag before creating GitHub release
-                tag_exists_locally = git_ops.tag_exists(tag_name, remote=False)
-                tag_exists_remotely = git_ops.tag_exists(tag_name, remote=True)
-                should_force_tag = force != 'none'
-                
-                # Handle local tag
-                if not tag_exists_locally:
-                    if debug:
-                        console.print(f"[dim]Creating git tag {tag_name} at {target_branch}...[/dim]")
-                    try:
-                        git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
-                        if debug:
-                            console.print(f"[dim]✓ Created local tag {tag_name}[/dim]")
-                        else:
-                            console.print(f"[blue]✓ Created local tag {tag_name}[/blue]")
-                    except Exception as e:
-                        console.print(f"[red]Error creating git tag: {e}[/red]")
-                        sys.exit(1)
-                elif should_force_tag:
-                    # Delete and recreate local tag when forcing
-                    if debug:
-                        console.print(f"[dim]Force: Deleting and recreating local tag {tag_name} at {target_branch}...[/dim]")
-                    try:
-                        git_ops.repo.delete_tag(tag_name)
-                        git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
-                        if debug:
-                            console.print(f"[dim]✓ Force-created local tag {tag_name}[/dim]")
-                        else:
-                            console.print(f"[blue]✓ Force-created local tag {tag_name}[/blue]")
-                    except Exception as e:
-                        console.print(f"[red]Error force-creating git tag: {e}[/red]")
-                        sys.exit(1)
-                elif debug:
-                    console.print(f"[dim]Tag {tag_name} already exists locally[/dim]")
-
-                # Push tag to remote
-                if not tag_exists_remotely:
-                    if debug:
-                        console.print(f"[dim]Pushing tag {tag_name} to remote...[/dim]")
-                    try:
-                        git_ops.push_tag(tag_name)
-                        if debug:
-                            console.print(f"[dim]✓ Pushed tag {tag_name} to remote[/dim]")
-                        else:
-                            console.print(f"[blue]✓ Pushed tag {tag_name} to remote[/blue]")
-                    except Exception as e:
-                        console.print(f"[red]Error pushing git tag: {e}[/red]")
-                        sys.exit(1)
-                elif should_force_tag:
-                    # Force push tag when forcing
-                    if debug:
-                        console.print(f"[dim]Force-pushing tag {tag_name} to remote...[/dim]")
-                    try:
-                        git_ops.push_tag(tag_name, force=True)
-                        if debug:
-                            console.print(f"[dim]✓ Force-pushed tag {tag_name} to remote[/dim]")
-                        else:
-                            console.print(f"[blue]✓ Force-pushed tag {tag_name} to remote[/blue]")
-                    except Exception as e:
-                        console.print(f"[red]Error force-pushing git tag: {e}[/red]")
-                        sys.exit(1)
+            
+            # Handle just-publish mode: only update existing release to published
+            if is_just_publish:
+                if dry_run:
+                    console.print(f"[yellow]Would mark existing GitHub release as published:[/yellow]")
+                    console.print(f"[yellow]  Repository: {repo_name}[/yellow]")
+                    console.print(f"[yellow]  Version: {version}[/yellow]")
+                    console.print(f"[yellow]  Tag: {tag_name}[/yellow]")
                 else:
-                    if debug:
-                        console.print(f"[dim]Tag {tag_name} already exists on remote[/dim]")
-                    # Even if tag exists, still try to push in case local is ahead
-                    # This handles the case where the tag might exist but not be on the correct commit
-                    try:
-                        git_ops.push_tag(tag_name)
-                        if debug:
-                            console.print(f"[dim]✓ Pushed tag {tag_name} to remote (update)[/dim]")
-                    except Exception as e:
-                        # Non-fatal - tag might already be at correct commit
-                        if debug:
-                            console.print(f"[dim]Tag push skipped (already up to date or would fail): {e}[/dim]")
-
-                # Wait for GitHub to index the tag (prevent "untagged" releases)
-                if debug:
-                    console.print(f"[dim]Waiting for GitHub to index tag {tag_name}...[/dim]")
-                time.sleep(2)  # 2 second delay to allow GitHub to process the tag
-                
-                # Check if release already exists on GitHub
-                existing_gh_release = github_client.get_release_by_tag(repo_name, tag_name)
-                
-                if existing_gh_release:
-                    if force == 'none':
-                        console.print(f"[red]Error: GitHub release {tag_name} already exists.[/red]")
-                        console.print(f"[yellow]Use --force [draft|published] to update the existing release.[/yellow]")
-                        console.print(f"[dim]  URL: {existing_gh_release.html_url}[/dim]")
+                    # Check if release exists
+                    existing_gh_release = github_client.get_release_by_tag(repo_name, tag_name)
+                    
+                    if not existing_gh_release:
+                        console.print(f"[red]Error: No existing GitHub release found for {tag_name}[/red]")
+                        console.print(f"[yellow]Use --release-mode published or draft to create a new release[/yellow]")
                         sys.exit(1)
+                    
+                    # Update existing release to published (draft=False)
+                    console.print(f"[blue]Marking existing GitHub release as published for {version}...[/blue]")
+                    if debug:
+                        console.print(f"[dim]Existing release URL: {existing_gh_release.html_url}[/dim]")
+                        console.print(f"[dim]Current draft status: {existing_gh_release.draft}[/dim]")
+                    
+                    release_url = github_client.update_release(
+                        repo_name,
+                        tag_name,
+                        name=existing_gh_release.title or f"Release {version}",
+                        body=existing_gh_release.body or "",
+                        prerelease=existing_gh_release.prerelease,
+                        draft=False,  # Mark as published
+                        target_commitish=existing_gh_release.target_commitish
+                    )
+                    
+                    if release_url:
+                        console.print(f"[green]✓ GitHub release marked as published successfully[/green]")
+                        console.print(f"[blue]→ {release_url}[/blue]")
                     else:
-                        # Update existing release
-                        console.print(f"[blue]Updating existing {status}GitHub release for {version}...[/blue]")
+                        console.print(f"[red]✗ Failed to update GitHub release[/red]")
+                        sys.exit(1)
+            else:
+                # Normal mode: create or update release with full tag/notes handling
+                status = "draft " if is_draft else ("prerelease " if prerelease_flag else "")
+                release_type = "draft" if is_draft else ("prerelease" if prerelease_flag else "final release")
+
+                if dry_run:
+                    console.print(f"[yellow]Would create git tag and {status}GitHub release:[/yellow]")
+                    console.print(f"[yellow]  Repository: {repo_name}[/yellow]")
+                    console.print(f"[yellow]  Version: {version}[/yellow]")
+                    console.print(f"[yellow]  Tag: {tag_name}[/yellow]")
+                    console.print(f"[yellow]  Target: {target_branch}[/yellow]")
+                    console.print(f"[yellow]  Type: {release_type.capitalize()}[/yellow]")
+                    console.print(f"[yellow]  Status: {'Draft' if is_draft else 'Published'}[/yellow]")
+                    console.print(f"[yellow]  URL: https://github.com/{repo_name}/releases/tag/{tag_name}[/yellow]")
+
+                    # Show release notes preview (only if not in debug mode to avoid duplication)
+                    if not debug:
+                        preview_length = 500
+                        preview = release_notes[:preview_length]
+                        if len(release_notes) > preview_length:
+                            preview += "\n[... truncated ...]"
+                        console.print(f"\n[yellow]Release notes preview ({len(release_notes)} characters):[/yellow]")
+                        console.print(f"[dim]{preview}[/dim]\n")
+                else:
+                    # Create and push git tag before creating GitHub release
+                    tag_exists_locally = git_ops.tag_exists(tag_name, remote=False)
+                    tag_exists_remotely = git_ops.tag_exists(tag_name, remote=True)
+                    should_force_tag = force != 'none'
+                    
+                    # Handle local tag
+                    if not tag_exists_locally:
                         if debug:
-                            console.print(f"[dim]Existing release URL: {existing_gh_release.html_url}[/dim]")
-                        
+                            console.print(f"[dim]Creating git tag {tag_name} at {target_branch}...[/dim]")
+                        try:
+                            git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
+                            if debug:
+                                console.print(f"[dim]✓ Created local tag {tag_name}[/dim]")
+                            else:
+                                console.print(f"[blue]✓ Created local tag {tag_name}[/blue]")
+                        except Exception as e:
+                            console.print(f"[red]Error creating git tag: {e}[/red]")
+                            sys.exit(1)
+                    elif should_force_tag:
+                        # Delete and recreate local tag when forcing
+                        if debug:
+                            console.print(f"[dim]Force: Deleting and recreating local tag {tag_name} at {target_branch}...[/dim]")
+                        try:
+                            git_ops.repo.delete_tag(tag_name)
+                            git_ops.create_tag(tag_name, ref=target_branch, message=f"Release {version}")
+                            if debug:
+                                console.print(f"[dim]✓ Force-created local tag {tag_name}[/dim]")
+                            else:
+                                console.print(f"[blue]✓ Force-created local tag {tag_name}[/blue]")
+                        except Exception as e:
+                            console.print(f"[red]Error force-creating git tag: {e}[/red]")
+                            sys.exit(1)
+                    elif debug:
+                        console.print(f"[dim]Tag {tag_name} already exists locally[/dim]")
+
+                    # Push tag to remote
+                    if not tag_exists_remotely:
+                        if debug:
+                            console.print(f"[dim]Pushing tag {tag_name} to remote...[/dim]")
+                        try:
+                            git_ops.push_tag(tag_name)
+                            if debug:
+                                console.print(f"[dim]✓ Pushed tag {tag_name} to remote[/dim]")
+                            else:
+                                console.print(f"[blue]✓ Pushed tag {tag_name} to remote[/blue]")
+                        except Exception as e:
+                            console.print(f"[red]Error pushing git tag: {e}[/red]")
+                            sys.exit(1)
+                    elif should_force_tag:
+                        # Force push tag when forcing
+                        if debug:
+                            console.print(f"[dim]Force-pushing tag {tag_name} to remote...[/dim]")
+                        try:
+                            git_ops.push_tag(tag_name, force=True)
+                            if debug:
+                                console.print(f"[dim]✓ Force-pushed tag {tag_name} to remote[/dim]")
+                            else:
+                                console.print(f"[blue]✓ Force-pushed tag {tag_name} to remote[/blue]")
+                        except Exception as e:
+                            console.print(f"[red]Error force-pushing git tag: {e}[/red]")
+                            sys.exit(1)
+                    else:
+                        if debug:
+                            console.print(f"[dim]Tag {tag_name} already exists on remote[/dim]")
+                        # Even if tag exists, still try to push in case local is ahead
+                        # This handles the case where the tag might exist but not be on the correct commit
+                        try:
+                            git_ops.push_tag(tag_name)
+                            if debug:
+                                console.print(f"[dim]✓ Pushed tag {tag_name} to remote (update)[/dim]")
+                        except Exception as e:
+                            # Non-fatal - tag might already be at correct commit
+                            if debug:
+                                console.print(f"[dim]Tag push skipped (already up to date or would fail): {e}[/dim]")
+
+                    # Wait for GitHub to index the tag (prevent "untagged" releases)
+                    if debug:
+                        console.print(f"[dim]Waiting for GitHub to index tag {tag_name}...[/dim]")
+                    time.sleep(2)  # 2 second delay to allow GitHub to process the tag
+                    
+                    # Check if release already exists on GitHub
+                    existing_gh_release = github_client.get_release_by_tag(repo_name, tag_name)
+                    
+                    if existing_gh_release:
+                        if force == 'none':
+                            console.print(f"[red]Error: GitHub release {tag_name} already exists.[/red]")
+                            console.print(f"[yellow]Use --force [draft|published] to update the existing release.[/yellow]")
+                            console.print(f"[dim]  URL: {existing_gh_release.html_url}[/dim]")
+                            sys.exit(1)
+                        else:
+                            # Update existing release
+                            console.print(f"[blue]Updating existing {status}GitHub release for {version}...[/blue]")
+                            if debug:
+                                console.print(f"[dim]Existing release URL: {existing_gh_release.html_url}[/dim]")
+                            
+                            release_name = f"Release {version}"
+                            release_url = github_client.update_release(
+                                repo_name,
+                                tag_name,
+                                name=release_name,
+                                body=release_notes,
+                                prerelease=prerelease_flag,
+                                draft=is_draft,
+                                target_commitish=target_branch
+                            )
+                            
+                            if release_url:
+                                console.print(f"[green]✓ GitHub release updated successfully[/green]")
+                                console.print(f"[blue]→ {release_url}[/blue]")
+                            else:
+                                console.print(f"[red]✗ Failed to update GitHub release[/red]")
+                                sys.exit(1)
+                    else:
+                        # Create new release
+                        console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
+
                         release_name = f"Release {version}"
-                        release_url = github_client.update_release(
+                        release_url = github_client.create_release(
                             repo_name,
-                            tag_name,
-                            name=release_name,
-                            body=release_notes,
+                            version,
+                            release_name,
+                            release_notes,
                             prerelease=prerelease_flag,
                             draft=is_draft,
                             target_commitish=target_branch
                         )
-                        
+
                         if release_url:
-                            console.print(f"[green]✓ GitHub release updated successfully[/green]")
+                            console.print(f"[green]✓ GitHub release created successfully[/green]")
                             console.print(f"[blue]→ {release_url}[/blue]")
+                            
+                            # Verify the release URL doesn't contain "untagged"
+                            if "untagged" in release_url:
+                                console.print(f"[yellow]⚠ Warning: Release created but appears to be untagged. This may indicate the git tag was not properly created.[/yellow]")
+                                console.print(f"[yellow]  Expected tag: {tag_name}[/yellow]")
+                                console.print(f"[yellow]  Please verify the tag exists: git tag -l {tag_name}[/yellow]")
                         else:
-                            console.print(f"[red]✗ Failed to update GitHub release[/red]")
+                            console.print(f"[red]✗ Failed to create GitHub release[/red]")
+                            console.print(f"[red]Error: Release creation failed. See error message above for details.[/red]")
                             sys.exit(1)
-                else:
-                    # Create new release
-                    console.print(f"[blue]Creating {status}GitHub release for {version}...[/blue]")
 
-                    release_name = f"Release {version}"
-                    release_url = github_client.create_release(
-                        repo_name,
-                        version,
-                        release_name,
-                        release_notes,
-                        prerelease=prerelease_flag,
-                        draft=is_draft,
-                        target_commitish=target_branch
-                    )
-
-                    if release_url:
-                        console.print(f"[green]✓ GitHub release created successfully[/green]")
-                        console.print(f"[blue]→ {release_url}[/blue]")
-                        
-                        # Verify the release URL doesn't contain "untagged"
-                        if "untagged" in release_url:
-                            console.print(f"[yellow]⚠ Warning: Release created but appears to be untagged. This may indicate the git tag was not properly created.[/yellow]")
-                            console.print(f"[yellow]  Expected tag: {tag_name}[/yellow]")
-                            console.print(f"[yellow]  Please verify the tag exists: git tag -l {tag_name}[/yellow]")
-                    else:
-                        console.print(f"[red]✗ Failed to create GitHub release[/red]")
-                        console.print(f"[red]Error: Release creation failed. See error message above for details.[/red]")
-                        sys.exit(1)
-        elif dry_run:
-            console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
-
-        # Save release to database
-        if not dry_run and repo:
-            release = Release(
-                repo_id=repo.id,
-                version=version,
-                tag_name=f"v{version}",
-                name=f"Release {version}",
-                body=release_notes,
-                created_at=datetime.now(),
-                published_at=datetime.now() if not is_draft else None,
-                is_draft=is_draft,
-                is_prerelease=prerelease_flag,
-                url=f"https://github.com/{repo_name}/releases/tag/v{version}",
-                target_commitish=target_branch
-            )
-            db.upsert_release(release)
+            # Save release to database
+            if not dry_run and repo:
+                release = Release(
+                    repo_id=repo.id,
+                    version=version,
+                    tag_name=f"v{version}",
+                    name=f"Release {version}",
+                    body=release_notes,
+                    created_at=datetime.now(),
+                    published_at=datetime.now() if not is_draft else None,
+                    is_draft=is_draft,
+                    is_prerelease=prerelease_flag,
+                    url=f"https://github.com/{repo_name}/releases/tag/v{version}",
+                    target_commitish=target_branch
+                )
+                db.upsert_release(release)
             if debug:
                 console.print(f"[dim]Saved release to database (is_draft={is_draft})[/dim]")
+        elif dry_run:
+            console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
 
         # Create PR
         if create_pr:
