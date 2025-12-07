@@ -179,13 +179,16 @@ The bot automatically publishes releases based on two triggers:
 
 #### PR Merge Auto-Publishing
 
-When a PR with branch pattern `release/**` is merged:
+When a PR from a release branch is merged:
 
-**Example**: PR from branch `release/v1.2.3` → merges to `main`
+**Example**: PR from branch `release/1.2` → merges to `main`
 
 **Bot Actions**:
-1. Extract version from branch name: `1.2.3`
-   - Fallback: Parse PR title if branch doesn't contain version
+1. Extract version from branch name using config pattern
+   - Pattern is read from `branch_policy.release_branch_template` in `.release_tool.toml`
+   - Default pattern: `release/{major}.{minor}` matches branches like `release/1.2`, `release/2.0`
+   - Custom patterns supported: `release/v{major}.{minor}.{patch}` matches `release/v1.2.3`
+   - Fallback: Parse PR title if branch doesn't match pattern
 2. Search PR body for ticket references:
    - Pattern 1 (closing): `closes #123`, `fixes #456`, `resolves #789`
    - Pattern 2 (related): `related to #123`, `see #456`, `issue #789`
@@ -415,7 +418,21 @@ Control default behavior in `.release_tool.toml`:
 create_github_release = true
 release_mode = "draft"  # or "published"
 prerelease = "auto"
+
+[branch_policy]
+# Branch pattern for release branches (used by bot to detect PR merges)
+release_branch_template = "release/{major}.{minor}"  # Default
+# Other examples:
+# release_branch_template = "release/v{major}.{minor}.{patch}"
+# release_branch_template = "releases/{major}.{minor}"
 ```
+
+**Branch Pattern Detection**: The bot uses `release_branch_template` to detect which PR merges should trigger auto-publishing. The template supports Jinja2-style placeholders:
+- `{major}` - Major version number
+- `{minor}` - Minor version number  
+- `{patch}` - Patch version number
+
+The bot converts this template to a regex pattern to match incoming PR branches.
 
 ## Troubleshooting
 
