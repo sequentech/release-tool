@@ -172,24 +172,31 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                                 console.print(f"[dim]  • {rel.version} (draft={rel.is_draft})[/dim]")
 
                         for release in all_releases:
-                            # Filter by detect_mode
-                            if detect_mode == 'published' and release.is_draft:
-                                continue
-
                             try:
                                 v = SemanticVersion.parse(release.version)
+                                
+                                # For RC detection: check ALL releases (ignore detect_mode)
+                                # We need to know what RC numbers exist to avoid duplicates
+                                if (v.major == base_version.major and
+                                    v.minor == base_version.minor and
+                                    v.patch == base_version.patch and
+                                    v.prerelease and v.prerelease.startswith('rc.')):
+                                    matching_rcs.append(v)
+                                    if debug:
+                                        console.print(f"[dim]    Found RC: {v} (draft={release.is_draft})[/dim]")
+                                
+                                # For final version check: respect detect_mode
+                                # Only consider published releases if detect_mode='published'
+                                if detect_mode == 'published' and release.is_draft:
+                                    continue
+                                
                                 # Check for exact final version match
                                 if (v.major == base_version.major and
                                     v.minor == base_version.minor and
                                     v.patch == base_version.patch and
                                     v.is_final()):
                                     final_exists = True
-                                # Also collect RCs while we're here
-                                if (v.major == base_version.major and
-                                    v.minor == base_version.minor and
-                                    v.patch == base_version.patch and
-                                    v.prerelease and v.prerelease.startswith('rc.')):
-                                    matching_rcs.append(v)
+                                    
                             except ValueError:
                                 continue
 
