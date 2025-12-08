@@ -1,4 +1,4 @@
-config_version = "1.4"
+config_version = "1.5"
 
 # =============================================================================
 # Release Tool Configuration
@@ -695,7 +695,7 @@ alias = "other"
 [output]
 # release_output_path: Path template for GitHub release notes file (Jinja2 syntax)
 # This file will be created/updated when using the generate command
-# Used for creating GitHub releases via the publish command
+# Used for creating GitHub releases via the push command
 #
 # Available variables for path substitution:
 #   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
@@ -733,7 +733,7 @@ doc_output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/rel
 
 # draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
 # This is where 'generate' command saves files by default (when --output not specified)
-# Files are saved here for review/editing before publishing to GitHub
+# Files are saved here for review/editing before push to GitHub
 #
 # Available variables:
 #   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
@@ -800,7 +800,7 @@ create_pr = true
 #   - "published": Releases are published immediately
 # Default: "draft"
 # CLI override: --release-mode draft|published
-# Use case: Set to "draft" if you want to review releases before publishing
+# Use case: Set to "draft" if you want to review releases before pushing
 release_mode = "draft"
 
 # prerelease: Mark GitHub releases as prereleases
