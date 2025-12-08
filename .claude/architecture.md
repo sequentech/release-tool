@@ -14,7 +14,7 @@ The release tool has a strict separation between online (GitHub API) and offline
 - **Purpose**: Fetch data from GitHub API and store in local database
 - **Internet**: REQUIRED
 - **Operations**:
-  - Fetch ALL tickets from ticket repos (comprehensive initial sync)
+  - Fetch ALL issues from issue repos (comprehensive initial sync)
   - Fetch pull requests from code repo
   - Clone/update git repository
   - Store everything in local SQLite database
@@ -29,16 +29,16 @@ The release tool has a strict separation between online (GitHub API) and offline
 - **Internet**: NOT REQUIRED (must work offline)
 - **Operations**:
   - Read commits from git repository
-  - Extract ticket references from branches/PRs/commits
-  - Query tickets from LOCAL database only
+  - Extract issue references from branches/PRs/commits
+  - Query issues from LOCAL database only
   - Generate formatted release notes
 - **Rules**:
   - ✅ CAN read from database
   - ✅ CAN read from local git repo
   - ✅ CAN write release notes to files
   - ❌ MUST NOT call GitHub API
-  - ❌ MUST NOT fetch tickets from GitHub
-  - ⚠️ If ticket not in DB: warn user to run `sync` first
+  - ❌ MUST NOT fetch issues from GitHub
+  - ⚠️ If issue not in DB: warn user to run `sync` first
 
 ### ✅ `publish` command - GitHub Publishing (Online)
 - **Purpose**: Upload release notes to GitHub
@@ -52,42 +52,42 @@ The release tool has a strict separation between online (GitHub API) and offline
   - ✅ CAN read from database
   - ❌ MUST NOT fetch additional data from GitHub
 
-### ✅ `tickets` command - Database Query (Offline)
-- **Purpose**: Query and explore tickets in local database
+### ✅ `issues` command - Database Query (Offline)
+- **Purpose**: Query and explore issues in local database
 - **Internet**: NOT REQUIRED (fully offline)
 - **Operations**:
-  - Search tickets by key, repo, or fuzzy patterns
-  - Support smart TICKET_KEY formats (8624, #8624, meta#8624, meta#8624~, owner/repo#8624)
-  - Export ticket data to CSV
-  - Debug partial ticket matches
+  - Search issues by key, repo, or fuzzy patterns
+  - Support smart ISSUE_KEY formats (8624, #8624, meta#8624, meta#8624~, owner/repo#8624)
+  - Export issue data to CSV
+  - Debug partial issue matches
   - Explore synced data
 - **Rules**:
   - ✅ CAN read from database
   - ✅ CAN display data in table or CSV format
   - ❌ MUST NOT call GitHub API
-  - ⚠️ Only shows synced tickets (remind user to sync first)
+  - ⚠️ Only shows synced issues (remind user to sync first)
 
-### Use Cases for tickets:
-- **Debugging partial matches**: Find why a ticket wasn't matched during release note generation
-- **Exploring tickets**: See what tickets are in the database
-- **Data export**: Export tickets to CSV for analysis
-- **Number proximity**: Find tickets with similar numbers (useful for tracking down typos)
+### Use Cases for issues:
+- **Debugging partial matches**: Find why a issue wasn't matched during release note generation
+- **Exploring issues**: See what issues are in the database
+- **Data export**: Export issues to CSV for analysis
+- **Number proximity**: Find issues with similar numbers (useful for tracking down typos)
 - **Pattern matching**: Use starts-with, ends-with for flexible searching
 
 ## Database Design
 
-### Ticket Storage
-- Tickets are stored with their source `repo_id` (e.g., sequentech/meta)
-- Code repos and ticket repos have different repo_ids
-- Use `db.get_ticket_by_key(key)` to search across all repos
-- Use `db.get_ticket(repo_id, key)` only when repo is known
+### Issue Storage
+- Issues are stored with their source `repo_id` (e.g., sequentech/meta)
+- Code repos and issue repos have different repo_ids
+- Use `db.get_issue_by_key(key)` to search across all repos
+- Use `db.get_issue(repo_id, key)` only when repo is known
 
 ## Sync Strategy
 
 ### Initial Sync (First Time)
-- Fetch ALL tickets from ticket repos (no cutoff date)
+- Fetch ALL issues from issue repos (no cutoff date)
 - Fetch ALL pull requests from code repo (no cutoff date)
-- This ensures historical tickets are available
+- This ensures historical issues are available
 
 ### Incremental Sync (Subsequent Runs)
 - Use `last_sync` timestamp as cutoff
@@ -100,27 +100,27 @@ The release tool has a strict separation between online (GitHub API) and offline
 ```python
 # BAD - This makes generate require internet
 github_client = GitHubClient(config)
-ticket = github_client.fetch_issue_by_key(repo, key, repo_id)
+issue = github_client.fetch_issue_by_key(repo, key, repo_id)
 ```
 
 ### ✅ DO: Query from database only
 ```python
 # GOOD - Works offline
-ticket = db.get_ticket_by_key(change.ticket_key)
-if not ticket:
-    console.print("Ticket not found. Run 'sync' first.")
+issue = db.get_issue_by_key(change.issue_key)
+if not issue:
+    console.print("Issue not found. Run 'sync' first.")
 ```
 
 ### ❌ DON'T: Query with wrong repo_id
 ```python
-# BAD - code_repo_id won't find tickets from ticket repos
-ticket = db.get_ticket(code_repo_id, "8624")
+# BAD - code_repo_id won't find issues from issue repos
+issue = db.get_issue(code_repo_id, "8624")
 ```
 
 ### ✅ DO: Search across all repos
 ```python
-# GOOD - Finds ticket in any repo
-ticket = db.get_ticket_by_key("8624")
+# GOOD - Finds issue in any repo
+issue = db.get_issue_by_key("8624")
 ```
 
 ## Testing Guidelines
@@ -159,8 +159,8 @@ The release tool uses semantic versioning for config files to handle breaking ch
 
 ### Version History
 - **1.0**: Initial config format
-- **1.1**: Added template variables (ticket_url, pr_url)
-- **1.2**: Added partial_ticket_action policy
+- **1.1**: Added template variables (issue_url, pr_url)
+- **1.2**: Added partial_issue_action policy
 
 ### When to Bump Config Version
 
@@ -284,13 +284,13 @@ def test_migration_1_1_to_1_2():
     old_config = {
         'config_version': '1.1',
         'repository': {'code_repo': 'test/repo'},
-        'ticket_policy': {}
+        'issue_policy': {}
     }
 
     new_config = migrate(old_config)
 
     assert new_config['config_version'] == '1.2'
-    assert new_config['ticket_policy']['partial_ticket_action'] == 'warn'
+    assert new_config['issue_policy']['partial_issue_action'] == 'warn'
     assert new_config['repository']['code_repo'] == 'test/repo'  # Preserved
 ```
 

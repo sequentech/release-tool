@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from .models import (
-    Repository, PullRequest, Commit, Ticket, Release, Label
+    Repository, PullRequest, Commit, Issue, Release, Label
 )
 
 
@@ -99,9 +99,9 @@ class Database:
             )
         """)
 
-        # Tickets/Issues table
+        # Issues table
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tickets (
+            CREATE TABLE IF NOT EXISTS issues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 repo_id INTEGER NOT NULL,
                 number INTEGER NOT NULL,
@@ -147,6 +147,36 @@ class Database:
             # Column likely already exists
             pass
 
+        # Migration v1.5: Rename issues table to issues
+        try:
+            # Check if old issues table exists
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='issues'"
+            )
+            if self.cursor.fetchone():
+                # Rename issues → issues
+                self.cursor.execute("ALTER TABLE issues RENAME TO issues")
+                print("Database migration: Renamed 'issues' table to 'issues'")
+        except sqlite3.OperationalError as e:
+            # Table rename might have already happened or issues table already exists
+            pass
+
+        # Migration v1.5: Rename release_issues table to release_issues
+        try:
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='release_issues'"
+            )
+            if self.cursor.fetchone():
+                self.cursor.execute("ALTER TABLE release_issues RENAME TO release_issues")
+                # Rename column issue_number → issue_number
+                # SQLite doesn't support ALTER COLUMN RENAME directly, so we need to recreate
+                self.cursor.execute("ALTER TABLE release_issues RENAME COLUMN issue_number TO issue_number")
+                self.cursor.execute("ALTER TABLE release_issues RENAME COLUMN issue_url TO issue_url")
+                print("Database migration: Renamed 'release_issues' table to 'release_issues'")
+        except sqlite3.OperationalError as e:
+            # Migration might have already happened
+            pass
+
         # Sync metadata table - tracks last sync timestamp per repository
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -160,14 +190,14 @@ class Database:
             )
         """)
 
-        # Release tickets table - tracks association between releases and tracking tickets
+        # Release issues table - tracks association between releases and tracking issues
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS release_tickets (
+            CREATE TABLE IF NOT EXISTS release_issues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 repo_full_name TEXT NOT NULL,
                 version TEXT NOT NULL,
-                ticket_number INTEGER NOT NULL,
-                ticket_url TEXT NOT NULL,
+                issue_number INTEGER NOT NULL,
+                issue_url TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 UNIQUE(repo_full_name, version)
             )
@@ -185,13 +215,13 @@ class Database:
         """)
 
         self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ticket_repo
-            ON tickets(repo_id, state)
+            CREATE INDEX IF NOT EXISTS idx_issue_repo
+            ON issues(repo_id, state)
         """)
 
         self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_release_ticket_repo_version
-            ON release_tickets(repo_full_name, version)
+            CREATE INDEX IF NOT EXISTS idx_release_issue_repo_version
+            ON release_issues(repo_full_name, version)
         """)
 
         self.conn.commit()
@@ -213,7 +243,7 @@ class Database:
 
         Args:
             repo_full_name: Full repository name (owner/repo)
-            entity_type: Type of entity ('tickets', 'pull_requests', 'commits')
+            entity_type: Type of entity ('issues', 'pull_requests', 'commits')
 
         Returns:
             Last sync datetime or None if never synced
@@ -240,7 +270,7 @@ class Database:
 
         Args:
             repo_full_name: Full repository name (owner/repo)
-            entity_type: Type of entity ('tickets', 'pull_requests', 'commits')
+            entity_type: Type of entity ('issues', 'pull_requests', 'commits')
             cutoff_date: Optional cutoff date (ISO format)
             total_fetched: Number of items fetched in this sync
         """
@@ -263,10 +293,10 @@ class Database:
         )
         return [dict(row) for row in self.cursor.fetchall()]
 
-    def get_existing_ticket_numbers(self, repo_full_name: str) -> set:
-        """Get set of ticket numbers already in database for a repository."""
+    def get_existing_issue_numbers(self, repo_full_name: str) -> set:
+        """Get set of issue numbers already in database for a repository."""
         self.cursor.execute(
-            """SELECT t.number FROM tickets t
+            """SELECT t.number FROM issues t
                JOIN repositories r ON t.repo_id = r.id
                WHERE r.full_name = ?""",
             (repo_full_name,)
@@ -483,52 +513,52 @@ class Database:
 
         return commits
 
-    # Ticket operations
-    def upsert_ticket(self, ticket: Ticket) -> int:
-        """Insert or update a ticket."""
-        labels_json = json.dumps([label.model_dump() for label in ticket.labels])
-        tags_json = json.dumps(ticket.tags)
-        created_at_str = ticket.created_at.isoformat() if ticket.created_at else None
-        closed_at_str = ticket.closed_at.isoformat() if ticket.closed_at else None
+    # Issue operations
+    def upsert_issue(self, issue: Issue) -> int:
+        """Insert or update a issue."""
+        labels_json = json.dumps([label.model_dump() for label in issue.labels])
+        tags_json = json.dumps(issue.tags)
+        created_at_str = issue.created_at.isoformat() if issue.created_at else None
+        closed_at_str = issue.closed_at.isoformat() if issue.closed_at else None
 
         try:
             self.cursor.execute(
-                """INSERT INTO tickets (
+                """INSERT INTO issues (
                     repo_id, number, key, title, body, state, labels, url,
                     created_at, closed_at, category, tags
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (ticket.repo_id, ticket.number, ticket.key, ticket.title, ticket.body,
-                 ticket.state, labels_json, ticket.url, created_at_str, closed_at_str,
-                 ticket.category, tags_json)
+                (issue.repo_id, issue.number, issue.key, issue.title, issue.body,
+                 issue.state, labels_json, issue.url, created_at_str, closed_at_str,
+                 issue.category, tags_json)
             )
             self.conn.commit()
             return self.cursor.lastrowid
         except sqlite3.IntegrityError:
             self.cursor.execute(
-                """UPDATE tickets SET
+                """UPDATE issues SET
                     number=?, title=?, body=?, state=?, labels=?, url=?,
                     created_at=?, closed_at=?, category=?, tags=?
                 WHERE repo_id=? AND key=?""",
-                (ticket.number, ticket.title, ticket.body, ticket.state, labels_json,
-                 ticket.url, created_at_str, closed_at_str, ticket.category, tags_json,
-                 ticket.repo_id, ticket.key)
+                (issue.number, issue.title, issue.body, issue.state, labels_json,
+                 issue.url, created_at_str, closed_at_str, issue.category, tags_json,
+                 issue.repo_id, issue.key)
             )
             self.conn.commit()
-            return self.get_ticket_id(ticket.repo_id, ticket.key)
+            return self.get_issue_id(issue.repo_id, issue.key)
 
-    def get_ticket_id(self, repo_id: int, key: str) -> Optional[int]:
-        """Get ticket ID by repo and key."""
+    def get_issue_id(self, repo_id: int, key: str) -> Optional[int]:
+        """Get issue ID by repo and key."""
         self.cursor.execute(
-            "SELECT id FROM tickets WHERE repo_id=? AND key=?",
+            "SELECT id FROM issues WHERE repo_id=? AND key=?",
             (repo_id, key)
         )
         row = self.cursor.fetchone()
         return row["id"] if row else None
 
-    def get_ticket(self, repo_id: int, key: str) -> Optional[Ticket]:
-        """Get ticket by repo and key."""
+    def get_issue(self, repo_id: int, key: str) -> Optional[Issue]:
+        """Get issue by repo and key."""
         self.cursor.execute(
-            "SELECT * FROM tickets WHERE repo_id=? AND key=?",
+            "SELECT * FROM issues WHERE repo_id=? AND key=?",
             (repo_id, key)
         )
         row = self.cursor.fetchone()
@@ -540,27 +570,27 @@ class Database:
                 data['created_at'] = datetime.fromisoformat(data['created_at'])
             if data.get('closed_at'):
                 data['closed_at'] = datetime.fromisoformat(data['closed_at'])
-            return Ticket(**data)
+            return Issue(**data)
         return None
 
-    def get_ticket_by_key(self, key: str) -> Optional[Ticket]:
+    def get_issue_by_key(self, key: str) -> Optional[Issue]:
         """
-        Get ticket by key across all repositories.
+        Get issue by key across all repositories.
 
-        This searches for a ticket by key without requiring a specific repo_id.
-        Useful when the ticket could be in any of the configured ticket repos.
+        This searches for a issue by key without requiring a specific repo_id.
+        Useful when the issue could be in any of the configured issue repos.
 
         Args:
-            key: Ticket key (e.g., "8624", "#123", "JIRA-456")
+            key: Issue key (e.g., "8624", "#123", "JIRA-456")
 
         Returns:
-            Ticket if found, None otherwise
+            Issue if found, None otherwise
         """
         # Normalize key: strip "#" prefix if present
         normalized_key = key.lstrip('#') if key.startswith('#') else key
 
         self.cursor.execute(
-            "SELECT * FROM tickets WHERE key=? ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM issues WHERE key=? ORDER BY created_at DESC LIMIT 1",
             (normalized_key,)
         )
         row = self.cursor.fetchone()
@@ -572,12 +602,12 @@ class Database:
                 data['created_at'] = datetime.fromisoformat(data['created_at'])
             if data.get('closed_at'):
                 data['closed_at'] = datetime.fromisoformat(data['closed_at'])
-            return Ticket(**data)
+            return Issue(**data)
         return None
 
-    def _parse_ticket_number(self, key: str) -> Optional[int]:
+    def _parse_issue_number(self, key: str) -> Optional[int]:
         """
-        Parse numeric portion from a ticket key.
+        Parse numeric portion from a issue key.
 
         Handles various formats:
         - "8624" -> 8624
@@ -586,10 +616,10 @@ class Database:
         - "meta-8624" -> 8624
 
         Args:
-            key: Ticket key in any format
+            key: Issue key in any format
 
         Returns:
-            Integer ticket number if found, None otherwise
+            Integer issue number if found, None otherwise
         """
         import re
         # Try to find a number in the key
@@ -601,9 +631,9 @@ class Database:
                 return None
         return None
 
-    def query_tickets(
+    def query_issues(
         self,
-        ticket_key: Optional[str] = None,
+        issue_key: Optional[str] = None,
         repo_id: Optional[int] = None,
         repo_full_name: Optional[str] = None,
         starts_with: Optional[str] = None,
@@ -612,42 +642,42 @@ class Database:
         close_range: int = 10,
         limit: int = 20,
         offset: int = 0
-    ) -> List[Ticket]:
+    ) -> List[Issue]:
         """
-        Query tickets with flexible filtering and fuzzy matching.
+        Query issues with flexible filtering and fuzzy matching.
 
         This method supports multiple query patterns:
-        - Exact match by ticket_key
+        - Exact match by issue_key
         - Filter by repository (id or full_name)
         - Fuzzy matching: starts_with, ends_with
         - Proximity search: close_to with configurable range
 
         Args:
-            ticket_key: Exact ticket key to search for
+            issue_key: Exact issue key to search for
             repo_id: Filter by repository ID
             repo_full_name: Filter by repository full name (e.g., "owner/repo")
-            starts_with: Find tickets where key starts with this prefix
-            ends_with: Find tickets where key ends with this suffix
-            close_to: Find tickets numerically close to this number
+            starts_with: Find issues where key starts with this prefix
+            ends_with: Find issues where key ends with this suffix
+            close_to: Find issues numerically close to this number
             close_range: Range for close_to search (default: ±10)
             limit: Maximum number of results (default: 20)
             offset: Skip first N results (for pagination)
 
         Returns:
-            List of Ticket objects matching the query
+            List of Issue objects matching the query
 
         Examples:
-            # Find specific ticket
-            query_tickets(ticket_key="8624")
+            # Find specific issue
+            query_issues(issue_key="8624")
 
-            # Find all tickets in a repo
-            query_tickets(repo_full_name="sequentech/meta", limit=50)
+            # Find all issues in a repo
+            query_issues(repo_full_name="sequentech/meta", limit=50)
 
-            # Fuzzy match: tickets starting with "86"
-            query_tickets(starts_with="86")
+            # Fuzzy match: issues starting with "86"
+            query_issues(starts_with="86")
 
-            # Find tickets close to 8624 (8604-8644)
-            query_tickets(close_to="8624", close_range=10)
+            # Find issues close to 8624 (8604-8644)
+            query_issues(close_to="8624", close_range=10)
         """
         # Build the SQL query dynamically based on filters
         conditions = []
@@ -662,10 +692,10 @@ class Database:
             conditions.append("r.full_name = ?")
             params.append(repo_full_name)
 
-        # Handle exact ticket key
-        if ticket_key:
+        # Handle exact issue key
+        if issue_key:
             # Normalize key: strip "#" prefix if present
-            normalized_key = ticket_key.lstrip('#') if ticket_key.startswith('#') else ticket_key
+            normalized_key = issue_key.lstrip('#') if issue_key.startswith('#') else issue_key
             conditions.append("t.key = ?")
             params.append(normalized_key)
 
@@ -682,7 +712,7 @@ class Database:
 
         # Handle proximity search
         if close_to:
-            target_num = self._parse_ticket_number(close_to)
+            target_num = self._parse_issue_number(close_to)
             if target_num is not None:
                 lower = target_num - close_range
                 upper = target_num + close_range
@@ -700,7 +730,7 @@ class Database:
                 r.full_name as repo_full_name,
                 r.owner as repo_owner,
                 r.name as repo_name
-            FROM tickets t
+            FROM issues t
             LEFT JOIN repositories r ON t.repo_id = r.id
             WHERE {where_clause}
             ORDER BY t.created_at DESC
@@ -713,11 +743,11 @@ class Database:
         self.cursor.execute(query, params)
         rows = self.cursor.fetchall()
 
-        # Parse results into Ticket objects with repo info stored separately
-        tickets = []
+        # Parse results into Issue objects with repo info stored separately
+        issues = []
         for row in rows:
             data = dict(row)
-            # Extract the joined repo fields (not part of Ticket model)
+            # Extract the joined repo fields (not part of Issue model)
             repo_full_name_val = data.pop('repo_full_name', None)
             data.pop('repo_owner', None)
             data.pop('repo_name', None)
@@ -732,13 +762,13 @@ class Database:
             if data.get('closed_at'):
                 data['closed_at'] = datetime.fromisoformat(data['closed_at'])
 
-            ticket = Ticket(**data)
+            issue = Issue(**data)
             # Store repo info in a way that won't conflict with Pydantic
             # Use object.__setattr__ to bypass Pydantic's validation
-            object.__setattr__(ticket, '_repo_full_name', repo_full_name_val)
-            tickets.append(ticket)
+            object.__setattr__(issue, '_repo_full_name', repo_full_name_val)
+            issues.append(issue)
 
-        return tickets
+        return issues
 
     # Release operations
     def upsert_release(self, release: Release) -> int:
@@ -911,19 +941,19 @@ class Database:
 
         return releases
 
-    def migrate_ticket_keys_strip_hash(self) -> int:
+    def migrate_issue_keys_strip_hash(self) -> int:
         """
-        Migrate database: strip "#" prefix from all ticket keys.
+        Migrate database: strip "#" prefix from all issue keys.
 
-        This is a one-time migration for version 1.3 which changes the ticket key
+        This is a one-time migration for version 1.3 which changes the issue key
         storage format from "#8624" to "8624".
 
         Returns:
-            Number of tickets updated
+            Number of issues updated
         """
-        # Update all ticket keys that start with #
+        # Update all issue keys that start with #
         self.cursor.execute("""
-            UPDATE tickets
+            UPDATE issues
             SET key = SUBSTR(key, 2)
             WHERE key LIKE '#%'
         """)
@@ -933,64 +963,64 @@ class Database:
 
         return updated_count
 
-    # Release ticket association operations
-    def save_ticket_association(
+    # Release issue association operations
+    def save_issue_association(
         self,
         repo_full_name: str,
         version: str,
-        ticket_number: int,
-        ticket_url: str
+        issue_number: int,
+        issue_url: str
     ) -> None:
         """
-        Save or update the association between a release version and its tracking ticket.
+        Save or update the association between a release version and its tracking issue.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
             version: Release version (e.g., "1.2.3")
-            ticket_number: GitHub issue number
-            ticket_url: URL to the GitHub issue
+            issue_number: GitHub issue number
+            issue_url: URL to the GitHub issue
 
         Example:
-            db.save_ticket_association(
+            db.save_issue_association(
                 repo_full_name="sequentech/step",
                 version="1.2.3",
-                ticket_number=8624,
-                ticket_url="https://github.com/sequentech/meta/issues/8624"
+                issue_number=8624,
+                issue_url="https://github.com/sequentech/meta/issues/8624"
             )
         """
         now = datetime.now().isoformat()
 
         self.cursor.execute(
-            """INSERT OR REPLACE INTO release_tickets
-               (repo_full_name, version, ticket_number, ticket_url, created_at)
+            """INSERT OR REPLACE INTO release_issues
+               (repo_full_name, version, issue_number, issue_url, created_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (repo_full_name, version, ticket_number, ticket_url, now)
+            (repo_full_name, version, issue_number, issue_url, now)
         )
         self.conn.commit()
 
-    def get_ticket_association(
+    def get_issue_association(
         self,
         repo_full_name: str,
         version: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get the tracking ticket associated with a release version.
+        Get the tracking issue associated with a release version.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
             version: Release version (e.g., "1.2.3")
 
         Returns:
-            Dictionary with ticket_number, ticket_url, created_at if found, None otherwise
+            Dictionary with issue_number, issue_url, created_at if found, None otherwise
 
         Example:
-            association = db.get_ticket_association("sequentech/step", "1.2.3")
+            association = db.get_issue_association("sequentech/step", "1.2.3")
             if association:
-                print(f"Ticket #{association['ticket_number']}: {association['ticket_url']}")
+                print(f"Issue #{association['issue_number']}: {association['issue_url']}")
         """
         self.cursor.execute(
-            """SELECT ticket_number, ticket_url, created_at
-               FROM release_tickets
+            """SELECT issue_number, issue_url, created_at
+               FROM release_issues
                WHERE repo_full_name=? AND version=?""",
             (repo_full_name, version)
         )
@@ -999,9 +1029,9 @@ class Database:
             return dict(row)
         return None
 
-    def has_ticket_association(self, repo_full_name: str, version: str) -> bool:
+    def has_issue_association(self, repo_full_name: str, version: str) -> bool:
         """
-        Check if a release version has an associated tracking ticket.
+        Check if a release version has an associated tracking issue.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
@@ -1011,7 +1041,7 @@ class Database:
             True if association exists, False otherwise
 
         Example:
-            if db.has_ticket_association("sequentech/step", "1.2.3"):
-                print("This release already has a tracking ticket")
+            if db.has_issue_association("sequentech/step", "1.2.3"):
+                print("This release already has a tracking issue")
         """
-        return self.get_ticket_association(repo_full_name, version) is not None
+        return self.get_issue_association(repo_full_name, version) is not None

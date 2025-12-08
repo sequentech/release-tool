@@ -10,7 +10,7 @@ from github import Github, GithubException
 from rich.console import Console
 
 from .models import (
-    Repository, PullRequest, Ticket, Release, Label
+    Repository, PullRequest, Issue, Release, Label
 )
 from .config import Config
 
@@ -224,8 +224,8 @@ class GitHubClient:
             url=raw.get('html_url')
         )
 
-    def _issue_to_ticket(self, gh_issue, repo_id: int) -> Ticket:
-        """Convert PyGithub Issue to our Ticket model, avoiding lazy loads."""
+    def _issue_to_issue(self, gh_issue, repo_id: int) -> Issue:
+        """Convert PyGithub Issue to our Issue model, avoiding lazy loads."""
         # Use internal _rawData if available to avoid any property overhead or lazy loading checks
         # PyGithub stores the raw dictionary in _rawData
         raw = getattr(gh_issue, '_rawData', None)
@@ -248,7 +248,7 @@ class GitHubClient:
              # Only access gh_issue.number if absolutely necessary (fallback)
              number = gh_issue.number
              
-        ticket = Ticket(
+        issue = Issue(
             repo_id=repo_id,
             number=number,
             key=str(number),
@@ -261,10 +261,10 @@ class GitHubClient:
             closed_at=raw.get('closed_at')
         )
         
-        return ticket
+        return issue
 
-    def fetch_issue(self, repo_full_name: str, issue_number: int, repo_id: int) -> Optional[Ticket]:
-        """Fetch a single issue/ticket from GitHub."""
+    def fetch_issue(self, repo_full_name: str, issue_number: int, repo_id: int) -> Optional[Issue]:
+        """Fetch a single issue/issue from GitHub."""
         try:
             repo = self.gh.get_repo(repo_full_name)
             issue = repo.get_issue(issue_number)
@@ -274,7 +274,7 @@ class GitHubClient:
                 for label in issue.labels
             ]
 
-            return Ticket(
+            return Issue(
                 repo_id=repo_id,
                 number=issue.number,
                 key=str(issue.number),
@@ -293,13 +293,13 @@ class GitHubClient:
     def fetch_issue_by_key(
         self,
         repo_full_name: str,
-        ticket_key: str,
+        issue_key: str,
         repo_id: int
-    ) -> Optional[Ticket]:
-        """Fetch issue by ticket key (e.g., '#123' or 'PROJ-123')."""
+    ) -> Optional[Issue]:
+        """Fetch issue by issue key (e.g., '#123' or 'PROJ-123')."""
         # Extract number from key
         import re
-        match = re.search(r'(\d+)', ticket_key)
+        match = re.search(r'(\d+)', issue_key)
         if not match:
             return None
 
@@ -382,7 +382,7 @@ class GitHubClient:
             console.print(f"[red]Error fetching issues from {repo_full_name}: {e}[/red]")
             return []
 
-    def search_ticket_numbers(self, repo_full_name: str, since: Optional[datetime] = None) -> List[int]:
+    def search_issue_numbers(self, repo_full_name: str, since: Optional[datetime] = None) -> List[int]:
         """Deprecated: Use search_issue_numbers() instead."""
         return self.search_issue_numbers(repo_full_name, since)
 
@@ -391,12 +391,12 @@ class GitHubClient:
         repo_full_name: str,
         repo_id: int,
         since: Optional[datetime] = None
-    ) -> List[Ticket]:
+    ) -> List[Issue]:
         """
-        Fetch all issues as Ticket objects using Core API with efficient pagination.
+        Fetch all issues as Issue objects using Core API with efficient pagination.
 
         Uses GET /repos/{owner}/{repo}/issues endpoint with per_page=100.
-        Fetches full issue data and converts to Ticket objects in one pass.
+        Fetches full issue data and converts to Issue objects in one pass.
 
         IMPORTANT: GitHub's /issues endpoint returns both issues AND pull requests.
         PRs are filtered out by checking if pull_request field is None.
@@ -409,7 +409,7 @@ class GitHubClient:
             since: Only include issues created after this datetime
 
         Returns:
-            List of Ticket objects (PRs excluded)
+            List of Issue objects (PRs excluded)
         """
         from rich.progress import Progress, SpinnerColumn, TextColumn
         import time
@@ -425,7 +425,7 @@ class GitHubClient:
                 direction='asc'
             )
 
-            tickets = []
+            issues = []
             page_num = 0
 
             with Progress(
@@ -453,13 +453,13 @@ class GitHubClient:
                         page_fetch_time = time.time() - page_start
                         progress.update(task, description=f"Fetching issues... page {page_num + 1} ({len(page)} items in {page_fetch_time:.1f}s, converting...)")
 
-                        # Convert issues to Ticket objects directly
+                        # Convert issues to Issue objects directly
                         convert_start = time.time()
                         for idx, issue in enumerate(page):
                             item_start = time.time()
-                            # Convert to Ticket using helper (doesn't trigger extra API calls)
-                            ticket = self._issue_to_ticket(issue, repo_id)
-                            tickets.append(ticket)
+                            # Convert to Issue using helper (doesn't trigger extra API calls)
+                            issue = self._issue_to_issue(issue, repo_id)
+                            issues.append(issue)
                             item_time = time.time() - item_start
 
                             # Update every 10 items to show progress
@@ -469,30 +469,30 @@ class GitHubClient:
 
                         convert_time = time.time() - convert_start
                         page_num += 1
-                        progress.update(task, description=f"Fetching issues... {len(tickets)} found (page {page_num} done in {page_fetch_time + convert_time:.1f}s)")
+                        progress.update(task, description=f"Fetching issues... {len(issues)} found (page {page_num} done in {page_fetch_time + convert_time:.1f}s)")
 
                     except Exception as e:
                         # No more pages
                         break
 
-            console.print(f"  [green]✓[/green] Found {len(tickets)} issues")
-            return tickets
+            console.print(f"  [green]✓[/green] Found {len(issues)} issues")
+            return issues
 
         except GithubException as e:
             console.print(f"[red]Error fetching issues from {repo_full_name}: {e}[/red]")
             return []
 
-    def search_tickets(
+    def search_issues(
         self,
         repo_full_name: str,
         repo_id: int,
         since: Optional[datetime] = None
-    ) -> List[Ticket]:
+    ) -> List[Issue]:
         """
-        Search for tickets using GitHub Search API and return full Ticket objects.
+        Search for issues using GitHub Search API and return full Issue objects.
 
-        This is more efficient than search_ticket_numbers() + fetch_issue() for each,
-        as it extracts all ticket data directly from search results without additional API calls.
+        This is more efficient than search_issue_numbers() + fetch_issue() for each,
+        as it extracts all issue data directly from search results without additional API calls.
 
         GitHub Search API has a 1000-result limit per query. This method handles
         that by chunking the date range when needed.
@@ -500,21 +500,21 @@ class GitHubClient:
         Args:
             repo_full_name: Full repository name (owner/repo)
             repo_id: Repository ID in database
-            since: Only include tickets created after this datetime
+            since: Only include issues created after this datetime
 
         Returns:
-            List of Ticket objects with full data
+            List of Issue objects with full data
         """
         from datetime import timedelta
 
         try:
-            console.print(f"  [cyan]Searching for tickets...[/cyan]")
+            console.print(f"  [cyan]Searching for issues...[/cyan]")
 
             # NOTE: GitHub Search API has a 1000-result limit per query
             # AND it lies about totalCount - it caps at 1000 even when there are more results
             # So we must always chunk and check if we hit exactly 1000 results
 
-            tickets = []
+            issues = []
             current_start = since
 
             while True:
@@ -530,25 +530,25 @@ class GitHubClient:
                     break
 
                 # Show progress
-                if len(tickets) == 0:
+                if len(issues) == 0:
                     if chunk_count >= 1000:
-                        console.print(f"  [yellow]Note: API shows {chunk_count} tickets, but there may be more (API limit: 1000)[/yellow]")
+                        console.print(f"  [yellow]Note: API shows {chunk_count} issues, but there may be more (API limit: 1000)[/yellow]")
                     else:
-                        console.print(f"  [dim]Total tickets to fetch: {chunk_count}[/dim]")
+                        console.print(f"  [dim]Total issues to fetch: {chunk_count}[/dim]")
 
                 # Fetch up to 1000 from this chunk
                 fetched_in_chunk = 0
                 last_created_date = None
 
                 for issue in chunk_issues:
-                    # Convert to Ticket object directly (no additional API call needed!)
-                    ticket = self._issue_to_ticket(issue, repo_id)
-                    tickets.append(ticket)
+                    # Convert to Issue object directly (no additional API call needed!)
+                    issue = self._issue_to_issue(issue, repo_id)
+                    issues.append(issue)
                     last_created_date = issue.created_at
                     fetched_in_chunk += 1
 
-                    if len(tickets) % 100 == 0:
-                        console.print(f"  [dim]Found {len(tickets)} tickets...[/dim]")
+                    if len(issues) % 100 == 0:
+                        console.print(f"  [dim]Found {len(issues)} issues...[/dim]")
 
                     # Stop at 1000 per chunk to avoid API limit
                     if fetched_in_chunk >= 1000:
@@ -565,11 +565,11 @@ class GitHubClient:
                 else:
                     break
 
-            console.print(f"  [green]✓[/green] Found {len(tickets)} tickets with full data")
-            return tickets
+            console.print(f"  [green]✓[/green] Found {len(issues)} issues with full data")
+            return issues
 
         except GithubException as e:
-            console.print(f"[red]Error searching tickets from {repo_full_name}: {e}[/red]")
+            console.print(f"[red]Error searching issues from {repo_full_name}: {e}[/red]")
             return []
 
     def search_pr_numbers(
@@ -829,26 +829,26 @@ class GitHubClient:
             console.print(f"[red]Error searching PRs from {repo_full_name}: {e}[/red]")
             return []
 
-    def get_ticket(
+    def get_issue(
         self,
         repo_full_name: str,
-        ticket_number: int
-    ) -> Optional[Ticket]:
+        issue_number: int
+    ) -> Optional[Issue]:
         """
-        Get a single ticket (convenience method for parallel fetching).
+        Get a single issue (convenience method for parallel fetching).
 
         Args:
             repo_full_name: Full repository name (owner/repo)
-            ticket_number: Ticket number
+            issue_number: Issue number
 
         Returns:
-            Ticket model or None
+            Issue model or None
         """
         # Need to get repo_id first
         repo_info = self.get_repository_info(repo_full_name)
         # Assuming repo_id is stored - we'll need to look it up from DB
         # For now, use a temporary value and let the caller handle it
-        return self.fetch_issue(repo_full_name, ticket_number, repo_id=0)
+        return self.fetch_issue(repo_full_name, issue_number, repo_id=0)
 
     def get_pull_request(
         self,

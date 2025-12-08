@@ -25,7 +25,7 @@ tests/
 ├── test_db.py            # Database operations
 ├── test_git_ops.py       # Git repository operations
 ├── test_github_utils.py  # GitHub API client (if needed)
-├── test_policies.py      # Ticket extraction, consolidation, generation
+├── test_policies.py      # Issue extraction, consolidation, generation
 ├── test_sync.py          # Sync manager tests
 ├── test_output_template.py  # Template rendering
 └── test_default_template.py # Default template behavior
@@ -98,13 +98,13 @@ def test_db():
     yield db
     db.close()
 
-def test_upsert_ticket(test_db):
-    """Test inserting and updating tickets."""
-    ticket = Ticket(
+def test_upsert_issue(test_db):
+    """Test inserting and updating issues."""
+    issue = Issue(
         repo_id=1,
         number=123,
         key="#123",
-        title="Test ticket",
+        title="Test issue",
         body="Description",
         state="open",
         labels=[],
@@ -112,18 +112,18 @@ def test_upsert_ticket(test_db):
     )
 
     # Insert
-    test_db.upsert_ticket(ticket)
+    test_db.upsert_issue(issue)
 
     # Verify
-    result = test_db.get_ticket_by_number(1, 123)
-    assert result.title == "Test ticket"
+    result = test_db.get_issue_by_number(1, 123)
+    assert result.title == "Test issue"
 
     # Update
-    ticket.title = "Updated title"
-    test_db.upsert_ticket(ticket)
+    issue.title = "Updated title"
+    test_db.upsert_issue(issue)
 
     # Verify update
-    result = test_db.get_ticket_by_number(1, 123)
+    result = test_db.get_issue_by_number(1, 123)
     assert result.title == "Updated title"
 ```
 
@@ -176,16 +176,16 @@ def mock_github():
     mock = Mock(spec=GitHubClient)
     return mock
 
-def test_search_ticket_numbers(mock_github):
-    """Test ticket number search."""
+def test_search_issue_numbers(mock_github):
+    """Test issue number search."""
     # Mock the search results
-    mock_github.search_ticket_numbers.return_value = [1, 2, 3, 4, 5]
+    mock_github.search_issue_numbers.return_value = [1, 2, 3, 4, 5]
 
-    numbers = mock_github.search_ticket_numbers("owner/repo", since=None)
+    numbers = mock_github.search_issue_numbers("owner/repo", since=None)
 
     assert len(numbers) == 5
     assert 1 in numbers
-    mock_github.search_ticket_numbers.assert_called_once()
+    mock_github.search_issue_numbers.assert_called_once()
 ```
 
 ### 6. Sync Manager Tests
@@ -194,36 +194,36 @@ def test_search_ticket_numbers(mock_github):
 ```python
 def test_incremental_sync_filters_existing(test_db, mock_github):
     """Test that incremental sync only fetches new items."""
-    # Setup: Add existing tickets to DB
+    # Setup: Add existing issues to DB
     for num in [1, 2, 3]:
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1, number=num, key=f"#{num}",
-            title=f"Ticket {num}", body="", state="open",
+            title=f"Issue {num}", body="", state="open",
             labels=[], url=f"https://github.com/owner/repo/issues/{num}"
         )
-        test_db.upsert_ticket(ticket)
+        test_db.upsert_issue(issue)
 
-    # Mock GitHub to return all tickets (including existing)
-    mock_github.search_ticket_numbers.return_value = [1, 2, 3, 4, 5, 6]
+    # Mock GitHub to return all issues (including existing)
+    mock_github.search_issue_numbers.return_value = [1, 2, 3, 4, 5, 6]
 
     sync_manager = SyncManager(test_config, test_db, mock_github)
 
-    # Get ticket numbers to fetch
-    to_fetch = sync_manager._get_ticket_numbers_to_fetch("owner/repo", None)
+    # Get issue numbers to fetch
+    to_fetch = sync_manager._get_issue_numbers_to_fetch("owner/repo", None)
 
-    # Should only fetch new tickets (4, 5, 6)
+    # Should only fetch new issues (4, 5, 6)
     assert set(to_fetch) == {4, 5, 6}
 ```
 
 ### 7. Policy Tests
 
-**Pattern**: Test ticket extraction, consolidation, categorization
+**Pattern**: Test issue extraction, consolidation, categorization
 ```python
-class TestTicketExtractor:
-    """Test ticket reference extraction."""
+class TestIssueExtractor:
+    """Test issue reference extraction."""
 
     def test_extract_from_branch_name(self):
-        """Test extracting ticket from branch name."""
+        """Test extracting issue from branch name."""
         commit = Commit(
             sha="abc123",
             message="Fix bug",
@@ -233,10 +233,10 @@ class TestTicketExtractor:
             branch_name="feat/meta-123/description"
         )
 
-        extractor = TicketExtractor(test_config)
-        ticket_key = extractor.extract_from_commit(commit)
+        extractor = IssueExtractor(test_config)
+        issue_key = extractor.extract_from_commit(commit)
 
-        assert ticket_key == "meta-123"
+        assert issue_key == "meta-123"
 
     def test_extract_from_pr_body(self):
         """Test extracting parent issue from PR body."""
@@ -247,10 +247,10 @@ class TestTicketExtractor:
             # ... other fields
         )
 
-        extractor = TicketExtractor(test_config)
-        ticket_key = extractor.extract_from_pr(pr)
+        extractor = IssueExtractor(test_config)
+        issue_key = extractor.extract_from_pr(pr)
 
-        assert ticket_key == "#123"
+        assert issue_key == "#123"
 ```
 
 ### 8. Template Rendering Tests
@@ -335,7 +335,7 @@ pytest -s
 
 ### Test Naming Conventions
 - Test files: `test_<module>.py`
-- Test classes: `Test<Feature>` (e.g., `TestTicketExtractor`)
+- Test classes: `Test<Feature>` (e.g., `TestIssueExtractor`)
 - Test functions: `test_<what_it_tests>` (e.g., `test_extract_from_branch_name`)
 
 ## Assertions
@@ -362,7 +362,7 @@ assert True    # Meaningless
 ```python
 # Mock GitHub API
 mock_gh = Mock(spec=GitHubClient)
-mock_gh.search_ticket_numbers.return_value = [1, 2, 3]
+mock_gh.search_issue_numbers.return_value = [1, 2, 3]
 
 # Mock file system
 with patch('pathlib.Path.exists', return_value=True):
@@ -376,10 +376,10 @@ with patch('datetime.datetime.now', return_value=fixed_time):
 ### Don't Mock What You Own
 ```python
 # DON'T mock your own models
-mock_ticket = Mock(spec=Ticket)  # Bad
+mock_issue = Mock(spec=Issue)  # Bad
 
 # DO create real instances
-ticket = Ticket(...)  # Good
+issue = Issue(...)  # Good
 ```
 
 ## Test Coverage Goals

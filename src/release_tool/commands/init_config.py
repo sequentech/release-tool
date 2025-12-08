@@ -27,7 +27,7 @@ config_version = "1.4"
 
 [repository]
 code_repo = "sequentech/step"
-ticket_repos = ["sequentech/meta"]
+issue_repos = ["sequentech/meta"]
 default_branch = "main"
 
 [github]
@@ -42,27 +42,27 @@ parallel_workers = 10
 clone_code_repo = true
 show_progress = true
 
-[[ticket_policy.patterns]]
+[[issue_policy.patterns]]
 order = 1
 strategy = "branch_name"
-pattern = "/(?P<repo>\\\\w+)-(?P<ticket>\\\\d+)"
+pattern = "/(?P<repo>\\\\w+)-(?P<issue>\\\\d+)"
 description = "Branch name format: type/repo-123/target"
 
-[[ticket_policy.patterns]]
+[[issue_policy.patterns]]
 order = 2
 strategy = "pr_body"
-pattern = "Parent issue:.*?/issues/(?P<ticket>\\\\d+)"
+pattern = "Parent issue:.*?/issues/(?P<issue>\\\\d+)"
 description = "Parent issue URL in PR description"
 
-[[ticket_policy.patterns]]
+[[issue_policy.patterns]]
 order = 3
 strategy = "pr_title"
-pattern = "#(?P<ticket>\\\\d+)"
+pattern = "#(?P<issue>\\\\d+)"
 description = "GitHub issue reference (#123) in PR title"
 
-[ticket_policy]
-no_ticket_action = "warn"
-unclosed_ticket_action = "warn"
+[issue_policy]
+no_issue_action = "warn"
+unclosed_issue_action = "warn"
 consolidation_enabled = true
 description_section_regex = "(?:## Description|## Summary)\\\\n(.*?)(?=\\\\n##|\\\\Z)"
 migration_section_regex = "(?:## Migration|## Migration Notes)\\\\n(.*?)(?=\\\\n##|\\\\Z)"

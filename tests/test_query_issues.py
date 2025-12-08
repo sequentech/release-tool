@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for tickets command and database querying."""
+"""Tests for issues command and database querying."""
 
 import pytest
 import tempfile
@@ -11,7 +11,7 @@ from datetime import datetime
 from click.testing import CliRunner
 
 from release_tool.db import Database
-from release_tool.models import Repository, Ticket, Label
+from release_tool.models import Repository, Issue, Label
 from release_tool.main import cli
 
 
@@ -32,10 +32,10 @@ def test_db():
     meta_id = db.upsert_repository(meta_repo)
     step_id = db.upsert_repository(step_repo)
 
-    # Create test tickets
-    tickets_data = [
-        # Meta repo tickets
-        Ticket(
+    # Create test issues
+    issues_data = [
+        # Meta repo issues
+        Issue(
             repo_id=meta_id,
             number=8624,
             key="8624",
@@ -46,7 +46,7 @@ def test_db():
             url="https://github.com/sequentech/meta/issues/8624",
             created_at=datetime(2024, 1, 15),
         ),
-        Ticket(
+        Issue(
             repo_id=meta_id,
             number=8625,
             key="8625",
@@ -58,7 +58,7 @@ def test_db():
             created_at=datetime(2024, 1, 16),
             closed_at=datetime(2024, 1, 20),
         ),
-        Ticket(
+        Issue(
             repo_id=meta_id,
             number=8650,
             key="8650",
@@ -69,19 +69,19 @@ def test_db():
             url="https://github.com/sequentech/meta/issues/8650",
             created_at=datetime(2024, 2, 1),
         ),
-        Ticket(
+        Issue(
             repo_id=meta_id,
             number=8624,
             key="#8624",  # Duplicate with # prefix
-            title="Another ticket",
+            title="Another issue",
             body="Test duplicate key handling",
             state="open",
             labels=[],
             url="https://github.com/sequentech/meta/issues/8624",
             created_at=datetime(2024, 1, 10),  # Earlier than first 8624
         ),
-        # Step repo tickets
-        Ticket(
+        # Step repo issues
+        Issue(
             repo_id=step_id,
             number=1024,
             key="1024",
@@ -92,7 +92,7 @@ def test_db():
             url="https://github.com/sequentech/step/issues/1024",
             created_at=datetime(2024, 3, 1),
         ),
-        Ticket(
+        Issue(
             repo_id=step_id,
             number=1124,
             key="1124",
@@ -106,8 +106,8 @@ def test_db():
         ),
     ]
 
-    for ticket in tickets_data:
-        db.upsert_ticket(ticket)
+    for issue in issues_data:
+        db.upsert_issue(issue)
 
     yield db, meta_id, step_id
 
@@ -116,150 +116,150 @@ def test_db():
     Path(db_path).unlink()
 
 
-class TestParseTicketNumber:
-    """Tests for _parse_ticket_number helper."""
+class TestParseIssueNumber:
+    """Tests for _parse_issue_number helper."""
 
     def test_parse_plain_number(self, test_db):
         """Test parsing plain number."""
         db, _, _ = test_db
-        assert db._parse_ticket_number("8624") == 8624
+        assert db._parse_issue_number("8624") == 8624
 
     def test_parse_hash_prefix(self, test_db):
         """Test parsing with # prefix."""
         db, _, _ = test_db
-        assert db._parse_ticket_number("#8624") == 8624
+        assert db._parse_issue_number("#8624") == 8624
 
     def test_parse_jira_style(self, test_db):
         """Test parsing JIRA-style key."""
         db, _, _ = test_db
-        assert db._parse_ticket_number("ISSUE-8624") == 8624
-        assert db._parse_ticket_number("meta-8624") == 8624
+        assert db._parse_issue_number("ISSUE-8624") == 8624
+        assert db._parse_issue_number("meta-8624") == 8624
 
     def test_parse_no_number(self, test_db):
         """Test parsing with no number."""
         db, _, _ = test_db
-        assert db._parse_ticket_number("no-numbers-here") is None
+        assert db._parse_issue_number("no-numbers-here") is None
 
     def test_parse_empty(self, test_db):
         """Test parsing empty string."""
         db, _, _ = test_db
-        assert db._parse_ticket_number("") is None
+        assert db._parse_issue_number("") is None
 
 
-class TestQueryTicketsDatabase:
-    """Tests for database query_tickets method."""
+class TestQueryIssuesDatabase:
+    """Tests for database query_issues method."""
 
-    def test_query_by_exact_ticket_key(self, test_db):
-        """Test finding ticket by exact key."""
+    def test_query_by_exact_issue_key(self, test_db):
+        """Test finding issue by exact key."""
         db, _, _ = test_db
-        tickets = db.query_tickets(ticket_key="8624")
+        issues = db.query_issues(issue_key="8624")
 
-        assert len(tickets) >= 1
+        assert len(issues) >= 1
         # Should find the most recent one
-        assert tickets[0].key in ["8624", "#8624"]
+        assert issues[0].key in ["8624", "#8624"]
 
     def test_query_by_repo_id(self, test_db):
-        """Test finding all tickets in a repo."""
+        """Test finding all issues in a repo."""
         db, meta_id, step_id = test_db
 
-        meta_tickets = db.query_tickets(repo_id=meta_id, limit=100)
-        assert len(meta_tickets) == 4  # 4 tickets in meta repo
+        meta_issues = db.query_issues(repo_id=meta_id, limit=100)
+        assert len(meta_issues) == 4  # 4 issues in meta repo
 
-        step_tickets = db.query_tickets(repo_id=step_id, limit=100)
-        assert len(step_tickets) == 2  # 2 tickets in step repo
+        step_issues = db.query_issues(repo_id=step_id, limit=100)
+        assert len(step_issues) == 2  # 2 issues in step repo
 
     def test_query_by_repo_full_name(self, test_db):
-        """Test finding tickets by repository name."""
+        """Test finding issues by repository name."""
         db, _, _ = test_db
 
-        tickets = db.query_tickets(repo_full_name="sequentech/meta", limit=100)
-        assert len(tickets) == 4
+        issues = db.query_issues(repo_full_name="sequentech/meta", limit=100)
+        assert len(issues) == 4
 
-        tickets = db.query_tickets(repo_full_name="sequentech/step", limit=100)
-        assert len(tickets) == 2
+        issues = db.query_issues(repo_full_name="sequentech/step", limit=100)
+        assert len(issues) == 2
 
-    def test_query_combined_ticket_and_repo(self, test_db):
-        """Test combining ticket key and repo filters."""
+    def test_query_combined_issue_and_repo(self, test_db):
+        """Test combining issue key and repo filters."""
         db, meta_id, _ = test_db
 
-        # Find specific ticket in specific repo
-        tickets = db.query_tickets(ticket_key="8624", repo_id=meta_id)
-        assert len(tickets) >= 1
-        assert all(t.repo_id == meta_id for t in tickets)
+        # Find specific issue in specific repo
+        issues = db.query_issues(issue_key="8624", repo_id=meta_id)
+        assert len(issues) >= 1
+        assert all(t.repo_id == meta_id for t in issues)
 
     def test_query_starts_with(self, test_db):
         """Test fuzzy matching with starts_with."""
         db, _, _ = test_db
 
-        # Find all tickets starting with "86"
-        tickets = db.query_tickets(starts_with="86", limit=100)
-        assert len(tickets) >= 3  # 8624 (x2) and 8625, 8650
-        assert all(t.key.startswith("86") or str(t.number).startswith("86") for t in tickets)
+        # Find all issues starting with "86"
+        issues = db.query_issues(starts_with="86", limit=100)
+        assert len(issues) >= 3  # 8624 (x2) and 8625, 8650
+        assert all(t.key.startswith("86") or str(t.number).startswith("86") for t in issues)
 
     def test_query_ends_with(self, test_db):
         """Test fuzzy matching with ends_with."""
         db, _, _ = test_db
 
-        # Find all tickets ending with "24"
-        tickets = db.query_tickets(ends_with="24", limit=100)
-        assert len(tickets) >= 3  # 8624 (x2), 1024, 1124
+        # Find all issues ending with "24"
+        issues = db.query_issues(ends_with="24", limit=100)
+        assert len(issues) >= 3  # 8624 (x2), 1024, 1124
 
     def test_query_close_to_default_range(self, test_db):
         """Test proximity search with default range."""
         db, _, _ = test_db
 
-        # Find tickets close to 8624 (±20 = 8604-8644)
-        tickets = db.query_tickets(close_to="8624", limit=100)
+        # Find issues close to 8624 (±20 = 8604-8644)
+        issues = db.query_issues(close_to="8624", limit=100)
 
         # Should find 8624, 8625
-        assert len(tickets) >= 2
-        for ticket in tickets:
-            assert 8604 <= ticket.number <= 8644
+        assert len(issues) >= 2
+        for issue in issues:
+            assert 8604 <= issue.number <= 8644
 
     def test_query_close_to_custom_range(self, test_db):
         """Test proximity search with custom range."""
         db, _, _ = test_db
 
-        # Find tickets close to 8624 with range of 50 (8574-8674)
-        tickets = db.query_tickets(close_to="8624", close_range=50, limit=100)
+        # Find issues close to 8624 with range of 50 (8574-8674)
+        issues = db.query_issues(close_to="8624", close_range=50, limit=100)
 
         # Should find 8624, 8625, 8650
-        assert len(tickets) >= 3
-        for ticket in tickets:
-            assert 8574 <= ticket.number <= 8674
+        assert len(issues) >= 3
+        for issue in issues:
+            assert 8574 <= issue.number <= 8674
 
     def test_query_with_limit(self, test_db):
         """Test pagination with limit."""
         db, _, _ = test_db
 
         # Query with limit of 2
-        tickets = db.query_tickets(limit=2)
-        assert len(tickets) == 2
+        issues = db.query_issues(limit=2)
+        assert len(issues) == 2
 
     def test_query_with_offset(self, test_db):
         """Test pagination with offset."""
         db, _, _ = test_db
 
-        # Get all tickets
-        all_tickets = db.query_tickets(limit=100)
-        total = len(all_tickets)
+        # Get all issues
+        all_issues = db.query_issues(limit=100)
+        total = len(all_issues)
 
-        # Get tickets with offset
-        tickets_offset = db.query_tickets(offset=2, limit=100)
+        # Get issues with offset
+        issues_offset = db.query_issues(offset=2, limit=100)
 
-        # Should have 2 fewer tickets
-        assert len(tickets_offset) == total - 2
+        # Should have 2 fewer issues
+        assert len(issues_offset) == total - 2
 
     def test_query_limit_and_offset(self, test_db):
         """Test combined pagination."""
         db, _, _ = test_db
 
         # Get first 2
-        first_page = db.query_tickets(limit=2, offset=0)
+        first_page = db.query_issues(limit=2, offset=0)
         assert len(first_page) == 2
 
         # Get next 2
-        second_page = db.query_tickets(limit=2, offset=2)
+        second_page = db.query_issues(limit=2, offset=2)
         assert len(second_page) <= 2
 
         # Should not overlap
@@ -271,24 +271,24 @@ class TestQueryTicketsDatabase:
         """Test query returning no results."""
         db, _, _ = test_db
 
-        tickets = db.query_tickets(ticket_key="nonexistent-99999")
-        assert len(tickets) == 0
+        issues = db.query_issues(issue_key="nonexistent-99999")
+        assert len(issues) == 0
 
     def test_query_repo_full_name_includes_repo_info(self, test_db):
-        """Test that tickets include repo_full_name when queried."""
+        """Test that issues include repo_full_name when queried."""
         db, _, _ = test_db
 
-        tickets = db.query_tickets(repo_full_name="sequentech/meta", limit=1)
-        assert len(tickets) >= 1
+        issues = db.query_issues(repo_full_name="sequentech/meta", limit=1)
+        assert len(issues) >= 1
 
         # Check that _repo_full_name is attached
-        ticket = tickets[0]
-        assert hasattr(ticket, '_repo_full_name')
-        assert ticket._repo_full_name == "sequentech/meta"
+        issue = issues[0]
+        assert hasattr(issue, '_repo_full_name')
+        assert issue._repo_full_name == "sequentech/meta"
 
 
-class TestQueryTicketsCLI:
-    """Tests for CLI tickets command."""
+class TestQueryIssuesCLI:
+    """Tests for CLI issues command."""
 
     def test_cli_no_database(self, tmp_path, monkeypatch):
         """Test error when database doesn't exist."""
@@ -296,7 +296,7 @@ class TestQueryTicketsCLI:
         config_file = tmp_path / "test_config.toml"
         nonexistent_db = tmp_path / "nonexistent.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -310,20 +310,20 @@ path = "{nonexistent_db}"
         config_file.write_text(config_content)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['--config', str(config_file), 'tickets', '8624'])
+        result = runner.invoke(cli, ['--config', str(config_file), 'issues', '8624'])
 
         assert result.exit_code != 0
         assert "Database not found" in result.output
 
-    def test_cli_exact_ticket(self, tmp_path, test_db):
-        """Test CLI with exact ticket number."""
+    def test_cli_exact_issue(self, tmp_path, test_db):
+        """Test CLI with exact issue number."""
         db, _, _ = test_db
 
         # Create config
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -341,7 +341,7 @@ path = "{db_copy_path}"
         shutil.copy(db.db_path, db_copy_path)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ['--config', str(config_file), 'tickets', '8624'])
+        result = runner.invoke(cli, ['--config', str(config_file), 'issues', '8624'])
 
         assert result.exit_code == 0
         assert "8624" in result.output
@@ -353,7 +353,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -372,7 +372,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--repo', 'sequentech/step',
             '--limit', '10'
         ])
@@ -387,7 +387,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -406,7 +406,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--starts-with', '86'
         ])
 
@@ -420,7 +420,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -439,7 +439,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--repo', 'sequentech/meta',
             '--format', 'csv',
             '--limit', '2'
@@ -458,7 +458,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -477,14 +477,14 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--limit', '2',
             '--offset', '1'
         ])
 
         assert result.exit_code == 0
         # Should show pagination info
-        assert "Showing" in result.output or "tickets" in result.output.lower()
+        assert "Showing" in result.output or "issues" in result.output.lower()
 
     def test_cli_invalid_range(self, tmp_path, test_db):
         """Test CLI validation for invalid --range."""
@@ -493,7 +493,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -512,7 +512,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--close-to', '8624',
             '--range', '-10'
         ])
@@ -527,7 +527,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -546,7 +546,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--close-to', '8624',
             '--starts-with', '86'
         ])
@@ -555,8 +555,8 @@ path = "{db_copy_path}"
         assert "cannot combine" in result.output.lower()
 
 
-class TestSmartTicketKeyParsing:
-    """Tests for smart TICKET_KEY argument parsing."""
+class TestSmartIssueKeyParsing:
+    """Tests for smart ISSUE_KEY argument parsing."""
 
     def test_plain_number(self, tmp_path, test_db):
         """Test parsing plain number: 8624."""
@@ -565,7 +565,7 @@ class TestSmartTicketKeyParsing:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -584,7 +584,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '8624'
         ])
 
@@ -598,7 +598,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -617,7 +617,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '#8624'
         ])
 
@@ -631,7 +631,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -650,7 +650,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             'meta#8624'
         ])
 
@@ -665,7 +665,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -684,12 +684,12 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             'meta#8624~'
         ])
 
         assert result.exit_code == 0
-        # Should find multiple tickets in proximity (8624, 8625, 8650)
+        # Should find multiple issues in proximity (8624, 8625, 8650)
         assert "8624" in result.output or "8625" in result.output
 
     def test_full_repo_path(self, tmp_path, test_db):
@@ -699,7 +699,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -718,7 +718,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             'sequentech/meta#8624'
         ])
 
@@ -733,7 +733,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -752,12 +752,12 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             'sequentech/meta#8624~'
         ])
 
         assert result.exit_code == 0
-        # Should find multiple tickets in proximity
+        # Should find multiple issues in proximity
         assert "8624" in result.output or "8625" in result.output
 
     def test_repo_override_with_option(self, tmp_path, test_db):
@@ -767,7 +767,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -786,7 +786,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--repo', 'sequentech/step',  # Override with step
             'meta#1024'  # This is actually in step repo
         ])
@@ -806,7 +806,7 @@ class TestOutputFormats:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -825,7 +825,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--limit', '3',
             '--format', 'table'
         ])
@@ -844,7 +844,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -863,12 +863,12 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
-            'nonexistent-999999'  # Positional argument, not --ticket-key
+            'issues',
+            'nonexistent-999999'  # Positional argument, not --issue-key
         ])
 
         assert result.exit_code == 0
-        assert "No tickets found" in result.output
+        assert "No issues found" in result.output
 
     def test_csv_all_fields(self, tmp_path, test_db):
         """Test CSV includes all expected fields."""
@@ -877,7 +877,7 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -896,7 +896,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--limit', '1',
             '--format', 'csv'
         ])
@@ -924,8 +924,8 @@ path = "{db_copy_path}"
         repo = Repository(owner="test", name="repo")
         repo_id = db.upsert_repository(repo)
 
-        # Ticket with commas and quotes in title/body
-        ticket = Ticket(
+        # Issue with commas and quotes in title/body
+        issue = Issue(
             repo_id=repo_id,
             number=1,
             key="1",
@@ -936,12 +936,12 @@ path = "{db_copy_path}"
             url="https://github.com/test/repo/issues/1",
             created_at=datetime.now(),
         )
-        db.upsert_ticket(ticket)
+        db.upsert_issue(issue)
 
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "test/repo"
@@ -960,7 +960,7 @@ path = "{db_copy_path}"
         runner = CliRunner()
         result = runner.invoke(cli, [
             '--config', str(config_file),
-            'tickets',
+            'issues',
             '--format', 'csv'
         ])
 

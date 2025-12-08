@@ -291,8 +291,8 @@ class Commit(BaseModel):
     pr_number: Optional[int] = None
 
 
-class Ticket(BaseModel):
-    """Issue/ticket model."""
+class Issue(BaseModel):
+    """Issue model."""
     id: Optional[int] = None
     repo_id: int
     number: int
@@ -326,7 +326,7 @@ class Release(BaseModel):
 
 class ReleaseNote(BaseModel):
     """Release note entry model."""
-    ticket_key: Optional[str] = None
+    issue_key: Optional[str] = None
     title: str
     description: Optional[str] = None
     migration_notes: Optional[str] = None
@@ -335,9 +335,9 @@ class ReleaseNote(BaseModel):
     authors: List[Author] = Field(default_factory=list)  # Changed from List[str] to List[Author]
     pr_numbers: List[int] = Field(default_factory=list)
     commit_shas: List[str] = Field(default_factory=list)
-    ticket_url: Optional[str] = None  # URL to the ticket/issue
+    issue_url: Optional[str] = None  # URL to the issue
     pr_url: Optional[str] = None  # URL to the pull request
-    url: Optional[str] = None  # Smart URL: ticket_url if available, else pr_url
+    url: Optional[str] = None  # Smart URL: issue_url if available, else pr_url
     short_link: Optional[str] = None  # Short format: #1234
     short_repo_link: Optional[str] = None  # Short format with repo: owner/repo#1234
     tags: Dict[str, str] = Field(default_factory=dict)
@@ -345,10 +345,10 @@ class ReleaseNote(BaseModel):
 
 class ConsolidatedChange(BaseModel):
     """Consolidated change from commits/PRs."""
-    type: str  # "ticket", "pr", "commit"
-    ticket_key: Optional[str] = None
+    type: str  # "issue", "pr", "commit"
+    issue_key: Optional[str] = None
     pr_number: Optional[int] = None
     commits: List[Commit] = Field(default_factory=list)
     prs: List[PullRequest] = Field(default_factory=list)
-    ticket: Optional[Ticket] = None
+    issue: Optional[Issue] = None
     release_note: Optional[ReleaseNote] = None

@@ -17,7 +17,7 @@ from .commands.publish import publish
 from .commands.list_releases import list_releases
 from .commands.init_config import init_config
 from .commands.update_config import update_config
-from .commands.tickets import tickets
+from .commands.issues import issues
 
 console = Console()
 
@@ -67,7 +67,7 @@ cli.add_command(publish)
 cli.add_command(list_releases)
 cli.add_command(init_config)
 cli.add_command(update_config)
-cli.add_command(tickets)
+cli.add_command(issues)
 
 
 def main():

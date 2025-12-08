@@ -90,11 +90,11 @@ In `doc_output_template` (additional variable):
 
 Each note dict contains:
 - `title` - Note title
-- `url` - PR/ticket URL
+- `url` - PR/issue URL
 - `pr_numbers` - List of PR numbers
 - `commit_shas` - List of commit SHAs
 - `labels` - List of label strings
-- `ticket_key` - Ticket identifier
+- `issue_key` - Issue identifier
 - `category` - Category name
 - `description` - Processed description (may be None)
 - `migration_notes` - Processed migration notes (may be None)

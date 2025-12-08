@@ -12,24 +12,24 @@ from release_tool.models import ConsolidatedChange, Author
 
 @pytest.fixture
 def config_default_policy():
-    """Config with default inclusion policy ["tickets", "pull-requests"]."""
+    """Config with default inclusion policy ["issues", "pull-requests"]."""
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
-            "release_notes_inclusion_policy": ["tickets", "pull-requests"]
+        "issue_policy": {
+            "release_notes_inclusion_policy": ["issues", "pull-requests"]
         }
     })
 
 
 @pytest.fixture
-def config_tickets_only():
-    """Config with tickets-only policy."""
+def config_issues_only():
+    """Config with issues-only policy."""
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
-            "release_notes_inclusion_policy": ["tickets"]
+        "issue_policy": {
+            "release_notes_inclusion_policy": ["issues"]
         }
     })
 
@@ -40,7 +40,7 @@ def config_commits_only():
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
+        "issue_policy": {
             "release_notes_inclusion_policy": ["commits"]
         }
     })
@@ -52,8 +52,8 @@ def config_all_types():
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
-            "release_notes_inclusion_policy": ["tickets", "pull-requests", "commits"]
+        "issue_policy": {
+            "release_notes_inclusion_policy": ["issues", "pull-requests", "commits"]
         }
     })
 
@@ -64,7 +64,7 @@ def config_prs_only():
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
+        "issue_policy": {
             "release_notes_inclusion_policy": ["pull-requests"]
         }
     })
@@ -76,7 +76,7 @@ def config_empty_policy():
     return Config.from_dict({
         "repository": {"code_repo": "test/repo"},
         "github": {"token": "test_token"},
-        "ticket_policy": {
+        "issue_policy": {
             "release_notes_inclusion_policy": []
         }
     })
@@ -85,17 +85,17 @@ def config_empty_policy():
 @pytest.fixture
 def sample_changes():
     """Sample consolidated changes covering all types."""
-    from release_tool.models import Commit, PullRequest, Ticket, Label
+    from release_tool.models import Commit, PullRequest, Issue, Label
     from datetime import datetime
 
     author = Author(name="Test User", username="testuser", email="test@example.com")
 
     return [
-        # Type: ticket (PR with ticket)
+        # Type: issue (PR with issue)
         ConsolidatedChange(
-            type="ticket",
-            ticket_key="#123",
-            ticket=Ticket(
+            type="issue",
+            issue_key="#123",
+            issue=Issue(
                 repo_id=1,
                 number=123,
                 key="123",
@@ -115,7 +115,7 @@ def sample_changes():
             ],
             commits=[]
         ),
-        # Type: pr (PR without ticket)
+        # Type: pr (PR without issue)
         ConsolidatedChange(
             type="pr",
             prs=[
@@ -144,11 +144,11 @@ def sample_changes():
             ],
             prs=[]
         ),
-        # Type: ticket (another ticketed change)
+        # Type: issue (another issueed change)
         ConsolidatedChange(
-            type="ticket",
-            ticket_key="#124",
-            ticket=Ticket(
+            type="issue",
+            issue_key="#124",
+            issue=Issue(
                 repo_id=1,
                 number=124,
                 key="124",
@@ -172,35 +172,35 @@ def sample_changes():
 
 
 def test_default_policy_excludes_standalone_commits(config_default_policy, sample_changes):
-    """Test that default policy ["tickets", "pull-requests"] excludes standalone commits."""
+    """Test that default policy ["issues", "pull-requests"] excludes standalone commits."""
     filtered = _filter_by_inclusion_policy(sample_changes, config_default_policy, debug=False)
 
-    # Should include 3 changes: 2 tickets + 1 PR
+    # Should include 3 changes: 2 issues + 1 PR
     assert len(filtered) == 3
 
-    # Should include ticketed changes
-    assert any(c.ticket_key == "#123" for c in filtered)
-    assert any(c.ticket_key == "#124" for c in filtered)
+    # Should include issueed changes
+    assert any(c.issue_key == "#123" for c in filtered)
+    assert any(c.issue_key == "#124" for c in filtered)
 
-    # Should include PR without ticket
+    # Should include PR without issue
     assert any(c.type == "pr" and len(c.prs) > 0 and c.prs[0].number == 101 for c in filtered)
 
     # Should NOT include standalone commit
     assert not any(c.type == "commit" for c in filtered)
 
 
-def test_tickets_only_policy(config_tickets_only, sample_changes):
-    """Test that tickets-only policy excludes PRs without tickets and commits."""
-    filtered = _filter_by_inclusion_policy(sample_changes, config_tickets_only, debug=False)
+def test_issues_only_policy(config_issues_only, sample_changes):
+    """Test that issues-only policy excludes PRs without issues and commits."""
+    filtered = _filter_by_inclusion_policy(sample_changes, config_issues_only, debug=False)
 
-    # Should include only 2 ticketed changes
+    # Should include only 2 issueed changes
     assert len(filtered) == 2
 
-    # Should include ticketed changes
-    assert any(c.ticket_key == "#123" for c in filtered)
-    assert any(c.ticket_key == "#124" for c in filtered)
+    # Should include issueed changes
+    assert any(c.issue_key == "#123" for c in filtered)
+    assert any(c.issue_key == "#124" for c in filtered)
 
-    # Should NOT include PR without ticket (type should not be "pr")
+    # Should NOT include PR without issue (type should not be "pr")
     assert not any(c.type == "pr" for c in filtered)
 
     # Should NOT include standalone commit
@@ -227,14 +227,14 @@ def test_all_types_policy(config_all_types, sample_changes):
 
     # Verify all types are present
     types = {c.type for c in filtered}
-    assert types == {"ticket", "pr", "commit"}
+    assert types == {"issue", "pr", "commit"}
 
 
 def test_prs_only_policy(config_prs_only, sample_changes):
-    """Test that PRs-only policy includes only PRs without tickets."""
+    """Test that PRs-only policy includes only PRs without issues."""
     filtered = _filter_by_inclusion_policy(sample_changes, config_prs_only, debug=False)
 
-    # Should include only 1 PR without ticket
+    # Should include only 1 PR without issue
     assert len(filtered) == 1
     assert filtered[0].type == "pr"
     assert len(filtered[0].prs) == 1
@@ -251,16 +251,16 @@ def test_empty_policy_excludes_everything(config_empty_policy, sample_changes):
 
 def test_filtered_commits_not_in_counts(config_default_policy):
     """Test that excluded changes don't affect counts."""
-    from release_tool.models import Commit, PullRequest, Ticket
+    from release_tool.models import Commit, PullRequest, Issue
     from datetime import datetime
 
     author = Author(name="Test", username="test", email="test@example.com")
 
     changes = [
         ConsolidatedChange(
-            type="ticket",
-            ticket_key="#1",
-            ticket=Ticket(repo_id=1, number=1, key="1", title="Ticket 1", state="closed"),
+            type="issue",
+            issue_key="#1",
+            issue=Issue(repo_id=1, number=1, key="1", title="Issue 1", state="closed"),
             prs=[],
             commits=[]
         ),
@@ -283,16 +283,16 @@ def test_filtered_commits_not_in_counts(config_default_policy):
 
     filtered = _filter_by_inclusion_policy(changes, config_default_policy, debug=False)
 
-    # Only 2 should remain (1 ticket + 1 PR)
+    # Only 2 should remain (1 issue + 1 PR)
     # Standalone commits should be excluded
     assert len(filtered) == 2
 
     # Count should reflect only included changes
-    ticket_count = sum(1 for c in filtered if c.type == "ticket")
+    issue_count = sum(1 for c in filtered if c.type == "issue")
     pr_count = sum(1 for c in filtered if c.type == "pr")
     commit_count = sum(1 for c in filtered if c.type == "commit")
 
-    assert ticket_count == 1
+    assert issue_count == 1
     assert pr_count == 1
     assert commit_count == 0  # No standalone commits
 
@@ -328,20 +328,20 @@ def test_excluded_commits_not_in_other_category(config_default_policy):
 def test_excluded_commits_not_rendered(config_default_policy):
     """Test that excluded commits don't appear in final output."""
     from release_tool.policies import ReleaseNoteGenerator
-    from release_tool.models import Commit, Ticket, Label
+    from release_tool.models import Commit, Issue, Label
     from datetime import datetime
 
     author = Author(name="Test", username="test", email="test@example.com")
 
     changes = [
         ConsolidatedChange(
-            type="ticket",
-            ticket_key="#123",
-            ticket=Ticket(
+            type="issue",
+            issue_key="#123",
+            issue=Issue(
                 repo_id=1,
                 number=123,
                 key="123",
-                title="Feature with ticket",
+                title="Feature with issue",
                 state="closed",
                 labels=[Label(name="feature")]
             ),
@@ -360,12 +360,12 @@ def test_excluded_commits_not_rendered(config_default_policy):
 
     # Convert to ReleaseNotes and render
     generator = ReleaseNoteGenerator(config_default_policy)
-    release_notes = [generator.create_release_note(c, c.ticket) for c in filtered]
+    release_notes = [generator.create_release_note(c, c.issue) for c in filtered]
     grouped = generator.group_by_category(release_notes)
     output = generator.format_markdown(grouped, "1.0.0")
 
-    # Should include the ticket
-    assert "Feature with ticket" in output
+    # Should include the issue
+    assert "Feature with issue" in output
 
     # Should NOT include the standalone commit
     assert "Standalone commit" not in output
@@ -384,26 +384,26 @@ def test_debug_mode_shows_exclusion_info(config_default_policy, sample_changes, 
     assert "1" in captured.out and "commit" in captured.out.lower()
 
 
-def test_ticketed_pr_included_with_tickets_policy(config_tickets_only):
-    """Test that PRs with tickets are included when policy is 'tickets'."""
+def test_issueed_pr_included_with_issues_policy(config_issues_only):
+    """Test that PRs with issues are included when policy is 'issues'."""
     author = Author(name="Test", username="test")
 
     changes = [
-        # This is a PR with a ticket, so type="ticket"
+        # This is a PR with a issue, so type="issue"
         ConsolidatedChange(
-            type="ticket",
-            title="PR with ticket",
-            ticket_key="#123",
+            type="issue",
+            title="PR with issue",
+            issue_key="#123",
             pr_numbers=[100],
             authors=[author]
         ),
     ]
 
-    filtered = _filter_by_inclusion_policy(changes, config_tickets_only, debug=False)
+    filtered = _filter_by_inclusion_policy(changes, config_issues_only, debug=False)
 
-    # Should be included because type="ticket"
+    # Should be included because type="issue"
     assert len(filtered) == 1
-    assert filtered[0].ticket_key == "#123"
+    assert filtered[0].issue_key == "#123"
 
 
 def test_no_debug_output_when_nothing_filtered(config_all_types, sample_changes, capsys):
@@ -423,13 +423,13 @@ def test_preserves_order(config_default_policy, sample_changes):
     # Extract types in order
     types = [c.type for c in filtered]
 
-    # Should preserve order: ticket, pr, ticket (commit was removed)
-    assert types == ["ticket", "pr", "ticket"]
+    # Should preserve order: issue, pr, issue (commit was removed)
+    assert types == ["issue", "pr", "issue"]
 
-    # Verify specific changes by ticket_key and PR number
-    assert filtered[0].ticket_key == "#123"  # First ticket
-    assert filtered[1].prs[0].number == 101  # PR without ticket
-    assert filtered[2].ticket_key == "#124"  # Second ticket
+    # Verify specific changes by issue_key and PR number
+    assert filtered[0].issue_key == "#123"  # First issue
+    assert filtered[1].prs[0].number == 101  # PR without issue
+    assert filtered[2].issue_key == "#124"  # Second issue
 
 
 def test_empty_input(config_default_policy):

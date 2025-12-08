@@ -12,7 +12,7 @@ SPDX-License-Identifier: MIT
 **Purpose**: Command-line interface using Click
 
 **Commands**:
-- `sync` - Synchronize GitHub data (tickets, PRs, releases) to local database
+- `sync` - Synchronize GitHub data (issues, PRs, releases) to local database
 - `generate` - Generate release notes for a version (saves to cache by default)
 - `publish` - Publish release notes to GitHub (create release/PR)
 - `list-releases` - List releases from database with filtering options
@@ -34,7 +34,7 @@ SPDX-License-Identifier: MIT
 - `Repository` - GitHub repo metadata (owner, name, default_branch)
 - `Author` - Contributor info (username, email, display_name, avatar)
 - `Label` - GitHub label (name, color, description)
-- `Ticket` - GitHub issue (number, title, body, labels, state)
+- `Issue` - GitHub issue (number, title, body, labels, state)
 - `PullRequest` - GitHub PR (number, title, merged_at, author, labels)
 - `Commit` - Git commit (sha, message, author, timestamp)
 - `Release` - GitHub release (version, tag, body, published_at)
@@ -49,11 +49,11 @@ SPDX-License-Identifier: MIT
 **Purpose**: Load and validate configuration from TOML files
 
 **Config Sections**:
-- `RepositoryConfig` - code_repo, ticket_repos, default_branch
+- `RepositoryConfig` - code_repo, issue_repos, default_branch
 - `GitHubConfig` - token, api_url
 - `DatabaseConfig` - SQLite database path
 - `SyncConfig` - parallel_workers (20), cutoff_date, clone_code_repo
-- `TicketPolicyConfig` - extraction patterns, consolidation rules
+- `IssuePolicyConfig` - extraction patterns, consolidation rules
 - `VersionPolicyConfig` - tag_prefix, gap_detection
 - `ReleaseNoteConfig` - categories, templates, excluded_labels
 - `OutputConfig` - output paths, GitHub release/PR creation
@@ -62,7 +62,7 @@ SPDX-License-Identifier: MIT
 - `load_config()` - Load from file with defaults (auto-upgrades old versions)
 - `Config.from_file()` - Load from TOML with version checking
 - `Config.from_dict()` - Create from dictionary
-- `get_ticket_repos()` - Get ticket repositories list
+- `get_issue_repos()` - Get issue repositories list
 - `get_category_map()` - Label to category mapping
 
 ### migrations/ (Config Migration System)
@@ -104,9 +104,9 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 **Tables**:
 - `repositories` - Repository metadata
-- `tickets` - GitHub issues
+- `issues` - GitHub issues
 - `pull_requests` - GitHub PRs
-- `commits` - Git commits with ticket associations
+- `commits` - Git commits with issue associations
 - `releases` - GitHub releases
 - `authors` - Contributor information
 - `sync_metadata` - Last sync timestamps for incremental updates
@@ -115,7 +115,7 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 - `connect()` / `close()` - Database lifecycle
 - `init_db()` - Create schema
 - `upsert_*()` - Insert or update records
-- `get_existing_ticket_numbers()` - Fast filtering for incremental sync
+- `get_existing_issue_numbers()` - Fast filtering for incremental sync
 - `get_last_sync()` - Get last sync timestamp
 - `update_sync_metadata()` - Record sync completion
 
@@ -135,9 +135,9 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 **GitHubClient Methods**:
 - `get_repository_info()` - Fetch repository metadata
-- `search_ticket_numbers()` - Fast search for tickets using Search API
+- `search_issue_numbers()` - Fast search for issues using Search API
 - `search_pr_numbers()` - Fast search for PRs using Search API
-- `fetch_issue()` - Get full ticket details
+- `fetch_issue()` - Get full issue details
 - `get_pull_request()` - Get full PR details
 - `fetch_releases()` - Get all releases (parallelized)
 - `create_release()` - Create GitHub release
@@ -153,10 +153,10 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 **Purpose**: Orchestrate parallelized GitHub data synchronization
 
 **SyncManager Methods**:
-- `sync_all()` - Sync all data (tickets, PRs, git repo)
-- `_sync_tickets_for_repo()` - Incremental ticket sync for a repository
+- `sync_all()` - Sync all data (issues, PRs, git repo)
+- `_sync_issues_for_repo()` - Incremental issue sync for a repository
 - `_sync_pull_requests_for_repo()` - Incremental PR sync
-- `_fetch_tickets_streaming()` - Parallel ticket fetch with progress
+- `_fetch_issues_streaming()` - Parallel issue fetch with progress
 - `_fetch_prs_streaming()` - Parallel PR fetch with progress
 - `_sync_git_repository()` - Clone or update local git repo
 
@@ -169,22 +169,22 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 6. Update sync metadata
 
 ### policies.py (Business Logic)
-**Purpose**: Implement ticket extraction, consolidation, and categorization
+**Purpose**: Implement issue extraction, consolidation, and categorization
 
 **Classes**:
 
-**TicketExtractor**:
-- Extract ticket references from commits, PRs, branches
+**IssueExtractor**:
+- Extract issue references from commits, PRs, branches
 - Multiple strategies with priority ordering
 - Regex patterns for JIRA, GitHub issues, custom formats
 
 **CommitConsolidator**:
-- Group commits by parent ticket
+- Group commits by parent issue
 - Consolidate multiple commits into single release note
-- Use ticket title and description instead of commit messages
+- Use issue title and description instead of commit messages
 
 **ReleaseNoteGenerator**:
-- Create ReleaseNote objects from commits/tickets
+- Create ReleaseNote objects from commits/issues
 - Categorize by labels (Features, Bug Fixes, Breaking Changes, etc.)
 - Apply exclusion rules (skip-changelog, internal, etc.)
 - Group and sort by category
@@ -194,7 +194,7 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
 - Policy actions: ignore, warn, error
 
 ### media_utils.py (Media Handling)
-**Purpose**: Download and process media from ticket descriptions
+**Purpose**: Download and process media from issue descriptions
 
 **Functions**:
 - `download_media_from_description()` - Extract and download images/videos
@@ -208,11 +208,11 @@ User runs: release-tool sync
     ↓
 SyncManager.sync_all()
     ↓
-For each ticket_repo:
-    ├─ GitHubClient.search_ticket_numbers() [GitHub Search API]
-    ├─ Database.get_existing_ticket_numbers() [Filter]
+For each issue_repo:
+    ├─ GitHubClient.search_issue_numbers() [GitHub Search API]
+    ├─ Database.get_existing_issue_numbers() [Filter]
     ├─ GitHubClient.fetch_issue() × N [Parallel, 20 workers]
-    └─ Database.upsert_ticket() [Store]
+    └─ Database.upsert_issue() [Store]
     ↓
 For code_repo:
     ├─ GitHubClient.search_pr_numbers() [GitHub Search API]
@@ -233,11 +233,11 @@ GitOps.find_comparison_version() [Auto-detect from version]
     ↓
 GitOps.get_release_commit_range() [Extract commits from Git]
     ↓
-TicketExtractor.extract_all() [Find ticket references]
+IssueExtractor.extract_all() [Find issue references]
     ↓
-CommitConsolidator.consolidate() [Group by ticket]
+CommitConsolidator.consolidate() [Group by issue]
     ↓
-Database.fetch_ticket() [Get ticket metadata]
+Database.fetch_issue() [Get issue metadata]
     ↓
 ReleaseNoteGenerator.generate() [Create categorized notes]
     ↓
@@ -254,7 +254,7 @@ Output to console / file / GitHub release / PR
 - DB operations return model instances
 
 ### 2. Strategy Pattern
-- Multiple ticket extraction strategies
+- Multiple issue extraction strategies
 - Policy-based actions (warn, error, ignore)
 - Template-based output rendering
 

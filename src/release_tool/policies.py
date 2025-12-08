@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Policy implementations for ticket extraction, consolidation, and release notes."""
+"""Policy implementations for issue extraction, consolidation, and release notes."""
 
 import re
 from dataclasses import dataclass, field
@@ -11,95 +11,95 @@ from enum import Enum
 from rich.console import Console
 
 from .models import (
-    Commit, PullRequest, Ticket, ReleaseNote, ConsolidatedChange, Label
+    Commit, PullRequest, Issue, ReleaseNote, ConsolidatedChange, Label
 )
 from .config import (
-    Config, PolicyAction, TicketExtractionStrategy
+    Config, PolicyAction, IssueExtractionStrategy
 )
 
 console = Console()
 
 
-class PartialTicketReason(Enum):
-    """Reasons why a ticket might be partially matched."""
+class PartialIssueReason(Enum):
+    """Reasons why a issue might be partially matched."""
 
     # Not found reasons
-    OLDER_THAN_CUTOFF = "older_than_cutoff"  # Ticket may be older than sync cutoff date
-    TYPO = "typo"  # Ticket may not exist (typo in branch/PR)
+    OLDER_THAN_CUTOFF = "older_than_cutoff"  # Issue may be older than sync cutoff date
+    TYPO = "typo"  # Issue may not exist (typo in branch/PR)
     SYNC_NOT_RUN = "sync_not_run"  # Sync may not have been run yet
 
     # Different repo reasons
-    REPO_CONFIG_MISMATCH = "repo_config_mismatch"  # Ticket found in different repo than configured
-    WRONG_TICKET_REPOS = "wrong_ticket_repos"  # Mismatch between ticket_repos config and actual location
+    REPO_CONFIG_MISMATCH = "repo_config_mismatch"  # Issue found in different repo than configured
+    WRONG_ISSUE_REPOS = "wrong_issue_repos"  # Mismatch between issue_repos config and actual location
 
     @property
     def description(self) -> str:
         """Get human-readable description of the reason."""
         descriptions = {
-            PartialTicketReason.OLDER_THAN_CUTOFF: "Ticket may be older than sync cutoff date",
-            PartialTicketReason.TYPO: "Ticket may not exist (typo in branch/PR)",
-            PartialTicketReason.SYNC_NOT_RUN: "Sync may not have been run yet",
-            PartialTicketReason.REPO_CONFIG_MISMATCH: "Ticket found in different repo than configured",
-            PartialTicketReason.WRONG_TICKET_REPOS: "Check repository.ticket_repos in config",
+            PartialIssueReason.OLDER_THAN_CUTOFF: "Issue may be older than sync cutoff date",
+            PartialIssueReason.TYPO: "Issue may not exist (typo in branch/PR)",
+            PartialIssueReason.SYNC_NOT_RUN: "Sync may not have been run yet",
+            PartialIssueReason.REPO_CONFIG_MISMATCH: "Issue found in different repo than configured",
+            PartialIssueReason.WRONG_ISSUE_REPOS: "Check repository.issue_repos in config",
         }
         return descriptions.get(self, self.value)
 
 
 @dataclass
-class PartialTicketMatch:
+class PartialIssueMatch:
     """
-    Information about a partial ticket match.
+    Information about a partial issue match.
 
-    A partial match occurs when a ticket is extracted from a branch/PR/commit
-    but cannot be fully resolved to a ticket in the database, or is found
+    A partial match occurs when a issue is extracted from a branch/PR/commit
+    but cannot be fully resolved to a issue in the database, or is found
     in an unexpected repository.
     """
-    ticket_key: str  # The extracted ticket key (e.g., "8624", "#123")
+    issue_key: str  # The extracted issue key (e.g., "8624", "#123")
     extracted_from: str  # Human-readable description of source (e.g., "branch feat/meta-8624/main, pattern #1")
     match_type: str  # "not_found" or "different_repo"
     found_in_repo: Optional[str] = None  # For different_repo type: which repo it was found in
-    ticket_url: Optional[str] = None  # For different_repo type: URL to the ticket
-    potential_reasons: Set[PartialTicketReason] = field(default_factory=set)  # Set of potential causes
+    issue_url: Optional[str] = None  # For different_repo type: URL to the issue
+    potential_reasons: Set[PartialIssueReason] = field(default_factory=set)  # Set of potential causes
 
 
-class TicketExtractor:
-    """Extract ticket references from various sources."""
+class IssueExtractor:
+    """Extract issue references from various sources."""
 
     def __init__(self, config: Config, debug: bool = False):
         self.config = config
         self.debug = debug
         # Sort patterns by order field, then group by strategy for efficient lookup
-        sorted_patterns = sorted(config.ticket_policy.patterns, key=lambda p: p.order)
+        sorted_patterns = sorted(config.issue_policy.patterns, key=lambda p: p.order)
         self.pattern_configs = sorted_patterns  # Store for debug output
-        self.patterns_by_strategy: Dict[TicketExtractionStrategy, List[re.Pattern]] = {}
-        for ticket_pattern in sorted_patterns:
-            strategy = ticket_pattern.strategy
+        self.patterns_by_strategy: Dict[IssueExtractionStrategy, List[re.Pattern]] = {}
+        for issue_pattern in sorted_patterns:
+            strategy = issue_pattern.strategy
             if strategy not in self.patterns_by_strategy:
                 self.patterns_by_strategy[strategy] = []
-            self.patterns_by_strategy[strategy].append(re.compile(ticket_pattern.pattern))
+            self.patterns_by_strategy[strategy].append(re.compile(issue_pattern.pattern))
 
     def _extract_with_patterns(self, text: str, patterns: List[re.Pattern], show_results: bool = False) -> List[str]:
-        """Extract ticket references using a list of patterns."""
-        tickets = []
+        """Extract issue references using a list of patterns."""
+        issues = []
         for i, pattern in enumerate(patterns):
             matches_found = []
             # Use finditer to get match objects and extract named groups
             for match in pattern.finditer(text):
-                # Try to extract the 'ticket' named group
+                # Try to extract the 'issue' named group
                 try:
-                    ticket = match.group('ticket')
-                    tickets.append(ticket)
-                    matches_found.append(ticket)
+                    issue = match.group('issue')
+                    issues.append(issue)
+                    matches_found.append(issue)
                 except IndexError:
-                    # If no 'ticket' group, fall back to the entire match or first group
+                    # If no 'issue' group, fall back to the entire match or first group
                     if match.groups():
-                        ticket = match.group(1)
-                        tickets.append(ticket)
-                        matches_found.append(ticket)
+                        issue = match.group(1)
+                        issues.append(issue)
+                        matches_found.append(issue)
                     else:
-                        ticket = match.group(0)
-                        tickets.append(ticket)
-                        matches_found.append(ticket)
+                        issue = match.group(0)
+                        issues.append(issue)
+                        matches_found.append(issue)
 
             if self.debug and show_results:
                 if matches_found:
@@ -107,18 +107,18 @@ class TicketExtractor:
                 else:
                     console.print(f"    [dim]❌ No match[/dim]")
 
-        return tickets
+        return issues
 
     def extract_from_commit(self, commit: Commit) -> List[str]:
-        """Extract ticket references from commit message."""
+        """Extract issue references from commit message."""
         if self.debug:
             console.print(f"\n🔍 [bold cyan]Extracting from commit:[/bold cyan] {commit.sha[:7]} - {commit.message[:60]}{'...' if len(commit.message) > 60 else ''}")
 
-        patterns = self.patterns_by_strategy.get(TicketExtractionStrategy.COMMIT_MESSAGE, [])
+        patterns = self.patterns_by_strategy.get(IssueExtractionStrategy.COMMIT_MESSAGE, [])
 
         # Debug: show which patterns apply to commit_message
         if self.debug and patterns:
-            matching_configs = [p for p in self.pattern_configs if p.strategy == TicketExtractionStrategy.COMMIT_MESSAGE]
+            matching_configs = [p for p in self.pattern_configs if p.strategy == IssueExtractionStrategy.COMMIT_MESSAGE]
             for pattern_config in matching_configs:
                 console.print(f"  [dim]Trying pattern #{pattern_config.order} (strategy={pattern_config.strategy.value})[/dim]")
                 if pattern_config.description:
@@ -126,55 +126,55 @@ class TicketExtractor:
                 console.print(f"    Regex: {pattern_config.pattern}")
                 console.print(f"    Text: \"{commit.message[:100]}{'...' if len(commit.message) > 100 else ''}\"")
 
-        tickets = list(set(self._extract_with_patterns(commit.message, patterns, show_results=self.debug)))
+        issues = list(set(self._extract_with_patterns(commit.message, patterns, show_results=self.debug)))
 
         if self.debug:
-            if tickets:
-                console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
+            if issues:
+                console.print(f"  [green]✅ Extracted issues: {issues}[/green]")
             else:
-                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted issues: (none)[/yellow]")
 
-        return tickets
+        return issues
 
     def extract_from_pr(self, pr: PullRequest) -> List[str]:
-        """Extract ticket references from PR using configured strategies."""
+        """Extract issue references from PR using configured strategies."""
         if self.debug:
             console.print(f"\n🔍 [bold cyan]Extracting from PR #{pr.number}:[/bold cyan] {pr.title[:60]}{'...' if len(pr.title) > 60 else ''}")
 
-        tickets = []
+        issues = []
 
         # Try patterns in order (sorted by order field)
-        sorted_patterns = sorted(self.config.ticket_policy.patterns, key=lambda p: p.order)
-        for ticket_pattern in sorted_patterns:
-            strategy = ticket_pattern.strategy
+        sorted_patterns = sorted(self.config.issue_policy.patterns, key=lambda p: p.order)
+        for issue_pattern in sorted_patterns:
+            strategy = issue_pattern.strategy
             text = None
             source_name = None
 
-            if strategy == TicketExtractionStrategy.PR_BODY and pr.body:
+            if strategy == IssueExtractionStrategy.PR_BODY and pr.body:
                 text = pr.body
                 source_name = "pr_body"
-            elif strategy == TicketExtractionStrategy.PR_TITLE and pr.title:
+            elif strategy == IssueExtractionStrategy.PR_TITLE and pr.title:
                 text = pr.title
                 source_name = "pr_title"
-            elif strategy == TicketExtractionStrategy.BRANCH_NAME and pr.head_branch:
+            elif strategy == IssueExtractionStrategy.BRANCH_NAME and pr.head_branch:
                 text = pr.head_branch
                 source_name = "branch_name"
 
             if self.debug:
-                console.print(f"  [dim]Pattern #{ticket_pattern.order} (strategy={strategy.value})[/dim]")
-                if ticket_pattern.description:
-                    console.print(f"    Description: \"{ticket_pattern.description}\"")
-                console.print(f"    Regex: {ticket_pattern.pattern}")
+                console.print(f"  [dim]Pattern #{issue_pattern.order} (strategy={strategy.value})[/dim]")
+                if issue_pattern.description:
+                    console.print(f"    Description: \"{issue_pattern.description}\"")
+                console.print(f"    Regex: {issue_pattern.pattern}")
 
             if text:
                 if self.debug:
                     console.print(f"    Source: {source_name}")
                     console.print(f"    Text: \"{text[:100]}{'...' if len(text) > 100 else ''}\"")
 
-                pattern = re.compile(ticket_pattern.pattern)
+                pattern = re.compile(issue_pattern.pattern)
                 extracted = self._extract_with_patterns(text, [pattern], show_results=self.debug)
                 if extracted:
-                    tickets.extend(extracted)
+                    issues.extend(extracted)
                     if self.debug:
                         console.print(f"    [yellow]🛑 Stopping (first match wins)[/yellow]")
                     # Stop on first match to respect priority order
@@ -184,23 +184,23 @@ class TicketExtractor:
                     console.print(f"    [dim]❌ Skipped (no {strategy.value} available)[/dim]")
 
         if self.debug:
-            if tickets:
-                console.print(f"  [green]✅ Extracted tickets: {list(set(tickets))}[/green]")
+            if issues:
+                console.print(f"  [green]✅ Extracted issues: {list(set(issues))}[/green]")
             else:
-                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted issues: (none)[/yellow]")
 
-        return list(set(tickets))
+        return list(set(issues))
 
     def extract_from_branch(self, branch_name: str) -> List[str]:
-        """Extract ticket references from branch name."""
+        """Extract issue references from branch name."""
         if self.debug:
             console.print(f"\n🔍 [bold cyan]Extracting from branch:[/bold cyan] {branch_name}")
 
-        patterns = self.patterns_by_strategy.get(TicketExtractionStrategy.BRANCH_NAME, [])
+        patterns = self.patterns_by_strategy.get(IssueExtractionStrategy.BRANCH_NAME, [])
 
         # Debug: show which patterns apply to branch_name
         if self.debug and patterns:
-            matching_configs = [p for p in self.pattern_configs if p.strategy == TicketExtractionStrategy.BRANCH_NAME]
+            matching_configs = [p for p in self.pattern_configs if p.strategy == IssueExtractionStrategy.BRANCH_NAME]
             for pattern_config in matching_configs:
                 console.print(f"  [dim]Trying pattern #{pattern_config.order} (strategy={pattern_config.strategy.value})[/dim]")
                 if pattern_config.description:
@@ -208,21 +208,21 @@ class TicketExtractor:
                 console.print(f"    Regex: {pattern_config.pattern}")
                 console.print(f"    Text: \"{branch_name}\"")
 
-        tickets = list(set(self._extract_with_patterns(branch_name, patterns, show_results=self.debug)))
+        issues = list(set(self._extract_with_patterns(branch_name, patterns, show_results=self.debug)))
 
         if self.debug:
-            if tickets:
-                console.print(f"  [green]✅ Extracted tickets: {tickets}[/green]")
+            if issues:
+                console.print(f"  [green]✅ Extracted issues: {issues}[/green]")
             else:
-                console.print(f"  [yellow]- Extracted tickets: (none)[/yellow]")
+                console.print(f"  [yellow]- Extracted issues: (none)[/yellow]")
 
-        return tickets
+        return issues
 
 
 class CommitConsolidator:
-    """Consolidate commits by parent ticket."""
+    """Consolidate commits by parent issue."""
 
-    def __init__(self, config: Config, extractor: TicketExtractor, debug: bool = False):
+    def __init__(self, config: Config, extractor: IssueExtractor, debug: bool = False):
         self.config = config
         self.extractor = extractor
         self.debug = debug
@@ -233,11 +233,11 @@ class CommitConsolidator:
         prs: Dict[int, PullRequest]
     ) -> List[ConsolidatedChange]:
         """
-        Consolidate commits by their parent ticket.
+        Consolidate commits by their parent issue.
 
-        Returns a list of ConsolidatedChange objects, grouped by ticket.
+        Returns a list of ConsolidatedChange objects, grouped by issue.
         """
-        if not self.config.ticket_policy.consolidation_enabled:
+        if not self.config.issue_policy.consolidation_enabled:
             # Return each commit as a separate change
             return [
                 ConsolidatedChange(
@@ -258,44 +258,44 @@ class CommitConsolidator:
             if self.debug:
                 console.print(f"\n📦 [bold]Consolidating commit {commit.sha[:7]}:[/bold] \"{commit.message[:60]}{'...' if len(commit.message) > 60 else ''}\"")
 
-            # Try to find ticket from commit
-            tickets = self.extractor.extract_from_commit(commit)
+            # Try to find issue from commit
+            issues = self.extractor.extract_from_commit(commit)
 
             if self.debug:
-                console.print(f"  → Tickets from commit: {tickets if tickets else '(none)'}")
+                console.print(f"  → Issues from commit: {issues if issues else '(none)'}")
 
             # Try to find associated PR
             pr = prs.get(commit.pr_number) if commit.pr_number else None
             if pr:
                 if self.debug:
                     console.print(f"  ✅ Associated PR: #{pr.number} \"{pr.title[:50]}{'...' if len(pr.title) > 50 else ''}\"")
-                pr_tickets = self.extractor.extract_from_pr(pr)
+                pr_issues = self.extractor.extract_from_pr(pr)
                 if self.debug:
-                    console.print(f"  {'✅' if pr_tickets else '→'} Tickets from PR: {pr_tickets if pr_tickets else '(none)'}")
-                tickets.extend(pr_tickets)
+                    console.print(f"  {'✅' if pr_issues else '→'} Issues from PR: {pr_issues if pr_issues else '(none)'}")
+                issues.extend(pr_issues)
             elif self.debug:
                 console.print(f"  → Associated PR: (none)")
 
-            tickets = list(set(tickets))  # Remove duplicates
+            issues = list(set(issues))  # Remove duplicates
 
-            if tickets:
-                # Use first ticket as the parent
-                ticket_key = tickets[0]
+            if issues:
+                # Use first issue as the parent
+                issue_key = issues[0]
                 if self.debug:
-                    console.print(f"  [green]✅ Consolidated under ticket: {ticket_key}[/green]")
+                    console.print(f"  [green]✅ Consolidated under issue: {issue_key}[/green]")
 
-                if ticket_key not in consolidated:
-                    consolidated[ticket_key] = ConsolidatedChange(
-                        type="ticket",
-                        ticket_key=ticket_key,
+                if issue_key not in consolidated:
+                    consolidated[issue_key] = ConsolidatedChange(
+                        type="issue",
+                        issue_key=issue_key,
                         commits=[],
                         prs=[]
                     )
-                consolidated[ticket_key].commits.append(commit)
-                if pr and pr not in consolidated[ticket_key].prs:
-                    consolidated[ticket_key].prs.append(pr)
+                consolidated[issue_key].commits.append(commit)
+                if pr and pr not in consolidated[issue_key].prs:
+                    consolidated[issue_key].prs.append(pr)
             elif pr:
-                # No ticket but has PR
+                # No issue but has PR
                 pr_key = f"pr-{pr.number}"
                 if self.debug:
                     console.print(f"  [yellow]✅ Consolidated under PR: #{pr.number}[/yellow]")
@@ -309,10 +309,10 @@ class CommitConsolidator:
                     )
                 consolidated[pr_key].commits.append(commit)
             else:
-                # No ticket and no PR - standalone commit
+                # No issue and no PR - standalone commit
                 commit_key = f"commit-{commit.sha[:8]}"
                 if self.debug:
-                    console.print(f"  [dim]- Standalone commit (no ticket or PR)[/dim]")
+                    console.print(f"  [dim]- Standalone commit (no issue or PR)[/dim]")
 
                 consolidated[commit_key] = ConsolidatedChange(
                     type="commit",
@@ -321,30 +321,30 @@ class CommitConsolidator:
 
         return list(consolidated.values())
 
-    def handle_missing_tickets(
+    def handle_missing_issues(
         self,
         consolidated_changes: List[ConsolidatedChange]
     ):
-        """Handle changes that don't have a parent ticket."""
-        action = self.config.ticket_policy.no_ticket_action
-        no_ticket_changes = [
+        """Handle changes that don't have a parent issue."""
+        action = self.config.issue_policy.no_issue_action
+        no_issue_changes = [
             c for c in consolidated_changes
-            if c.type in ["commit", "pr"] or not c.ticket_key
+            if c.type in ["commit", "pr"] or not c.issue_key
         ]
 
-        if not no_ticket_changes:
+        if not no_issue_changes:
             return
 
         if action == PolicyAction.ERROR:
             raise ValueError(
-                f"Found {len(no_ticket_changes)} changes without a parent ticket. "
-                "Configure no_ticket_action policy to allow this."
+                f"Found {len(no_issue_changes)} changes without a parent issue. "
+                "Configure no_issue_action policy to allow this."
             )
         elif action == PolicyAction.WARN:
             console.print(
-                f"[yellow]WARNING: Found {len(no_ticket_changes)} changes without a parent ticket[/yellow]"
+                f"[yellow]WARNING: Found {len(no_issue_changes)} changes without a parent issue[/yellow]"
             )
-            for change in no_ticket_changes[:5]:  # Show first 5
+            for change in no_issue_changes[:5]:  # Show first 5
                 if change.commits:
                     msg = change.commits[0].message.split('\n')[0]
                     console.print(f"  - {msg[:80]}")
@@ -376,7 +376,7 @@ class ReleaseNoteGenerator:
     def create_release_note(
         self,
         change: ConsolidatedChange,
-        ticket: Optional[Ticket] = None
+        issue: Optional[Issue] = None
     ) -> ReleaseNote:
         """Create a release note from a consolidated change."""
         # Extract and deduplicate authors from commits and PRs
@@ -386,8 +386,8 @@ class ReleaseNoteGenerator:
         commit_shas = [commit.sha for commit in change.commits]
 
         # Determine title
-        if ticket:
-            title = ticket.title
+        if issue:
+            title = issue.title
         elif change.prs:
             title = change.prs[0].title
         elif change.commits:
@@ -396,33 +396,33 @@ class ReleaseNoteGenerator:
             title = "Unknown change"
 
         # Determine category from labels
-        category = self._determine_category(change, ticket)
+        category = self._determine_category(change, issue)
 
-        # Extract description and migration notes if we have a ticket
+        # Extract description and migration notes if we have a issue
         description = None
         migration_notes = None
-        if ticket and ticket.body:
+        if issue and issue.body:
             description = self._extract_section(
-                ticket.body,
-                self.config.ticket_policy.description_section_regex
+                issue.body,
+                self.config.issue_policy.description_section_regex
             )
             migration_notes = self._extract_section(
-                ticket.body,
-                self.config.ticket_policy.migration_section_regex
+                issue.body,
+                self.config.issue_policy.migration_section_regex
             )
 
         # Get URLs
-        ticket_url = None
+        issue_url = None
         pr_url = None
-        url = None  # Smart URL: ticket_url if available, else pr_url
+        url = None  # Smart URL: issue_url if available, else pr_url
 
-        if ticket:
-            ticket_url = ticket.url
-            url = ticket_url  # Prefer ticket URL
+        if issue:
+            issue_url = issue.url
+            url = issue_url  # Prefer issue URL
 
         if change.prs:
             pr_url = change.prs[0].url
-            if not url:  # Use PR URL if no ticket URL
+            if not url:  # Use PR URL if no issue URL
                 url = pr_url
 
         # Compute short links from the smart URL
@@ -437,13 +437,13 @@ class ReleaseNoteGenerator:
 
         # Get labels
         labels = []
-        if ticket:
-            labels = [label.name for label in ticket.labels]
+        if issue:
+            labels = [label.name for label in issue.labels]
         elif change.prs:
             labels = [label.name for pr in change.prs for label in pr.labels]
 
         return ReleaseNote(
-            ticket_key=change.ticket_key,
+            issue_key=change.issue_key,
             title=title,
             description=description,
             migration_notes=migration_notes,
@@ -452,7 +452,7 @@ class ReleaseNoteGenerator:
             authors=authors,
             pr_numbers=pr_numbers,
             commit_shas=commit_shas,
-            ticket_url=ticket_url,
+            issue_url=issue_url,
             pr_url=pr_url,
             url=url,
             short_link=short_link,
@@ -512,25 +512,25 @@ class ReleaseNoteGenerator:
     def _determine_category(
         self,
         change: ConsolidatedChange,
-        ticket: Optional[Ticket]
+        issue: Optional[Issue]
     ) -> Optional[str]:
         """Determine the category for a change based on labels with source prefix support."""
-        # Get labels from ticket with source indicator
-        ticket_labels: List[str] = []
+        # Get labels from issue with source indicator
+        issue_labels: List[str] = []
         pr_labels: List[str] = []
 
-        if ticket:
-            ticket_labels = [label.name for label in ticket.labels]
+        if issue:
+            issue_labels = [label.name for label in issue.labels]
 
         if change.prs:
             for pr in change.prs:
                 pr_labels.extend([label.name for label in pr.labels])
 
-        # Check against category mappings (respecting pr: and ticket: prefixes)
+        # Check against category mappings (respecting pr: and issue: prefixes)
         for category_config in self.config.release_notes.categories:
-            # Check ticket labels
-            for label in ticket_labels:
-                if category_config.matches_label(label, "ticket"):
+            # Check issue labels
+            for label in issue_labels:
+                if category_config.matches_label(label, "issue"):
                     return category_config.name
 
             # Check PR labels
@@ -756,8 +756,8 @@ class ReleaseNoteGenerator:
 
         return {
             'title': note.title,
-            'url': note.url,  # Smart URL: ticket_url if available, else pr_url
-            'ticket_url': note.ticket_url,  # Direct ticket URL
+            'url': note.url,  # Smart URL: issue_url if available, else pr_url
+            'issue_url': note.issue_url,  # Direct issue URL
             'pr_url': note.pr_url,  # Direct PR URL
             'short_link': note.short_link,  # Short format: #1234
             'short_repo_link': note.short_repo_link,  # Short format: owner/repo#1234
@@ -766,7 +766,7 @@ class ReleaseNoteGenerator:
             'description': processed_description,
             'migration_notes': processed_migration,
             'labels': note.labels,
-            'ticket_key': note.ticket_key,
+            'issue_key': note.issue_key,
             'category': note.category,
             'commit_shas': note.commit_shas
         }

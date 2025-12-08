@@ -19,9 +19,9 @@ from ..db import Database
 console = Console()
 
 
-def _parse_ticket_key_arg(ticket_key_arg: str) -> tuple[Optional[str], Optional[str], bool]:
+def _parse_issue_key_arg(issue_key_arg: str) -> tuple[Optional[str], Optional[str], bool]:
     """
-    Parse smart TICKET_KEY argument into components.
+    Parse smart ISSUE_KEY argument into components.
 
     Supports multiple formats:
     - "1234" or "#1234" -> (None, "1234", False)
@@ -31,67 +31,67 @@ def _parse_ticket_key_arg(ticket_key_arg: str) -> tuple[Optional[str], Optional[
     - "owner/repo#1234~" -> ("owner/repo", "1234", True)
 
     Args:
-        ticket_key_arg: The TICKET_KEY argument from CLI
+        issue_key_arg: The ISSUE_KEY argument from CLI
 
     Returns:
-        Tuple of (repo_filter, ticket_key, is_proximity)
+        Tuple of (repo_filter, issue_key, is_proximity)
         - repo_filter: Repository to filter by (None if not specified)
-        - ticket_key: Ticket number/key
+        - issue_key: Issue number/key
         - is_proximity: True if proximity search (~) was specified
     """
     # Check for proximity indicator (~)
-    is_proximity = ticket_key_arg.endswith('~')
+    is_proximity = issue_key_arg.endswith('~')
     if is_proximity:
-        ticket_key_arg = ticket_key_arg[:-1]  # Remove trailing ~
+        issue_key_arg = issue_key_arg[:-1]  # Remove trailing ~
 
-    # Check if there's a # separator (indicating repo#ticket format)
-    if '#' in ticket_key_arg:
+    # Check if there's a # separator (indicating repo#issue format)
+    if '#' in issue_key_arg:
         # Split on the last # to handle cases like "owner/repo#1234"
-        parts = ticket_key_arg.rsplit('#', 1)
+        parts = issue_key_arg.rsplit('#', 1)
         if len(parts) == 2 and parts[1].isdigit():
             repo_part = parts[0] if parts[0] else None
-            ticket_num = parts[1]
-            return repo_part, ticket_num, is_proximity
+            issue_num = parts[1]
+            return repo_part, issue_num, is_proximity
 
-    # No # separator, treat as plain ticket number (with optional leading #)
-    match = re.match(r'^#?(\d+)$', ticket_key_arg)
+    # No # separator, treat as plain issue number (with optional leading #)
+    match = re.match(r'^#?(\d+)$', issue_key_arg)
     if match:
         return None, match.group(1), is_proximity
 
     # Invalid format, return as-is
-    return None, ticket_key_arg, is_proximity
+    return None, issue_key_arg, is_proximity
 
 
-def _display_tickets_table(tickets: List, limit: int, offset: int):
-    """Display tickets in a formatted table."""
-    if not tickets:
-        console.print("[yellow]No tickets found.[/yellow]")
-        console.print("[dim]Tip: Run 'release-tool sync' to fetch latest tickets.[/dim]")
+def _display_issues_table(issues: List, limit: int, offset: int):
+    """Display issues in a formatted table."""
+    if not issues:
+        console.print("[yellow]No issues found.[/yellow]")
+        console.print("[dim]Tip: Run 'release-tool sync' to fetch latest issues.[/dim]")
         return
 
-    table = Table(title="Tickets" if offset == 0 else f"Tickets (offset: {offset})")
+    table = Table(title="Issues" if offset == 0 else f"Issues (offset: {offset})")
     table.add_column("Key", style="cyan", no_wrap=True)
     table.add_column("Repository", style="blue")
     table.add_column("Title")
     table.add_column("State", style="dim")
     table.add_column("URL", style="dim", max_width=80, overflow="fold")
 
-    for ticket in tickets:
+    for issue in issues:
         # Get repo name (from bypassed Pydantic attribute or fallback)
-        repo_name = getattr(ticket, '_repo_full_name', 'unknown')
+        repo_name = getattr(issue, '_repo_full_name', 'unknown')
 
         # Color code state
-        state_style = "green" if ticket.state == "open" else "dim"
-        state_text = f"[{state_style}]{ticket.state}[/{state_style}]"
+        state_style = "green" if issue.state == "open" else "dim"
+        state_text = f"[{state_style}]{issue.state}[/{state_style}]"
 
         # Truncate title if too long
-        title = ticket.title[:60] + "..." if len(ticket.title) > 60 else ticket.title
+        title = issue.title[:60] + "..." if len(issue.title) > 60 else issue.title
 
         # Don't truncate URL - let Rich handle it with max_width and overflow
-        url = ticket.url if ticket.url else ""
+        url = issue.url if issue.url else ""
 
         table.add_row(
-            f"#{ticket.key}",
+            f"#{issue.key}",
             repo_name,
             title,
             state_text,
@@ -101,19 +101,19 @@ def _display_tickets_table(tickets: List, limit: int, offset: int):
     console.print(table)
 
     # Show pagination info
-    total_shown = len(tickets)
+    total_shown = len(issues)
     start_num = offset + 1
     end_num = offset + total_shown
 
     if total_shown == limit:
-        console.print(f"\n[dim]Showing {start_num}-{end_num} tickets (use --offset to see more)[/dim]")
+        console.print(f"\n[dim]Showing {start_num}-{end_num} issues (use --offset to see more)[/dim]")
     else:
-        console.print(f"\n[dim]Showing {start_num}-{end_num} tickets (all results)[/dim]")
+        console.print(f"\n[dim]Showing {start_num}-{end_num} issues (all results)[/dim]")
 
 
-def _display_tickets_csv(tickets: List):
-    """Display tickets in CSV format."""
-    if not tickets:
+def _display_issues_csv(issues: List):
+    """Display issues in CSV format."""
+    if not issues:
         return
 
     # Use StringIO to build CSV, then print
@@ -129,22 +129,22 @@ def _display_tickets_csv(tickets: List):
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
 
-    for ticket in tickets:
+    for issue in issues:
         row = {
-            'id': ticket.id,
-            'repo_id': ticket.repo_id,
-            'number': ticket.number,
-            'key': ticket.key,
-            'title': ticket.title,
-            'body': ticket.body[:500] if ticket.body else "",  # Truncate long bodies
-            'state': ticket.state,
-            'labels': json.dumps([l.name for l in ticket.labels]),
-            'url': ticket.url or "",
-            'created_at': ticket.created_at.isoformat() if ticket.created_at else "",
-            'closed_at': ticket.closed_at.isoformat() if ticket.closed_at else "",
-            'category': ticket.category or "",
-            'tags': json.dumps(ticket.tags),
-            'repo_full_name': getattr(ticket, '_repo_full_name', '')
+            'id': issue.id,
+            'repo_id': issue.repo_id,
+            'number': issue.number,
+            'key': issue.key,
+            'title': issue.title,
+            'body': issue.body[:500] if issue.body else "",  # Truncate long bodies
+            'state': issue.state,
+            'labels': json.dumps([l.name for l in issue.labels]),
+            'url': issue.url or "",
+            'created_at': issue.created_at.isoformat() if issue.created_at else "",
+            'closed_at': issue.closed_at.isoformat() if issue.closed_at else "",
+            'category': issue.category or "",
+            'tags': json.dumps(issue.tags),
+            'repo_full_name': getattr(issue, '_repo_full_name', '')
         }
         writer.writerow(row)
 
@@ -152,79 +152,79 @@ def _display_tickets_csv(tickets: List):
     print(output.getvalue(), end='')
 
 
-@click.command(name='tickets', context_settings={'help_option_names': ['-h', '--help']})
-@click.argument('ticket_key', required=False)
+@click.command(name='issues', context_settings={'help_option_names': ['-h', '--help']})
+@click.argument('issue_key', required=False)
 @click.option('--repo', '-r', help='Filter by repository (owner/name)')
 @click.option('--limit', '-n', type=int, default=20, help='Max number of results (default: 20)')
 @click.option('--offset', type=int, default=0, help='Skip first N results (for pagination)')
 @click.option('--format', '-f', 'output_format', type=click.Choice(['table', 'csv']), default='table', help='Output format')
-@click.option('--starts-with', help='Find tickets starting with prefix (fuzzy match)')
-@click.option('--ends-with', help='Find tickets ending with suffix (fuzzy match)')
-@click.option('--close-to', help='Find tickets numerically close to this number')
+@click.option('--starts-with', help='Find issues starting with prefix (fuzzy match)')
+@click.option('--ends-with', help='Find issues ending with suffix (fuzzy match)')
+@click.option('--close-to', help='Find issues numerically close to this number')
 @click.option('--range', 'close_range', type=int, default=10, help='Range for --close-to (default: ±10)')
 @click.pass_context
-def tickets(ctx, ticket_key, repo, limit, offset, output_format, starts_with, ends_with, close_to, close_range):
-    """Query tickets from local database (offline).
+def issues(ctx, issue_key, repo, limit, offset, output_format, starts_with, ends_with, close_to, close_range):
+    """Query issues from local database (offline).
 
     IMPORTANT: This command works offline and only searches synced data.
-    Run 'release-tool sync' first to ensure you have the latest tickets.
+    Run 'release-tool sync' first to ensure you have the latest issues.
 
-    TICKET_KEY supports smart formats:
+    ISSUE_KEY supports smart formats:
 
       \b
-      1234            Find ticket by number
-      #1234           Find ticket by number (with # prefix)
-      meta#1234       Find ticket 1234 in repo 'meta'
-      meta#1234~      Find tickets close to 1234 (±20)
-      owner/repo#1234 Find ticket in specific full repo path
+      1234            Find issue by number
+      #1234           Find issue by number (with # prefix)
+      meta#1234       Find issue 1234 in repo 'meta'
+      meta#1234~      Find issues close to 1234 (±20)
+      owner/repo#1234 Find issue in specific full repo path
 
     Examples:
 
-      release-tool tickets 8624
+      release-tool issues 8624
 
-      release-tool tickets meta#8624
+      release-tool issues meta#8624
 
-      release-tool tickets meta#8624~
+      release-tool issues meta#8624~
 
-      release-tool tickets --repo sequentech/meta --limit 50
+      release-tool issues --repo sequentech/meta --limit 50
 
-      release-tool tickets --starts-with 86
+      release-tool issues --starts-with 86
 
-      release-tool tickets --ends-with 24
+      release-tool issues --ends-with 24
 
-      release-tool tickets --close-to 8624 --range 50
+      release-tool issues --close-to 8624 --range 50
 
-      release-tool tickets --repo sequentech/meta --format csv > tickets.csv
+      release-tool issues --repo sequentech/meta --format csv > issues.csv
     """
     config: Config = ctx.obj['config']
 
-    # Parse smart TICKET_KEY format if provided
+    # Parse smart ISSUE_KEY format if provided
     parsed_repo = None
-    parsed_ticket = None
+    parsed_issue = None
     parsed_proximity = False
 
-    if ticket_key:
-        # Special case: if ticket_key looks like a repo name (contains "/" but no "#" or ticket number),
-        # treat it as a --repo filter instead of a ticket key
-        if '/' in ticket_key and '#' not in ticket_key and not any(c.isdigit() for c in ticket_key.split('/')[-1]):
+    if issue_key:
+        # Special case: if issue_key looks like a repo name (contains "/" but no "#" or issue number),
+        # treat it as a --repo filter instead of a issue key
+        if '/' in issue_key and '#' not in issue_key and not any(c.isdigit() for c in issue_key.split('/')[-1]):
             # This looks like "owner/repo" format, use as repo filter
             if not repo:
-                repo = ticket_key
-            ticket_key = None
+                repo = issue_key
+            issue_key = None
         else:
-            parsed_repo, parsed_ticket, parsed_proximity = _parse_ticket_key_arg(ticket_key)
+            parsed_repo, parsed_issue, parsed_proximity = _parse_issue_key_arg(issue_key)
 
-            # If repo was parsed from ticket_key, use it (unless --repo was also specified)
+            # If repo was parsed from issue_key, use it (unless --repo was also specified)
             if parsed_repo and not repo:
                 repo = parsed_repo
 
             # If proximity search (~) was indicated, use close_to
             if parsed_proximity and not close_to:
-                close_to = parsed_ticket
-                parsed_ticket = None  # Don't use as exact match
+                close_to = parsed_issue
+                parsed_issue = None  # Don't use as exact match
 
-            # Use parsed ticket as the key
-            ticket_key = parsed_ticket
+            # Use parsed issue as the key
+            issue_key = parsed_issue
 
     # Validation
     if close_range < 0:
@@ -278,10 +278,10 @@ def tickets(ctx, ticket_key, repo, limit, offset, output_format, starts_with, en
             sys.exit(1)
         repo_id = repo_obj.id
 
-    # Query tickets
+    # Query issues
     try:
-        tickets = db.query_tickets(
-            ticket_key=ticket_key,
+        issues = db.query_issues(
+            issue_key=issue_key,
             repo_id=repo_id,
             starts_with=starts_with,
             ends_with=ends_with,
@@ -291,11 +291,11 @@ def tickets(ctx, ticket_key, repo, limit, offset, output_format, starts_with, en
             offset=offset
         )
     except Exception as e:
-        console.print(f"[red]Error querying tickets: {e}[/red]")
+        console.print(f"[red]Error querying issues: {e}[/red]")
         sys.exit(1)
 
     # Display results
     if output_format == 'table':
-        _display_tickets_table(tickets, limit, offset)
+        _display_issues_table(issues, limit, offset)
     else:
-        _display_tickets_csv(tickets)
+        _display_issues_csv(issues)

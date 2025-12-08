@@ -13,7 +13,7 @@ from release_tool.config import Config
 from release_tool.db import Database
 from release_tool.sync import SyncManager
 from release_tool.github_utils import GitHubClient
-from release_tool.models import Ticket, PullRequest, Author, Label
+from release_tool.models import Issue, PullRequest, Author, Label
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def test_config():
     config_dict = {
         "repository": {
             "code_repo": "sequentech/step",
-            "ticket_repos": ["sequentech/meta"],
+            "issue_repos": ["sequentech/meta"],
             "default_branch": "main"
         },
         "github": {
@@ -57,19 +57,19 @@ def mock_github():
 def test_sync_metadata_tracking(test_db):
     """Test sync metadata CRUD operations."""
     # No sync initially
-    last_sync = test_db.get_last_sync("sequentech/meta", "tickets")
+    last_sync = test_db.get_last_sync("sequentech/meta", "issues")
     assert last_sync is None
 
     # Update sync metadata
     test_db.update_sync_metadata(
         "sequentech/meta",
-        "tickets",
+        "issues",
         cutoff_date="2024-01-01",
         total_fetched=50
     )
 
     # Should have sync timestamp now
-    last_sync = test_db.get_last_sync("sequentech/meta", "tickets")
+    last_sync = test_db.get_last_sync("sequentech/meta", "issues")
     assert last_sync is not None
     assert isinstance(last_sync, datetime)
 
@@ -77,13 +77,13 @@ def test_sync_metadata_tracking(test_db):
     status = test_db.get_all_sync_status()
     assert len(status) == 1
     assert status[0]['repo_full_name'] == "sequentech/meta"
-    assert status[0]['entity_type'] == "tickets"
+    assert status[0]['entity_type'] == "issues"
     assert status[0]['total_fetched'] == 50
 
 
-def test_get_existing_ticket_numbers(test_db):
-    """Test retrieval of existing ticket numbers."""
-    from release_tool.models import Repository, Ticket, Label
+def test_get_existing_issue_numbers(test_db):
+    """Test retrieval of existing issue numbers."""
+    from release_tool.models import Repository, Issue, Label
 
     # Create repository
     repo = Repository(
@@ -94,13 +94,13 @@ def test_get_existing_ticket_numbers(test_db):
     )
     repo_id = test_db.upsert_repository(repo)
 
-    # Add some tickets
+    # Add some issues
     for num in [1, 5, 10, 25]:
-        ticket = Ticket(
+        issue = Issue(
             repo_id=repo_id,
             number=num,
             key=f"#{num}",
-            title=f"Test ticket {num}",
+            title=f"Test issue {num}",
             body="",
             state="open",
             labels=[],
@@ -108,10 +108,10 @@ def test_get_existing_ticket_numbers(test_db):
             created_at=datetime.now(),
             closed_at=None
         )
-        test_db.upsert_ticket(ticket)
+        test_db.upsert_issue(issue)
 
     # Get existing numbers
-    existing = test_db.get_existing_ticket_numbers("sequentech/meta")
+    existing = test_db.get_existing_issue_numbers("sequentech/meta")
     assert existing == {1, 5, 10, 25}
 
 
@@ -152,14 +152,14 @@ def test_get_existing_pr_numbers(test_db):
     assert existing == {10, 20, 30}
 
 
-def test_config_get_ticket_repos(test_config):
-    """Test getting ticket repos from config."""
-    ticket_repos = test_config.get_ticket_repos()
-    assert ticket_repos == ["sequentech/meta"]
+def test_config_get_issue_repos(test_config):
+    """Test getting issue repos from config."""
+    issue_repos = test_config.get_issue_repos()
+    assert issue_repos == ["sequentech/meta"]
 
 
-def test_config_get_ticket_repos_defaults_to_code_repo():
-    """Test that ticket_repos defaults to code_repo if not specified."""
+def test_config_get_issue_repos_defaults_to_code_repo():
+    """Test that issue_repos defaults to code_repo if not specified."""
     config_dict = {
         "repository": {
             "code_repo": "sequentech/step"
@@ -169,8 +169,8 @@ def test_config_get_ticket_repos_defaults_to_code_repo():
         }
     }
     config = Config.from_dict(config_dict)
-    ticket_repos = config.get_ticket_repos()
-    assert ticket_repos == ["sequentech/step"]
+    issue_repos = config.get_issue_repos()
+    assert issue_repos == ["sequentech/step"]
 
 
 def test_config_get_code_repo_path_default(test_config):
@@ -297,9 +297,9 @@ def test_incremental_sync_filters_existing(test_config, test_db, mock_github):
     )
     repo_id = test_db.upsert_repository(repo)
 
-    # Add existing tickets
+    # Add existing issues
     for num in [1, 2, 3]:
-        ticket = Ticket(
+        issue = Issue(
             repo_id=repo_id,
             number=num,
             key=f"#{num}",
@@ -311,17 +311,17 @@ def test_incremental_sync_filters_existing(test_config, test_db, mock_github):
             created_at=datetime.now(),
             closed_at=None
         )
-        test_db.upsert_ticket(ticket)
+        test_db.upsert_issue(issue)
 
-    # Mock GitHub to return all tickets (including existing)
-    mock_github.search_ticket_numbers.return_value = [1, 2, 3, 4, 5, 6]
+    # Mock GitHub to return all issues (including existing)
+    mock_github.search_issue_numbers.return_value = [1, 2, 3, 4, 5, 6]
 
     sync_manager = SyncManager(test_config, test_db, mock_github)
 
-    # Get ticket numbers to fetch
-    to_fetch = sync_manager._get_ticket_numbers_to_fetch("sequentech/meta", None)
+    # Get issue numbers to fetch
+    to_fetch = sync_manager._get_issue_numbers_to_fetch("sequentech/meta", None)
 
-    # Should only fetch new tickets (4, 5, 6)
+    # Should only fetch new issues (4, 5, 6)
     assert set(to_fetch) == {4, 5, 6}
 
 

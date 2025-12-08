@@ -12,8 +12,8 @@ A comprehensive tool to manage releases using semantic versioning for efficient 
 
 - **Semantic Versioning Support**: Full support for semantic versioning with release candidates, betas, and alphas
 - **Intelligent Version Comparison**: Automatically determines the right version to compare against (RC to RC, final to final, etc.)
-- **Ticket-based Consolidation**: Groups commits by parent tickets for cleaner release notes
-- **Configurable Policies**: Flexible policies for ticket extraction, consolidation, version gaps, and more
+- **Issue-based Consolidation**: Groups commits by parent issues for cleaner release notes
+- **Configurable Policies**: Flexible policies for issue extraction, consolidation, version gaps, and more
 - **GitHub Integration**: Syncs PRs, issues, and releases from GitHub; can create releases and PRs automatically
 - **Local Git Analysis**: Analyzes commit history from local repositories
 - **SQLite Database**: Efficient local caching of GitHub data to minimize API calls
@@ -222,7 +222,7 @@ The tool is configured via a TOML file (`release_tool.toml`). Key sections:
 ```toml
 [repository]
 code_repo = "owner/repo"  # Required
-ticket_repo = "owner/tickets"  # Optional: separate repo for tickets
+issue_repo = "owner/issues"  # Optional: separate repo for issues
 default_branch = "main"
 ```
 
@@ -235,12 +235,12 @@ clone_url_template = ""  # Custom clone URL template (optional)
 # Example: "https://github.enterprise.com/{repo_full_name}.git"
 ```
 
-### Ticket Policy
+### Issue Policy
 ```toml
-[ticket_policy]
-patterns = ["([A-Z]+-\\d+)", "#(\\d+)"]  # Regex patterns to find tickets
-no_ticket_action = "warn"  # ignore, warn, or error
-unclosed_ticket_action = "warn"
+[issue_policy]
+patterns = ["([A-Z]+-\\d+)", "#(\\d+)"]  # Regex patterns to find issues
+no_issue_action = "warn"  # ignore, warn, or error
+unclosed_issue_action = "warn"
 consolidation_enabled = true
 ```
 
@@ -291,21 +291,21 @@ The tool implements intelligent version comparison:
   - Previous final version if no RCs exist
 - **Consolidated final releases** incorporate all changes from RCs, betas, alphas of that version
 
-### Ticket Consolidation
+### Issue Consolidation
 
-Commits are consolidated by their parent ticket:
+Commits are consolidated by their parent issue:
 
-1. Extract ticket references from commits using configurable regex patterns
+1. Extract issue references from commits using configurable regex patterns
 2. Try multiple strategies: commit message, PR body, branch name
-3. Group commits with the same ticket key
-4. Fetch ticket details from GitHub (title, labels, description)
-5. Apply configurable policies for missing tickets
+3. Group commits with the same issue key
+4. Fetch issue details from GitHub (title, labels, description)
+5. Apply configurable policies for missing issues
 
 ### Release Note Generation
 
 1. **Extract commits** between two versions from Git history
-2. **Consolidate by ticket** to group related changes
-3. **Fetch ticket metadata** from GitHub Issues API
+2. **Consolidate by issue** to group related changes
+3. **Fetch issue metadata** from GitHub Issues API
 4. **Categorize** based on labels and configured category mappings
 5. **Format** using Jinja2 templates
 6. **Output** to console, file, GitHub release, or PR
@@ -315,7 +315,7 @@ Commits are consolidated by their parent ticket:
 ```
 src/release_tool/
 ├── main.py          # CLI entry point with Click commands
-├── models.py        # Pydantic data models (SemanticVersion, Commit, PR, Ticket, etc.)
+├── models.py        # Pydantic data models (SemanticVersion, Commit, PR, Issue, etc.)
 ├── config.py        # Configuration management with Pydantic validation
 ├── db.py            # SQLite database operations
 ├── git_ops.py       # Git operations using GitPython

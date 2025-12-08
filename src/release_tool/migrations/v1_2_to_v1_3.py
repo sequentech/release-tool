@@ -5,9 +5,9 @@
 """Migration from config version 1.2 to 1.3.
 
 Changes in 1.3:
-- Fixed ticket key format: tickets now stored without "#" prefix in database
-- Updated db.get_ticket_by_key() and db.query_tickets() to normalize keys
-- Breaking change: requires database migration to strip "#" from existing ticket keys
+- Fixed issue key format: issues now stored without "#" prefix in database
+- Updated db.get_issue_by_key() and db.query_issues() to normalize keys
+- Breaking change: requires database migration to strip "#" from existing issue keys
 
 This migration:
 - Updates config_version to "1.3"

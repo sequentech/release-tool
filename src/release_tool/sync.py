@@ -18,7 +18,7 @@ from rich.progress import Progress, TaskID, SpinnerColumn, TextColumn, BarColumn
 from .config import Config
 from .db import Database
 from .github_utils import GitHubClient
-from .models import Ticket, PullRequest
+from .models import Issue, PullRequest
 
 console = Console()
 
@@ -34,13 +34,13 @@ class SyncManager:
 
     def sync_all(self) -> Dict[str, Any]:
         """
-        Sync all data from GitHub (tickets, PRs, commits).
+        Sync all data from GitHub (issues, PRs, commits).
 
         Returns:
             Dictionary with sync statistics
         """
         stats = {
-            'tickets': 0,
+            'issues': 0,
             'pull_requests': 0,
             'commits': 0,
             'repos_synced': set()
@@ -49,14 +49,14 @@ class SyncManager:
         if self.config.sync.show_progress:
             console.print("[bold cyan]Starting GitHub data sync...[/bold cyan]")
 
-        # Sync tickets from all ticket repos
-        ticket_repos = self.config.get_ticket_repos()
-        for repo_full_name in ticket_repos:
+        # Sync issues from all issue repos
+        issue_repos = self.config.get_issue_repos()
+        for repo_full_name in issue_repos:
             if self.config.sync.show_progress:
-                console.print(f"[cyan]Syncing tickets from {repo_full_name}...[/cyan]")
+                console.print(f"[cyan]Syncing issues from {repo_full_name}...[/cyan]")
 
-            ticket_count = self._sync_tickets_for_repo(repo_full_name)
-            stats['tickets'] += ticket_count
+            issue_count = self._sync_issues_for_repo(repo_full_name)
+            stats['issues'] += issue_count
             stats['repos_synced'].add(repo_full_name)
 
         # Sync PRs from code repo
@@ -78,7 +78,7 @@ class SyncManager:
 
         if self.config.sync.show_progress:
             console.print("[bold green]Sync completed successfully![/bold green]")
-            console.print(f"  Tickets: {stats['tickets']}")
+            console.print(f"  Issues: {stats['issues']}")
             console.print(f"  Pull Requests: {stats['pull_requests']}")
             if stats.get('git_repo_path'):
                 console.print(f"  Git repo synced to: {stats['git_repo_path']}")
@@ -86,22 +86,22 @@ class SyncManager:
         stats['repos_synced'] = list(stats['repos_synced'])
         return stats
 
-    def _sync_tickets_for_repo(self, repo_full_name: str) -> int:
+    def _sync_issues_for_repo(self, repo_full_name: str) -> int:
         """
-        Sync tickets for a specific repository with parallel fetching.
+        Sync issues for a specific repository with parallel fetching.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
 
         Returns:
-            Number of tickets synced
+            Number of issues synced
         """
         # Ensure repository exists in DB and get repo_id
         repo_info = self.github.get_repository_info(repo_full_name)
         repo_id = self.db.upsert_repository(repo_info)
 
         # Get last sync time
-        last_sync = self.db.get_last_sync(repo_full_name, 'tickets')
+        last_sync = self.db.get_last_sync(repo_full_name, 'issues')
 
         # Determine cutoff date
         cutoff_date = None
@@ -126,32 +126,32 @@ class SyncManager:
             if cutoff_source:
                 console.print(f"  [dim]Using {cutoff_source}[/dim]")
             else:
-                console.print(f"  [dim]Fetching all historical tickets[/dim]")
+                console.print(f"  [dim]Fetching all historical issues[/dim]")
 
-        # Fetch tickets directly with streaming (no discovery phase)
-        tickets = self._fetch_tickets_streaming(
+        # Fetch issues directly with streaming (no discovery phase)
+        issues = self._fetch_issues_streaming(
             repo_full_name,
             repo_id,
             cutoff_date
         )
 
-        if not tickets:
+        if not issues:
             if self.config.sync.show_progress:
-                console.print(f"  [green]✓[/green] All tickets up to date (0 new)")
+                console.print(f"  [green]✓[/green] All issues up to date (0 new)")
             return 0
 
         # Update sync metadata
         self.db.update_sync_metadata(
             repo_full_name,
-            'tickets',
+            'issues',
             cutoff_date=self.config.sync.cutoff_date,
-            total_fetched=len(tickets)
+            total_fetched=len(issues)
         )
 
         if self.config.sync.show_progress:
-            console.print(f"  [green]✓[/green] Synced {len(tickets)} tickets")
+            console.print(f"  [green]✓[/green] Synced {len(issues)} issues")
 
-        return len(tickets)
+        return len(issues)
 
     def _sync_pull_requests_for_repo(self, repo_full_name: str) -> int:
         """
@@ -220,32 +220,32 @@ class SyncManager:
 
         return len(prs)
 
-    def _get_ticket_numbers_to_fetch(
+    def _get_issue_numbers_to_fetch(
         self,
         repo_full_name: str,
         cutoff_date: Optional[datetime]
     ) -> List[int]:
         """
-        Get list of ticket numbers that need to be fetched.
+        Get list of issue numbers that need to be fetched.
 
         Args:
             repo_full_name: Full repository name
-            cutoff_date: Only fetch tickets created after this date
+            cutoff_date: Only fetch issues created after this date
 
         Returns:
-            List of ticket numbers to fetch
+            List of issue numbers to fetch
         """
-        # Get all ticket numbers from GitHub using fast Search API
-        all_ticket_numbers = self.github.search_ticket_numbers(
+        # Get all issue numbers from GitHub using fast Search API
+        all_issue_numbers = self.github.search_issue_numbers(
             repo_full_name,
             since=cutoff_date
         )
 
-        # Get ticket numbers already in DB
-        existing_numbers = self.db.get_existing_ticket_numbers(repo_full_name)
+        # Get issue numbers already in DB
+        existing_numbers = self.db.get_existing_issue_numbers(repo_full_name)
 
-        # Only fetch tickets not in DB
-        to_fetch = [num for num in all_ticket_numbers if num not in existing_numbers]
+        # Only fetch issues not in DB
+        to_fetch = [num for num in all_issue_numbers if num not in existing_numbers]
 
         return to_fetch
 
@@ -473,56 +473,56 @@ class SyncManager:
 
         return str(repo_path)
 
-    def _fetch_tickets_streaming(
+    def _fetch_issues_streaming(
         self,
         repo_full_name: str,
         repo_id: int,
         cutoff_date: Optional[datetime]
-    ) -> List[Ticket]:
+    ) -> List[Issue]:
         """
-        Fetch tickets efficiently using Core API with paginated batch fetching.
+        Fetch issues efficiently using Core API with paginated batch fetching.
 
         Uses GET /repos/{owner}/{repo}/issues with per_page=100 to fetch full issue data
-        in batches, then filters against existing tickets in DB.
+        in batches, then filters against existing issues in DB.
 
         Args:
             repo_full_name: Full repository name
             repo_id: Repository ID in database
-            cutoff_date: Only fetch tickets created after this date
+            cutoff_date: Only fetch issues created after this date
 
         Returns:
-            List of fetched tickets
+            List of fetched issues
         """
         try:
-            existing_numbers = self.db.get_existing_ticket_numbers(repo_full_name)
+            existing_numbers = self.db.get_existing_issue_numbers(repo_full_name)
 
             # Fetch all issues in one pass with paginated batches (100 per request)
-            all_tickets = self.github.fetch_all_issues(repo_full_name, repo_id, since=cutoff_date)
+            all_issues = self.github.fetch_all_issues(repo_full_name, repo_id, since=cutoff_date)
 
             # Filter out existing
-            if self.config.sync.show_progress and all_tickets:
-                console.print(f"  [dim]Filtering {len(all_tickets)} issues against existing {len(existing_numbers)} in database...[/dim]")
-            new_tickets = [ticket for ticket in all_tickets if ticket.number not in existing_numbers]
+            if self.config.sync.show_progress and all_issues:
+                console.print(f"  [dim]Filtering {len(all_issues)} issues against existing {len(existing_numbers)} in database...[/dim]")
+            new_issues = [issue for issue in all_issues if issue.number not in existing_numbers]
 
-            if not new_tickets:
+            if not new_issues:
                 if self.config.sync.show_progress:
-                    console.print(f"  [dim]No new tickets to sync[/dim]")
+                    console.print(f"  [dim]No new issues to sync[/dim]")
                 return []
 
             if self.config.sync.show_progress:
-                console.print(f"  [cyan]Storing {len(new_tickets)} new tickets...[/cyan]")
+                console.print(f"  [cyan]Storing {len(new_issues)} new issues...[/cyan]")
 
-            # Insert tickets to database
-            for ticket in new_tickets:
-                self.db.upsert_ticket(ticket)
+            # Insert issues to database
+            for issue in new_issues:
+                self.db.upsert_issue(issue)
 
             if self.config.sync.show_progress:
-                console.print(f"  [green]✓[/green] Synced {len(new_tickets)} new tickets")
+                console.print(f"  [green]✓[/green] Synced {len(new_issues)} new issues")
 
-            return new_tickets
+            return new_issues
 
         except Exception as e:
-            console.print(f"[red]Error fetching tickets: {e}[/red]")
+            console.print(f"[red]Error fetching issues: {e}[/red]")
             return []
 
     def _fetch_prs_streaming(

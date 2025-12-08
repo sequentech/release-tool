@@ -15,12 +15,12 @@ from ..git_ops import GitOperations, get_release_commit_range, determine_release
 from ..models import SemanticVersion
 from ..template_utils import render_template, TemplateError
 from ..policies import (
-    TicketExtractor,
+    IssueExtractor,
     CommitConsolidator,
     ReleaseNoteGenerator,
     VersionGapChecker,
-    PartialTicketMatch,
-    PartialTicketReason
+    PartialIssueMatch,
+    PartialIssueReason
 )
 
 console = Console()
@@ -30,10 +30,10 @@ def _get_issues_repo(config: Config) -> str:
     """
     Get the issues repository from config.
 
-    Returns the first ticket_repos entry if available, otherwise falls back to code_repo.
+    Returns the first issue_repos entry if available, otherwise falls back to code_repo.
     """
-    if config.repository.ticket_repos and len(config.repository.ticket_repos) > 0:
-        return config.repository.ticket_repos[0]
+    if config.repository.issue_repos and len(config.repository.issue_repos) > 0:
+        return config.repository.issue_repos[0]
     return config.repository.code_repo
 
 
@@ -53,7 +53,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
     """
     Generate release notes for a version.
 
-    Analyzes commits between versions, consolidates by ticket, and generates
+    Analyzes commits between versions, consolidates by issue, and generates
     formatted release notes.
 
     VERSION can be specified explicitly (e.g., "9.1.0") or auto-calculated using
@@ -511,84 +511,84 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     if pr:
                         pr_map[commit.pr_number] = pr
 
-            # Extract tickets and consolidate
-            extractor = TicketExtractor(config, debug=debug)
+            # Extract issues and consolidate
+            extractor = IssueExtractor(config, debug=debug)
             consolidator = CommitConsolidator(config, extractor, debug=debug)
             consolidated_changes = consolidator.consolidate(commit_models, pr_map)
 
             console.print(f"[blue]Consolidated into {len(consolidated_changes)} changes[/blue]")
 
-            # Handle missing tickets
-            consolidator.handle_missing_tickets(consolidated_changes)
+            # Handle missing issues
+            consolidator.handle_missing_issues(consolidated_changes)
 
-            # Load ticket information from database (offline) with partial detection
-            # Tickets must be synced first using: release-tool sync
-            partial_matches: List[PartialTicketMatch] = []
-            resolved_ticket_keys: Set[str] = set()  # Track successfully resolved tickets
+            # Load issue information from database (offline) with partial detection
+            # Issues must be synced first using: release-tool sync
+            partial_matches: List[PartialIssueMatch] = []
+            resolved_issue_keys: Set[str] = set()  # Track successfully resolved issues
 
-            # Get expected ticket repository IDs
-            expected_repos = config.get_ticket_repos()
+            # Get expected issue repository IDs
+            expected_repos = config.get_issue_repos()
             expected_repo_ids = []
-            for ticket_repo_name in expected_repos:
-                repo = db.get_repository(ticket_repo_name)
+            for issue_repo_name in expected_repos:
+                repo = db.get_repository(issue_repo_name)
                 if repo:
                     expected_repo_ids.append(repo.id)
 
             for change in consolidated_changes:
-                if change.ticket_key:
-                    # Query ticket from database across all repos
-                    ticket = db.get_ticket_by_key(change.ticket_key)
+                if change.issue_key:
+                    # Query issue from database across all repos
+                    issue = db.get_issue_by_key(change.issue_key)
 
-                    if not ticket:
+                    if not issue:
                         # NOT FOUND - create partial match
                         extraction_source = _get_extraction_source(change)
-                        partial = PartialTicketMatch(
-                            ticket_key=change.ticket_key,
+                        partial = PartialIssueMatch(
+                            issue_key=change.issue_key,
                             extracted_from=extraction_source,
                             match_type="not_found",
                             potential_reasons={
-                                PartialTicketReason.OLDER_THAN_CUTOFF,
-                                PartialTicketReason.TYPO,
-                                PartialTicketReason.SYNC_NOT_RUN
+                                PartialIssueReason.OLDER_THAN_CUTOFF,
+                                PartialIssueReason.TYPO,
+                                PartialIssueReason.SYNC_NOT_RUN
                             }
                         )
                         partial_matches.append(partial)
 
                         if debug:
-                            console.print(f"\n[yellow]⚠️  Ticket {change.ticket_key} not found in DB[/yellow]")
+                            console.print(f"\n[yellow]⚠️  Issue {change.issue_key} not found in DB[/yellow]")
 
-                    elif ticket.repo_id not in expected_repo_ids:
+                    elif issue.repo_id not in expected_repo_ids:
                         # DIFFERENT REPO - create partial match
-                        found_repo = db.get_repository_by_id(ticket.repo_id)
+                        found_repo = db.get_repository_by_id(issue.repo_id)
                         extraction_source = _get_extraction_source(change)
-                        partial = PartialTicketMatch(
-                            ticket_key=change.ticket_key,
+                        partial = PartialIssueMatch(
+                            issue_key=change.issue_key,
                             extracted_from=extraction_source,
                             match_type="different_repo",
                             found_in_repo=found_repo.full_name if found_repo else "unknown",
-                            ticket_url=ticket.url,
+                            issue_url=issue.url,
                             potential_reasons={
-                                PartialTicketReason.REPO_CONFIG_MISMATCH,
-                                PartialTicketReason.WRONG_TICKET_REPOS
+                                PartialIssueReason.REPO_CONFIG_MISMATCH,
+                                PartialIssueReason.WRONG_ISSUE_REPOS
                             }
                         )
                         partial_matches.append(partial)
 
                         if debug:
-                            console.print(f"\n[yellow]⚠️  Ticket {change.ticket_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
+                            console.print(f"\n[yellow]⚠️  Issue {change.issue_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
 
                     else:
                         # Found in correct repo - mark as resolved
-                        resolved_ticket_keys.add(change.ticket_key)
+                        resolved_issue_keys.add(change.issue_key)
                         if debug:
-                            console.print(f"\n[dim]📋 Found ticket in DB: #{ticket.number} - {ticket.title}[/dim]")
+                            console.print(f"\n[dim]📋 Found issue in DB: #{issue.number} - {issue.title}[/dim]")
 
-                    change.ticket = ticket
+                    change.issue = issue
 
-            # Apply partial ticket policy (with resolved/unresolved tracking)
-            _handle_partial_tickets(partial_matches, resolved_ticket_keys, config, debug)
+            # Apply partial issue policy (with resolved/unresolved tracking)
+            _handle_partial_issues(partial_matches, resolved_issue_keys, config, debug)
 
-            # Check for inter-release duplicate tickets
+            # Check for inter-release duplicate issues
             consolidated_changes = _check_inter_release_duplicates(
                 consolidated_changes,
                 target_version,
@@ -609,7 +609,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             note_generator = ReleaseNoteGenerator(config)
             release_notes = []
             for change in consolidated_changes:
-                note = note_generator.create_release_note(change, change.ticket)
+                note = note_generator.create_release_note(change, change.issue)
                 release_notes.append(note)
 
             # Group and format
@@ -630,7 +630,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     json_output['categories'][category] = [
                         {
                             'title': note.title,
-                            'ticket_key': note.ticket_key,
+                            'issue_key': note.issue_key,
                             'description': note.description,
                             'labels': note.labels
                         }
@@ -648,7 +648,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     # Build default draft path from config template
                     template_context = {
                         'code_repo': repo_name.replace('/', '-'),  # Sanitized for filesystem
-                        'issue_repo': _get_issues_repo(config),    # First ticket_repos or code_repo
+                        'issue_repo': _get_issues_repo(config),    # First issue_repos or code_repo
                         'version': version,
                         'major': str(target_version.major),
                         'minor': str(target_version.minor),
@@ -750,7 +750,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
 def _get_extraction_source(change, commits_map=None, prs_map=None):
     """
-    Get human-readable description of where a ticket was extracted from.
+    Get human-readable description of where a issue was extracted from.
 
     Args:
         change: ConsolidatedChange object
@@ -775,28 +775,28 @@ def _get_extraction_source(change, commits_map=None, prs_map=None):
     return "unknown source"
 
 
-def _extract_ticket_keys_from_release_notes(release_body: str) -> Set[str]:
+def _extract_issue_keys_from_release_notes(release_body: str) -> Set[str]:
     """
-    Extract ticket keys from release notes body.
+    Extract issue keys from release notes body.
 
     Args:
         release_body: The markdown body of release notes
 
     Returns:
-        Set of ticket keys found in the release notes
+        Set of issue keys found in the release notes
     """
     import re
-    ticket_keys = set()
+    issue_keys = set()
 
     # Pattern 1: #1234 format
     for match in re.finditer(r'#(\d+)', release_body):
-        ticket_keys.add(match.group(1))
+        issue_keys.add(match.group(1))
 
     # Pattern 2: owner/repo#1234 format
     for match in re.finditer(r'[\w-]+/[\w-]+#(\d+)', release_body):
-        ticket_keys.add(match.group(1))
+        issue_keys.add(match.group(1))
 
-    return ticket_keys
+    return issue_keys
 
 
 def _check_inter_release_duplicates(
@@ -808,10 +808,10 @@ def _check_inter_release_duplicates(
     debug: bool
 ) -> List:
     """
-    Check for tickets that appear in earlier releases and apply deduplication policy.
+    Check for issues that appear in earlier releases and apply deduplication policy.
 
     Args:
-        consolidated_changes: List of consolidated changes with tickets
+        consolidated_changes: List of consolidated changes with issues
         target_version: The version being generated
         db: Database instance
         repo_id: Repository ID
@@ -823,7 +823,7 @@ def _check_inter_release_duplicates(
     """
     from ..models import SemanticVersion
 
-    action = config.ticket_policy.inter_release_duplicate_action
+    action = config.issue_policy.inter_release_duplicate_action
 
     if action == PolicyAction.IGNORE and not debug:
         # Skip the check entirely if ignoring and not debugging
@@ -846,39 +846,39 @@ def _check_inter_release_duplicates(
         # No earlier releases to check against
         return consolidated_changes
 
-    # Extract ticket keys from all earlier releases
-    tickets_in_earlier_releases = {}  # ticket_key -> list of (version, release)
+    # Extract issue keys from all earlier releases
+    issues_in_earlier_releases = {}  # issue_key -> list of (version, release)
     for release in earlier_releases:
         if release.body:
-            ticket_keys = _extract_ticket_keys_from_release_notes(release.body)
-            for ticket_key in ticket_keys:
-                if ticket_key not in tickets_in_earlier_releases:
-                    tickets_in_earlier_releases[ticket_key] = []
-                tickets_in_earlier_releases[ticket_key].append((release.version, release))
+            issue_keys = _extract_issue_keys_from_release_notes(release.body)
+            for issue_key in issue_keys:
+                if issue_key not in issues_in_earlier_releases:
+                    issues_in_earlier_releases[issue_key] = []
+                issues_in_earlier_releases[issue_key].append((release.version, release))
 
     # Check current changes against earlier releases
-    duplicate_tickets = {}  # ticket_key -> list of versions
+    duplicate_issues = {}  # issue_key -> list of versions
     for change in consolidated_changes:
-        if change.ticket_key and change.ticket_key in tickets_in_earlier_releases:
-            versions = [v for v, r in tickets_in_earlier_releases[change.ticket_key]]
-            duplicate_tickets[change.ticket_key] = versions
+        if change.issue_key and change.issue_key in issues_in_earlier_releases:
+            versions = [v for v, r in issues_in_earlier_releases[change.issue_key]]
+            duplicate_issues[change.issue_key] = versions
 
-    if not duplicate_tickets:
+    if not duplicate_issues:
         # No duplicates found
         return consolidated_changes
 
     # Apply policy
     if action == PolicyAction.IGNORE:
-        # Filter out duplicate tickets from consolidated_changes
+        # Filter out duplicate issues from consolidated_changes
         filtered_changes = [
             change for change in consolidated_changes
-            if not (change.ticket_key and change.ticket_key in duplicate_tickets)
+            if not (change.issue_key and change.issue_key in duplicate_issues)
         ]
 
         if debug:
-            console.print(f"\n[dim]Filtered out {len(duplicate_tickets)} duplicate ticket(s) found in earlier releases:[/dim]")
-            for ticket_key, versions in duplicate_tickets.items():
-                console.print(f"  [dim]• #{ticket_key} (in releases: {', '.join(versions)})[/dim]")
+            console.print(f"\n[dim]Filtered out {len(duplicate_issues)} duplicate issue(s) found in earlier releases:[/dim]")
+            for issue_key, versions in duplicate_issues.items():
+                console.print(f"  [dim]• #{issue_key} (in releases: {', '.join(versions)})[/dim]")
 
         return filtered_changes
 
@@ -886,12 +886,12 @@ def _check_inter_release_duplicates(
         # Include duplicates but warn
         msg_lines = []
         msg_lines.append("")
-        msg_lines.append(f"[yellow]⚠️  Warning: Found {len(duplicate_tickets)} ticket(s) that appear in earlier releases:[/yellow]")
-        for ticket_key, versions in duplicate_tickets.items():
-            msg_lines.append(f"  • [bold]#{ticket_key}[/bold] (in releases: {', '.join(versions)})")
+        msg_lines.append(f"[yellow]⚠️  Warning: Found {len(duplicate_issues)} issue(s) that appear in earlier releases:[/yellow]")
+        for issue_key, versions in duplicate_issues.items():
+            msg_lines.append(f"  • [bold]#{issue_key}[/bold] (in releases: {', '.join(versions)})")
         msg_lines.append("")
-        msg_lines.append("[dim]These tickets will be included in this release but also exist in earlier releases.[/dim]")
-        msg_lines.append("[dim]To exclude duplicates, set ticket_policy.inter_release_duplicate_action = 'ignore'[/dim]")
+        msg_lines.append("[dim]These issues will be included in this release but also exist in earlier releases.[/dim]")
+        msg_lines.append("[dim]To exclude duplicates, set issue_policy.inter_release_duplicate_action = 'ignore'[/dim]")
         msg_lines.append("")
         console.print("\n".join(msg_lines))
 
@@ -900,11 +900,11 @@ def _check_inter_release_duplicates(
     elif action == PolicyAction.ERROR:
         # Fail with error
         msg_lines = []
-        msg_lines.append(f"[red]Error: Found {len(duplicate_tickets)} ticket(s) that appear in earlier releases:[/red]")
-        for ticket_key, versions in duplicate_tickets.items():
-            msg_lines.append(f"  • [bold]#{ticket_key}[/bold] (in releases: {', '.join(versions)})")
+        msg_lines.append(f"[red]Error: Found {len(duplicate_issues)} issue(s) that appear in earlier releases:[/red]")
+        for issue_key, versions in duplicate_issues.items():
+            msg_lines.append(f"  • [bold]#{issue_key}[/bold] (in releases: {', '.join(versions)})")
         console.print("\n".join(msg_lines))
-        raise RuntimeError(f"Inter-release duplicate tickets found ({len(duplicate_tickets)} total). Policy: error")
+        raise RuntimeError(f"Inter-release duplicate issues found ({len(duplicate_issues)} total). Policy: error")
 
     return consolidated_changes
 
@@ -918,38 +918,38 @@ def _filter_by_inclusion_policy(
     Filter consolidated changes based on release_notes_inclusion_policy.
 
     This policy controls which types of changes appear in release notes:
-    - "tickets": Include changes associated with a ticket/issue
-    - "pull-requests": Include changes from pull requests (even without a ticket)
-    - "commits": Include direct commits (no PR, no ticket)
+    - "issues": Include changes associated with a issue/issue
+    - "pull-requests": Include changes from pull requests (even without a issue)
+    - "commits": Include direct commits (no PR, no issue)
 
     Args:
         consolidated_changes: List of ConsolidatedChange objects
-        config: Config with release_notes_inclusion_policy in ticket_policy
+        config: Config with release_notes_inclusion_policy in issue_policy
         debug: Debug mode flag
 
     Returns:
         Filtered list based on policy
 
     Example:
-        With default ["tickets", "pull-requests"]:
-        - Commits with tickets → Included (type="ticket")
-        - PRs with tickets → Included (type="ticket")
-        - PRs without tickets → Included (type="pr")
-        - Commits without PRs or tickets → EXCLUDED (type="commit")
+        With default ["issues", "pull-requests"]:
+        - Commits with issues → Included (type="issue")
+        - PRs with issues → Included (type="issue")
+        - PRs without issues → Included (type="pr")
+        - Commits without PRs or issues → EXCLUDED (type="commit")
     """
     from rich.console import Console
     console = Console()
 
-    policy = set(config.ticket_policy.release_notes_inclusion_policy)
+    policy = set(config.issue_policy.release_notes_inclusion_policy)
 
     filtered = []
-    excluded_count = {"commit": 0, "pr": 0, "ticket": 0}
+    excluded_count = {"commit": 0, "pr": 0, "issue": 0}
 
     for change in consolidated_changes:
         include = False
 
         # Check if change type is in policy
-        if change.type == "ticket" and "tickets" in policy:
+        if change.type == "issue" and "issues" in policy:
             include = True
         elif change.type == "pr" and "pull-requests" in policy:
             include = True
@@ -967,8 +967,8 @@ def _filter_by_inclusion_policy(
             if count > 0:
                 type_label = {
                     "commit": "standalone commit(s)",
-                    "pr": "pull request(s) without tickets",
-                    "ticket": "ticket-linked change(s)"
+                    "pr": "pull request(s) without issues",
+                    "issue": "issue-linked change(s)"
                 }.get(change_type, change_type)
                 console.print(f"  [dim]• Excluded {count} {type_label}[/dim]")
         console.print(f"  [dim]• Policy: {sorted(policy)}[/dim]")
@@ -976,12 +976,12 @@ def _filter_by_inclusion_policy(
     return filtered
 
 
-def _display_partial_section(partials: List[PartialTicketMatch], section_title: str) -> List[str]:
+def _display_partial_section(partials: List[PartialIssueMatch], section_title: str) -> List[str]:
     """
-    Helper function to display a section of partial tickets with details.
+    Helper function to display a section of partial issues with details.
 
     Args:
-        partials: List of PartialTicketMatch objects to display
+        partials: List of PartialIssueMatch objects to display
         section_title: Title for this section
 
     Returns:
@@ -1001,70 +1001,70 @@ def _display_partial_section(partials: List[PartialTicketMatch], section_title: 
 
     # Handle different_repo partials
     if different_repo:
-        msg_lines.append(f"[yellow]Tickets in different repository ({len(different_repo)}):[/yellow]")
+        msg_lines.append(f"[yellow]Issues in different repository ({len(different_repo)}):[/yellow]")
 
-        # Group tickets by reason
-        tickets_by_reason = defaultdict(list)
+        # Group issues by reason
+        issues_by_reason = defaultdict(list)
         for p in different_repo:
             for reason in p.potential_reasons:
-                tickets_by_reason[reason].append(p)
+                issues_by_reason[reason].append(p)
 
-        # Show reasons with associated tickets
+        # Show reasons with associated issues
         msg_lines.append(f"  [dim]This might be because of:[/dim]")
-        for reason, tickets in tickets_by_reason.items():
-            ticket_keys = [p.ticket_key for p in tickets]
+        for reason, issues in issues_by_reason.items():
+            issue_keys = [p.issue_key for p in issues]
             msg_lines.append(f"    • {reason.description}")
-            msg_lines.append(f"      [dim]Tickets:[/dim] {', '.join(ticket_keys)}")
+            msg_lines.append(f"      [dim]Issues:[/dim] {', '.join(issue_keys)}")
 
         msg_lines.append("")
         msg_lines.append("  [dim]Details:[/dim]")
         for p in different_repo:
-            msg_lines.append(f"    • [bold]{p.ticket_key}[/bold] (from {p.extracted_from})")
+            msg_lines.append(f"    • [bold]{p.issue_key}[/bold] (from {p.extracted_from})")
             if p.found_in_repo:
                 msg_lines.append(f"      [dim]Found in:[/dim] {p.found_in_repo}")
-            if p.ticket_url:
-                msg_lines.append(f"      [dim]URL:[/dim] {p.ticket_url}")
+            if p.issue_url:
+                msg_lines.append(f"      [dim]URL:[/dim] {p.issue_url}")
         msg_lines.append("")
 
     # Handle not_found partials
     if not_found:
-        msg_lines.append(f"[yellow]Tickets not found in database ({len(not_found)}):[/yellow]")
+        msg_lines.append(f"[yellow]Issues not found in database ({len(not_found)}):[/yellow]")
 
-        # Group tickets by reason
-        tickets_by_reason = defaultdict(list)
+        # Group issues by reason
+        issues_by_reason = defaultdict(list)
         for p in not_found:
             for reason in p.potential_reasons:
-                tickets_by_reason[reason].append(p)
+                issues_by_reason[reason].append(p)
 
-        # Show reasons with associated tickets
+        # Show reasons with associated issues
         msg_lines.append(f"  [dim]This might be because of:[/dim]")
-        for reason, tickets in tickets_by_reason.items():
-            ticket_keys = [p.ticket_key for p in tickets]
+        for reason, issues in issues_by_reason.items():
+            issue_keys = [p.issue_key for p in issues]
             msg_lines.append(f"    • {reason.description}")
-            msg_lines.append(f"      [dim]Tickets:[/dim] {', '.join(ticket_keys)}")
+            msg_lines.append(f"      [dim]Issues:[/dim] {', '.join(issue_keys)}")
 
         msg_lines.append("")
         msg_lines.append("  [dim]Details:[/dim]")
         for p in not_found:
-            msg_lines.append(f"    • [bold]{p.ticket_key}[/bold] (from {p.extracted_from})")
+            msg_lines.append(f"    • [bold]{p.issue_key}[/bold] (from {p.extracted_from})")
         msg_lines.append("")
 
     return msg_lines
 
 
-def _handle_partial_tickets(
-    all_partials: List[PartialTicketMatch],
-    resolved_ticket_keys: Set[str],
+def _handle_partial_issues(
+    all_partials: List[PartialIssueMatch],
+    resolved_issue_keys: Set[str],
     config,
     debug: bool
 ):
     """
-    Handle partial ticket matches based on policy configuration.
+    Handle partial issue matches based on policy configuration.
 
     Args:
-        all_partials: List of ALL PartialTicketMatch objects (resolved and unresolved)
-        resolved_ticket_keys: Set of ticket keys that were eventually resolved
-        config: Config object with ticket_policy.partial_ticket_action
+        all_partials: List of ALL PartialIssueMatch objects (resolved and unresolved)
+        resolved_issue_keys: Set of issue keys that were eventually resolved
+        config: Config object with issue_policy.partial_issue_action
         debug: Whether debug mode is enabled
 
     Raises:
@@ -1073,14 +1073,14 @@ def _handle_partial_tickets(
     if not all_partials:
         return
 
-    action = config.ticket_policy.partial_ticket_action
+    action = config.issue_policy.partial_issue_action
 
     if action == PolicyAction.IGNORE:
         return
 
     # Split into resolved and unresolved
-    unresolved_partials = [p for p in all_partials if p.ticket_key not in resolved_ticket_keys]
-    resolved_partials = [p for p in all_partials if p.ticket_key in resolved_ticket_keys]
+    unresolved_partials = [p for p in all_partials if p.issue_key not in resolved_issue_keys]
+    resolved_partials = [p for p in all_partials if p.issue_key in resolved_issue_keys]
 
     # DEBUG MODE: Show both resolved and unresolved with full details
     if debug:
@@ -1089,11 +1089,11 @@ def _handle_partial_tickets(
 
         # Header with counts
         if unresolved_partials and resolved_partials:
-            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved and {len(resolved_partials)} resolved partial ticket match(es)[/yellow]")
+            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved and {len(resolved_partials)} resolved partial issue match(es)[/yellow]")
         elif unresolved_partials:
-            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved partial ticket match(es)[/yellow]")
+            msg_lines.append(f"[yellow]⚠️  Found {len(unresolved_partials)} unresolved partial issue match(es)[/yellow]")
         else:
-            msg_lines.append(f"[green]✓ {len(resolved_partials)} partial ticket match(es) were fully resolved[/green]")
+            msg_lines.append(f"[green]✓ {len(resolved_partials)} partial issue match(es) were fully resolved[/green]")
         msg_lines.append("")
 
         # Show unresolved section first (if any)
@@ -1109,9 +1109,9 @@ def _handle_partial_tickets(
         # Add resolution tips for unresolved
         if unresolved_partials:
             msg_lines.append("[dim]To resolve:[/dim]")
-            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
-            msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
-            msg_lines.append("  3. Verify ticket numbers in branches/PRs")
+            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest issues")
+            msg_lines.append("  2. Check [bold]repository.issue_repos[/bold] in config")
+            msg_lines.append("  3. Verify issue numbers in branches/PRs")
             msg_lines.append("")
 
         console.print("\n".join(msg_lines))
@@ -1120,12 +1120,12 @@ def _handle_partial_tickets(
     elif action == PolicyAction.WARN:
         if not unresolved_partials:
             # All resolved - brief message only
-            console.print(f"[dim]ℹ️  {len(resolved_partials)} partial ticket match(es) were fully resolved. Use --debug for details.[/dim]")
+            console.print(f"[dim]ℹ️  {len(resolved_partials)} partial issue match(es) were fully resolved. Use --debug for details.[/dim]")
         else:
             # Has unresolved - show full details for unresolved only
             msg_lines = []
             msg_lines.append("")
-            msg_lines.append(f"[yellow]⚠️  Warning: Found {len(unresolved_partials)} unresolved partial ticket match(es)[/yellow]")
+            msg_lines.append(f"[yellow]⚠️  Warning: Found {len(unresolved_partials)} unresolved partial issue match(es)[/yellow]")
             if resolved_partials:
                 msg_lines.append(f"[dim]({len(resolved_partials)} were resolved)[/dim]")
             msg_lines.append("")
@@ -1136,13 +1136,13 @@ def _handle_partial_tickets(
 
             # Add resolution tips
             msg_lines.append("[dim]To resolve:[/dim]")
-            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest tickets")
-            msg_lines.append("  2. Check [bold]repository.ticket_repos[/bold] in config")
-            msg_lines.append("  3. Verify ticket numbers in branches/PRs")
+            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest issues")
+            msg_lines.append("  2. Check [bold]repository.issue_repos[/bold] in config")
+            msg_lines.append("  3. Verify issue numbers in branches/PRs")
             msg_lines.append("")
 
             console.print("\n".join(msg_lines))
 
     # ERROR MODE: Fail if any unresolved
     if action == PolicyAction.ERROR and unresolved_partials:
-        raise RuntimeError(f"Unresolved partial ticket matches found ({len(unresolved_partials)} total). Policy: error")
+        raise RuntimeError(f"Unresolved partial issue matches found ({len(unresolved_partials)} total). Policy: error")

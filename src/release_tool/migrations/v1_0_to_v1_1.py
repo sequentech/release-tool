@@ -5,9 +5,9 @@
 """Migration from config version 1.0 to 1.1.
 
 Changes in 1.1:
-- Added template variables: ticket_url, pr_url
+- Added template variables: issue_url, pr_url
 - Improved output_template formatting (better spacing, blank lines)
-- url field now smart: ticket_url if available, else pr_url
+- url field now smart: issue_url if available, else pr_url
 - Templates formatted as multiline literal strings for readability
 
 This migration:

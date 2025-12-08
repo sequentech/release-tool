@@ -19,7 +19,7 @@ def sync(ctx, repository, repo_path):
     """
     Sync repository data to local database.
 
-    Fetches tickets, PRs, releases, and commits from GitHub and stores them locally.
+    Fetches issues, PRs, releases, and commits from GitHub and stores them locally.
     Uses highly parallelized fetching with incremental sync.
     """
     # Get debug flag from global context
@@ -56,7 +56,7 @@ def sync(ctx, repository, repo_path):
 
         console.print("[bold green]Sync complete![/bold green]")
         console.print(f"[dim]Summary:[/dim]")
-        console.print(f"  Tickets: {stats['tickets']}")
+        console.print(f"  Issues: {stats['issues']}")
         console.print(f"  Pull Requests: {stats['pull_requests']}")
         console.print(f"  Releases: {len(releases)}")
         console.print(f"  Repositories: {', '.join(stats['repos_synced'])}")

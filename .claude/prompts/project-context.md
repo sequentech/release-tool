@@ -10,8 +10,8 @@ SPDX-License-Identifier: MIT
 
 **release-tool** is a Python CLI application for managing semantic versioned releases. It automates the generation of release notes by:
 1. Analyzing Git commit history between versions
-2. Consolidating commits by parent tickets
-3. Fetching ticket metadata from GitHub Issues
+2. Consolidating commits by parent issues
+3. Fetching issue metadata from GitHub Issues
 4. Categorizing changes by labels
 5. Rendering formatted release notes via Jinja2 templates
 
@@ -45,9 +45,9 @@ Output (Jinja2 templates)
 
 - `SemanticVersion` - Parse and compare versions (2.0.0, 1.5.0-rc.1)
 - `Repository` - GitHub repository metadata
-- `Ticket` - GitHub issue/ticket details
+- `Issue` - GitHub issue/issue details
 - `PullRequest` - GitHub PR with merge info
-- `Commit` - Git commit with ticket association
+- `Commit` - Git commit with issue association
 - `Release` - GitHub release information
 - `ReleaseNote` - Generated release note entry
 - `Author` - Contributor information
@@ -56,16 +56,16 @@ Output (Jinja2 templates)
 
 ### Sync Workflow (sync.py)
 1. Get last sync timestamp from DB
-2. Use GitHub Search API to find new tickets/PRs
+2. Use GitHub Search API to find new issues/PRs
 3. Filter against existing items in database
 4. Parallel fetch full details (20 workers)
 5. Store incrementally with progress updates
 
 ### Generate Workflow (policies.py)
 1. Extract commits between versions from Git
-2. Extract ticket references from commits
-3. Consolidate commits by parent ticket
-4. Fetch ticket metadata from DB/GitHub
+2. Extract issue references from commits
+3. Consolidate commits by parent issue
+4. Fetch issue metadata from DB/GitHub
 5. Categorize by labels
 6. Render via Jinja2 template
 7. Output to console/file/GitHub
@@ -82,7 +82,7 @@ Output (Jinja2 templates)
 - **NEVER** leave user waiting >2 seconds without output
 - Show progress at every phase: searching, filtering, fetching
 - Use Rich progress bars with percentage/count
-- Example: "Searching for tickets..." → "Found 123 tickets" → "Fetching 45 new tickets in parallel..."
+- Example: "Searching for issues..." → "Found 123 issues" → "Fetching 45 new issues in parallel..."
 
 ### Batch Sizes
 - Search: Single API call per page (GitHub handles pagination)
@@ -93,15 +93,15 @@ Output (Jinja2 templates)
 
 ### Good Pattern - Parallel Fetch
 ```python
-console.print("[cyan]Searching for tickets...[/cyan]")
+console.print("[cyan]Searching for issues...[/cyan]")
 query = f"repo:{repo_name} is:issue"
 issues = gh.search_issues(query)
-console.print(f"[green]✓[/green] Found {len(issues)} tickets")
+console.print(f"[green]✓[/green] Found {len(issues)} issues")
 
 with ThreadPoolExecutor(max_workers=20) as executor:
-    futures = {executor.submit(fetch_ticket, num): num for num in numbers}
+    futures = {executor.submit(fetch_issue, num): num for num in numbers}
     for future in as_completed(futures):
-        ticket = future.result()
+        issue = future.result()
         progress.update(...)  # Show progress
 ```
 
@@ -294,9 +294,9 @@ poetry run pytest tests/ -v
 ## Configuration (config.py)
 
 Loaded from `release_tool.toml`:
-- Repository settings (code_repo, ticket_repos)
+- Repository settings (code_repo, issue_repos)
 - Sync configuration (parallel_workers, cutoff_date)
-- Ticket policies (extraction patterns, consolidation)
+- Issue policies (extraction patterns, consolidation)
 - Version policies (tag_prefix, gap_detection)
 - Branch policy (release_branch_template, default_branch, create_branches, branch_from_previous_release)
 - Release note categories and templates
@@ -451,8 +451,8 @@ release-tool update-config --target-version 1.1
 ### Version History
 
 #### v1.1 (Current)
-- Added `ticket_url` and `pr_url` template variables
-- Made `url` a smart field (ticket_url if available, else pr_url)
+- Added `issue_url` and `pr_url` template variables
+- Made `url` a smart field (issue_url if available, else pr_url)
 - Improved `output_template` formatting with better spacing and blank lines
 - Added `config_version` field for version tracking
 

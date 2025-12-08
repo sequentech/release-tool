@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 from datetime import datetime
 from release_tool.db import Database
-from release_tool.models import Repository, PullRequest, Commit, Label, Ticket, Release, Author
+from release_tool.models import Repository, PullRequest, Commit, Label, Issue, Release, Author
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_init_db(db):
     assert "repositories" in tables
     assert "pull_requests" in tables
     assert "commits" in tables
-    assert "tickets" in tables
+    assert "issues" in tables
     assert "releases" in tables
 
 
@@ -98,12 +98,12 @@ def test_upsert_commit(db):
     assert fetched_commit.author.email == "dev@example.com"
 
 
-def test_upsert_ticket(db):
-    """Test ticket upsert."""
+def test_upsert_issue(db):
+    """Test issue upsert."""
     repo = Repository(owner="test", name="repo")
     repo_id = db.upsert_repository(repo)
 
-    ticket = Ticket(
+    issue = Issue(
         repo_id=repo_id,
         number=123,
         key="#123",
@@ -112,44 +112,44 @@ def test_upsert_ticket(db):
         labels=[Label(name="bug")]
     )
 
-    ticket_id = db.upsert_ticket(ticket)
-    assert ticket_id is not None
+    issue_id = db.upsert_issue(issue)
+    assert issue_id is not None
 
-    fetched_ticket = db.get_ticket(repo_id, "#123")
-    assert fetched_ticket.title == "Fix bug"
-    assert fetched_ticket.number == 123
+    fetched_issue = db.get_issue(repo_id, "#123")
+    assert fetched_issue.title == "Fix bug"
+    assert fetched_issue.number == 123
 
 
-def test_get_ticket_by_key(db):
-    """Test getting ticket by key across all repos."""
-    # Create two different repos (simulating code repo and ticket repo)
+def test_get_issue_by_key(db):
+    """Test getting issue by key across all repos."""
+    # Create two different repos (simulating code repo and issue repo)
     code_repo = Repository(owner="org", name="code")
     code_repo_id = db.upsert_repository(code_repo)
 
-    ticket_repo = Repository(owner="org", name="tickets")
-    ticket_repo_id = db.upsert_repository(ticket_repo)
+    issue_repo = Repository(owner="org", name="issues")
+    issue_repo_id = db.upsert_repository(issue_repo)
 
-    # Create ticket in ticket repo
-    ticket = Ticket(
-        repo_id=ticket_repo_id,
+    # Create issue in issue repo
+    issue = Issue(
+        repo_id=issue_repo_id,
         number=8624,
         key="8624",  # Bare number as extracted from branch
         title="Implement feature X",
         state="closed",
         labels=[Label(name="enhancement")]
     )
-    db.upsert_ticket(ticket)
+    db.upsert_issue(issue)
 
     # Query by repo_id should fail when using wrong repo
-    wrong_ticket = db.get_ticket(code_repo_id, "8624")
-    assert wrong_ticket is None
+    wrong_issue = db.get_issue(code_repo_id, "8624")
+    assert wrong_issue is None
 
     # Query by key only should succeed
-    found_ticket = db.get_ticket_by_key("8624")
-    assert found_ticket is not None
-    assert found_ticket.title == "Implement feature X"
-    assert found_ticket.number == 8624
-    assert found_ticket.repo_id == ticket_repo_id
+    found_issue = db.get_issue_by_key("8624")
+    assert found_issue is not None
+    assert found_issue.title == "Implement feature X"
+    assert found_issue.number == 8624
+    assert found_issue.repo_id == issue_repo_id
 
 
 def test_upsert_release(db):

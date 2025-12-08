@@ -30,8 +30,8 @@ owner = "sequentech"       # GitHub organization or user
 path = "release_tool.db"   # Local database path
 
 [policies]
-# Regex patterns to find tickets in PR titles/bodies
-ticket_patterns = ["([A-Z]+-\\d+)"] 
+# Regex patterns to find issues in PR titles/bodies
+issue_patterns = ["([A-Z]+-\\d+)"] 
 
 # Categories for grouping release notes
 categories = [
@@ -111,7 +111,7 @@ Configuration for syncing data from GitHub.
 
 #### `cutoff_date`
 - **Type**: `str` (optional)
-- **Description**: Only fetch tickets/PRs created after this date (ISO format: YYYY-MM-DD). Speeds up initial sync.
+- **Description**: Only fetch issues/PRs created after this date (ISO format: YYYY-MM-DD). Speeds up initial sync.
 - **Example**: `"2024-01-01"`
 
 #### `parallel_workers`
@@ -128,10 +128,10 @@ Configuration for syncing data from GitHub.
 
 This section controls the behavior of the release tool's logic.
 
-#### `ticket_patterns`
+#### `issue_patterns`
 - **Type**: `List[str]`
-- **Description**: A list of regular expressions used to identify ticket IDs in Pull Request titles and bodies.
-- **Example**: `["([A-Z]+-\\d+)"]` matches tickets like `JIRA-123`.
+- **Description**: A list of regular expressions used to identify issue IDs in Pull Request titles and bodies.
+- **Example**: `["([A-Z]+-\\d+)"]` matches issues like `JIRA-123`.
 
 #### `categories`
 - **Type**: `List[CategoryConfig]`
@@ -147,7 +147,7 @@ This section controls the behavior of the release tool's logic.
 
 ##### Fallback Category
 
-**IMPORTANT**: One category must have `alias = "other"` to serve as the fallback for tickets/PRs that don't match any other category's labels.
+**IMPORTANT**: One category must have `alias = "other"` to serve as the fallback for issues/PRs that don't match any other category's labels.
 
 - **Name**: You can name it anything (e.g., "Other", "Miscellaneous", "Other Changes")
 - **Labels**: Should be empty `[]` to catch unmatched items
@@ -163,7 +163,7 @@ order = 99                  # Display last
 alias = "other"             # REQUIRED - do not change
 ```
 
-The tool automatically assigns any ticket or PR without matching labels to the category with `alias="other"`.
+The tool automatically assigns any issue or PR without matching labels to the category with `alias="other"`.
 
 #### `version_gap_policy`
 - **Type**: `str`

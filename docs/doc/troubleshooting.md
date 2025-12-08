@@ -23,18 +23,18 @@ Common issues and how to resolve them.
 - Ensure you have configured a `GITHUB_TOKEN`. Authenticated requests have a much higher rate limit (5000/hour) than unauthenticated ones (60/hour).
 - Check your token permissions.
 
-## Missing Tickets in Release Notes
+## Missing Issues in Release Notes
 
 **Issue**: PRs are showing up in "Other" or not appearing at all.
 
 **Cause**:
-- The PR title or body does not contain a valid ticket reference (e.g., `JIRA-123`).
-- The `ticket_patterns` configuration does not match your ticket format.
+- The PR title or body does not contain a valid issue reference (e.g., `JIRA-123`).
+- The `issue_patterns` configuration does not match your issue format.
 - The PR is not closed/merged.
 
 **Solution**:
-- Verify the PR has a ticket reference.
-- Check your `release_tool.toml` configuration for `ticket_patterns`.
+- Verify the PR has a issue reference.
+- Check your `release_tool.toml` configuration for `issue_patterns`.
 - Ensure the PR is merged.
 
 ## Database Locked

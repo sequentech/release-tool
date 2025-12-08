@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime
 from release_tool.models import (
     SemanticVersion, Repository, Label, PullRequest, Commit,
-    Ticket, Release, ReleaseNote, VersionType, Author
+    Issue, Release, ReleaseNote, VersionType, Author
 )
 
 
@@ -239,11 +239,11 @@ class TestCommit:
         assert commit.author.email == "john@example.com"
 
 
-class TestTicket:
-    """Tests for Ticket model."""
+class TestIssue:
+    """Tests for Issue model."""
 
-    def test_create_ticket(self):
-        ticket = Ticket(
+    def test_create_issue(self):
+        issue = Issue(
             repo_id=1,
             number=456,
             key="456",
@@ -251,11 +251,11 @@ class TestTicket:
             state="closed",
             labels=[Label(name="bug")]
         )
-        assert ticket.number == 456
-        assert ticket.key == "456"  # No "#" prefix since v1.3 migration
-        assert ticket.title == "Fix bug"
-        assert len(ticket.labels) == 1
-        assert ticket.labels[0].name == "bug"
+        assert issue.number == 456
+        assert issue.key == "456"  # No "#" prefix since v1.3 migration
+        assert issue.title == "Fix bug"
+        assert len(issue.labels) == 1
+        assert issue.labels[0].name == "bug"
 
 
 class TestRelease:
@@ -280,13 +280,13 @@ class TestReleaseNote:
         author1 = Author(name="dev1", username="dev1")
         author2 = Author(name="dev2", username="dev2")
         note = ReleaseNote(
-            ticket_key="123",
+            issue_key="123",
             title="Add new feature",
             category="Features",
             authors=[author1, author2],
             pr_numbers=[456]
         )
-        assert note.ticket_key == "123"  # No "#" prefix since v1.3 migration
+        assert note.issue_key == "123"  # No "#" prefix since v1.3 migration
         assert note.title == "Add new feature"
         assert note.category == "Features"
         assert len(note.authors) == 2

@@ -138,7 +138,7 @@ Regenerates and publishes release notes. Equivalent to manual trigger.
 
 #### `/release-bot publish [version]`
 
-Publishes a specific version or auto-detects from ticket.
+Publishes a specific version or auto-detects from issue.
 
 ```
 /release-bot publish
@@ -149,8 +149,8 @@ Publishes a specific version or auto-detects from ticket.
 
 **Version detection**:
 1. Specified version parameter
-2. Database lookup by ticket number
-3. Parse ticket title (e.g., "✨ Prepare Release 1.2.3")
+2. Database lookup by issue number
+3. Parse issue title (e.g., "✨ Prepare Release 1.2.3")
 4. Extract from PR branch (e.g., `release/v1.2.3`)
 5. Extract from PR title
 
@@ -189,11 +189,11 @@ When a PR from a release branch is merged:
    - Default pattern: `release/{major}.{minor}` matches branches like `release/1.2`, `release/2.0`
    - Custom patterns supported: `release/v{major}.{minor}.{patch}` matches `release/v1.2.3`
    - Fallback: Parse PR title if branch doesn't match pattern
-2. Search PR body for ticket references:
+2. Search PR body for issue references:
    - Pattern 1 (closing): `closes #123`, `fixes #456`, `resolves #789`
    - Pattern 2 (related): `related to #123`, `see #456`, `issue #789`
    - Pattern 3 (bare): `#123`
-3. Execute: `release-tool publish 1.2.3 --release-mode just-publish --ticket 123`
+3. Execute: `release-tool publish 1.2.3 --release-mode just-publish --issue 123`
 
 **Just-Publish Mode**:
 - ✅ Marks existing draft release as published
@@ -209,7 +209,7 @@ Manual trigger (draft) → PR created → PR merged → just-publish
 
 #### Issue Close Auto-Publishing
 
-When an issue tagged as a release ticket is closed:
+When an issue tagged as a release issue is closed:
 
 **Example**: Issue #123 titled "✨ Prepare Release 1.2.3" → closed
 
@@ -352,22 +352,22 @@ Use --release-mode published or draft to create a new release
 
 ### Example 4: Issue-Driven Release
 
-1. **Create Ticket**
+1. **Create Issue**
    Title: "✨ Prepare Release 1.2.3"
 
 2. **Work on Release**
-   Link PRs to ticket with `closes #123`
+   Link PRs to issue with `closes #123`
 
-3. **Close Ticket**
-   Ticket closed → Bot auto-publishes v1.2.3
+3. **Close Issue**
+   Issue closed → Bot auto-publishes v1.2.3
 
-## Ticket Association
+## Issue Association
 
-The bot automatically associates tickets with releases:
+The bot automatically associates issues with releases:
 
 ### PR Body Parsing
 
-When analyzing a PR, the bot searches for ticket references:
+When analyzing a PR, the bot searches for issue references:
 
 **Pattern 1 - Closing Keywords**:
 ```
@@ -390,9 +390,9 @@ issue #789
 
 ### Database Storage
 
-Associated tickets are stored in the `release_tickets` table:
-- Links versions to ticket numbers
-- Enables version lookup from tickets
+Associated issues are stored in the `release_issues` table:
+- Links versions to issue numbers
+- Enables version lookup from issues
 - Tracks release preparation progress
 
 ## Configuration Options
@@ -455,13 +455,13 @@ on:
       - 'release/**'
 ```
 
-### Ticket Not Associated with Release
+### Issue Not Associated with Release
 
-**Symptoms**: Bot can't find version from ticket
+**Symptoms**: Bot can't find version from issue
 
 **Checks**:
-1. Ticket title includes version: "✨ Prepare Release 1.2.3"
-2. PRs reference ticket: `closes #123`
+1. Issue title includes version: "✨ Prepare Release 1.2.3"
+2. PRs reference issue: `closes #123`
 3. Database synced: Run sync command
 
 **Solution**: Manually specify version:
@@ -500,9 +500,9 @@ release/1.2.3
 hotfix/v1.2.4
 ```
 
-### 3. Link PRs to Tickets
+### 3. Link PRs to Issues
 
-Always reference tickets in PR bodies:
+Always reference issues in PR bodies:
 ```markdown
 This PR implements feature X.
 

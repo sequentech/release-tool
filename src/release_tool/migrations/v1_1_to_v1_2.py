@@ -5,12 +5,12 @@
 """Migration from config version 1.1 to 1.2.
 
 Changes in 1.2:
-- Added ticket_policy.partial_ticket_action (ignore/warn/error)
-- Handles tickets extracted but not found in database or found in different repo
+- Added issue_policy.partial_issue_action (ignore/warn/error)
+- Handles issues extracted but not found in database or found in different repo
 - Provides diagnostics for partial matches with potential reasons
 
 This migration:
-- Adds partial_ticket_action = "warn" to [ticket_policy]
+- Adds partial_issue_action = "warn" to [issue_policy]
 - Updates config_version to "1.2"
 """
 
@@ -40,11 +40,11 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
     # Update config_version
     doc['config_version'] = '1.2'
 
-    # Add partial_ticket_action to ticket_policy if not already present
-    if 'ticket_policy' not in doc:
-        doc['ticket_policy'] = {}
+    # Add partial_issue_action to issue_policy if not already present
+    if 'issue_policy' not in doc:
+        doc['issue_policy'] = {}
 
-    if 'partial_ticket_action' not in doc['ticket_policy']:
-        doc['ticket_policy']['partial_ticket_action'] = 'warn'
+    if 'partial_issue_action' not in doc['issue_policy']:
+        doc['issue_policy']['partial_issue_action'] = 'warn'
 
     return doc

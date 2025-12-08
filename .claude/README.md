@@ -8,12 +8,12 @@ SPDX-License-Identifier: MIT
 
 ## Project Overview
 
-This is **release-tool**, a comprehensive Python CLI tool for managing releases using semantic versioning. It automates release note generation by consolidating commits, fetching ticket details from GitHub, and creating beautifully formatted release notes.
+This is **release-tool**, a comprehensive Python CLI tool for managing releases using semantic versioning. It automates release note generation by consolidating commits, fetching issue details from GitHub, and creating beautifully formatted release notes.
 
 ## Key Capabilities
 
 - **Semantic Versioning**: Full support for versions, release candidates, betas, alphas
-- **Ticket Consolidation**: Groups commits by parent tickets for cleaner release notes
+- **Issue Consolidation**: Groups commits by parent issues for cleaner release notes
 - **GitHub Integration**: Syncs PRs, issues, releases via parallelized API calls
 - **Local Git Analysis**: Analyzes commit history from local repositories
 - **Template-based Output**: Jinja2 templates for customizable release notes
@@ -35,13 +35,13 @@ This is **release-tool**, a comprehensive Python CLI tool for managing releases 
 ```
 src/release_tool/
 ├── main.py          # CLI entry point (sync, generate, list-releases commands)
-├── models.py        # Pydantic models (SemanticVersion, Commit, PR, Ticket, Release)
+├── models.py        # Pydantic models (SemanticVersion, Commit, PR, Issue, Release)
 ├── config.py        # Configuration with validation
 ├── db.py            # SQLite database operations
 ├── git_ops.py       # Git operations (find commits, tags, version comparison)
 ├── github_utils.py  # GitHub API client (search, fetch, create releases/PRs)
 ├── sync.py          # Parallelized sync manager
-├── policies.py      # Ticket extraction, consolidation, categorization
+├── policies.py      # Issue extraction, consolidation, categorization
 └── media_utils.py   # Media download utilities
 ```
 
@@ -56,7 +56,7 @@ export GITHUB_TOKEN="ghp_..."    # Set GitHub token
 
 ### 2. Sync GitHub Data
 ```bash
-release-tool sync                 # Sync tickets, PRs, releases
+release-tool sync                 # Sync issues, PRs, releases
 ```
 
 ### 3. Generate Release Notes
@@ -152,7 +152,7 @@ See `.claude/commands/` for custom slash commands:
 
 ## Key Design Patterns
 
-1. **Ticket Consolidation**: Commits grouped by parent ticket for cleaner notes
+1. **Issue Consolidation**: Commits grouped by parent issue for cleaner notes
 2. **Version Comparison**: RCs compare to previous RC, finals to previous final
 3. **Incremental Sync**: Only fetch new items since last sync
 4. **Parallel Everything**: All GitHub operations parallelized

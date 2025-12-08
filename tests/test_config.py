@@ -29,7 +29,7 @@ def test_load_from_file(tmp_path):
     """Test loading config from TOML file."""
     config_file = tmp_path / "test_config.toml"
     config_content = """
-config_version = "1.4"
+config_version = "1.5"
 
 [repository]
 code_repo = "owner/repo"
@@ -102,9 +102,9 @@ def test_category_label_matching_no_prefix():
 
     # Should match from either source
     assert category.matches_label("bug", "pr")
-    assert category.matches_label("bug", "ticket")
+    assert category.matches_label("bug", "issue")
     assert category.matches_label("feature", "pr")
-    assert category.matches_label("feature", "ticket")
+    assert category.matches_label("feature", "issue")
     assert not category.matches_label("other", "pr")
 
 
@@ -120,30 +120,30 @@ def test_category_label_matching_with_pr_prefix():
 
     # pr:bug should only match from PRs
     assert category.matches_label("bug", "pr")
-    assert not category.matches_label("bug", "ticket")
+    assert not category.matches_label("bug", "issue")
 
     # feature (no prefix) should match from either
     assert category.matches_label("feature", "pr")
-    assert category.matches_label("feature", "ticket")
+    assert category.matches_label("feature", "issue")
 
 
-def test_category_label_matching_with_ticket_prefix():
-    """Test label matching with ticket: prefix."""
+def test_category_label_matching_with_issue_prefix():
+    """Test label matching with issue: prefix."""
     from release_tool.config import CategoryConfig
 
     category = CategoryConfig(
         name="Test",
-        labels=["ticket:critical", "normal"],
+        labels=["issue:critical", "normal"],
         order=1
     )
 
-    # ticket:critical should only match from tickets
+    # issue:critical should only match from issues
     assert not category.matches_label("critical", "pr")
-    assert category.matches_label("critical", "ticket")
+    assert category.matches_label("critical", "issue")
 
     # normal (no prefix) should match from either
     assert category.matches_label("normal", "pr")
-    assert category.matches_label("normal", "ticket")
+    assert category.matches_label("normal", "issue")
 
 
 def test_invalid_inclusion_policy_raises_error():
@@ -154,8 +154,8 @@ def test_invalid_inclusion_policy_raises_error():
     with pytest.raises(ValidationError) as exc_info:
         Config.from_dict({
             "repository": {"code_repo": "test/repo"},
-            "ticket_policy": {
-                "release_notes_inclusion_policy": ["tickets", "invalid-type"]
+            "issue_policy": {
+                "release_notes_inclusion_policy": ["issues", "invalid-type"]
             }
         })
 
@@ -165,29 +165,29 @@ def test_invalid_inclusion_policy_raises_error():
 def test_valid_inclusion_policy_values():
     """Test that all valid inclusion policy values are accepted."""
     # Test each valid value individually
-    for value in ["tickets", "pull-requests", "commits"]:
+    for value in ["issues", "pull-requests", "commits"]:
         config = Config.from_dict({
             "repository": {"code_repo": "test/repo"},
-            "ticket_policy": {
+            "issue_policy": {
                 "release_notes_inclusion_policy": [value]
             }
         })
-        assert value in config.ticket_policy.release_notes_inclusion_policy
+        assert value in config.issue_policy.release_notes_inclusion_policy
 
     # Test all values together
     config = Config.from_dict({
         "repository": {"code_repo": "test/repo"},
-        "ticket_policy": {
-            "release_notes_inclusion_policy": ["tickets", "pull-requests", "commits"]
+        "issue_policy": {
+            "release_notes_inclusion_policy": ["issues", "pull-requests", "commits"]
         }
     })
-    assert len(config.ticket_policy.release_notes_inclusion_policy) == 3
+    assert len(config.issue_policy.release_notes_inclusion_policy) == 3
 
 
 def test_default_inclusion_policy():
-    """Test that default inclusion policy is ["tickets", "pull-requests"]."""
+    """Test that default inclusion policy is ["issues", "pull-requests"]."""
     config = Config.from_dict({
         "repository": {"code_repo": "test/repo"}
     })
 
-    assert config.ticket_policy.release_notes_inclusion_policy == ["tickets", "pull-requests"]
+    assert config.issue_policy.release_notes_inclusion_policy == ["issues", "pull-requests"]

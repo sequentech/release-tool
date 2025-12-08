@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.4"  # Latest config version
+    CURRENT_VERSION = "1.5"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -205,24 +205,24 @@ class MigrationManager:
         descriptions = {
             ("1.0", "1.1"): (
                 "Version 1.1 adds:\n"
-                "  • New template variables: ticket_url, pr_url for more flexible URL handling\n"
+                "  • New template variables: issue_url, pr_url for more flexible URL handling\n"
                 "  • Improved output_template formatting with better spacing\n"
-                "  • url field now intelligently uses ticket_url if available, else pr_url"
+                "  • url field now intelligently uses issue_url if available, else pr_url"
             ),
             ("1.1", "1.2"): (
                 "Version 1.2 adds:\n"
-                "  • New partial_ticket_action policy (ignore/warn/error)\n"
-                "  • Handles tickets extracted but not found in database\n"
-                "  • Handles tickets found in different repositories\n"
+                "  • New partial_issue_action policy (ignore/warn/error)\n"
+                "  • Handles issues extracted but not found in database\n"
+                "  • Handles issues found in different repositories\n"
                 "  • Provides diagnostics with potential reasons and links"
             ),
             ("1.2", "1.3"): (
                 "Version 1.3 fixes:\n"
-                "  • Ticket key format: removed '#' prefix from database storage\n"
+                "  • Issue key format: removed '#' prefix from database storage\n"
                 "  • Database queries now normalize keys (accept both '8624' and '#8624')\n"
                 "  • BREAKING: Requires database migration to strip '#' from existing keys\n"
                 "  • Display still shows '#' prefix for user-friendly output\n"
-                "  • URL truncation fixed in tickets command"
+                "  • URL truncation fixed in issues command"
             ),
             ("1.3", "1.4"): (
                 "Version 1.4 adds:\n"
@@ -234,6 +234,18 @@ class MigrationManager:
                 "  • doc_output_template can use render_release_notes() to embed GitHub notes\n"
                 "  • generate command creates both files when both templates configured\n"
                 "  • Automatic config migration preserves your customizations"
+            ),
+            ("1.4", "1.5"): (
+                "Version 1.5 renames:\n"
+                "  • BREAKING: All 'issue' terminology renamed to 'issue' for consistency\n"
+                "  • Config keys: issue_repos → issue_repos, issue_policy → issue_policy\n"
+                "  • Policy actions: no_issue_action → no_issue_action, etc.\n"
+                "  • Templates: issue_templates → issue_templates\n"
+                "  • Patterns: (?P<issue>) → (?P<issue>) in regex\n"
+                "  • Labels: issue: prefix → issue: prefix\n"
+                "  • Database: issues table → issues (auto-migrated)\n"
+                "  • CLI: query-issues command → query-issues\n"
+                "  • Automatic config migration preserves all your settings"
             ),
         }
 

@@ -77,8 +77,8 @@ issue_numbers = [issue.number for issue in issues]
 
 **Bad** - Direct attribute access (NEVER do this in bulk operations):
 ```python
-def _issue_to_ticket(self, gh_issue, repo_id):
-    return Ticket(
+def _issue_to_issue(self, gh_issue, repo_id):
+    return Issue(
         number=gh_issue.number,
         title=gh_issue.title,        # ❌ LAZY LOAD - triggers API call!
         body=gh_issue.body,           # ❌ LAZY LOAD - triggers API call!
@@ -91,11 +91,11 @@ def _issue_to_ticket(self, gh_issue, repo_id):
 
 **Good** - Use raw_data dictionary (ALWAYS do this):
 ```python
-def _issue_to_ticket(self, gh_issue, repo_id):
+def _issue_to_issue(self, gh_issue, repo_id):
     # Use raw_data to avoid lazy loading
     raw = getattr(gh_issue, 'raw_data', {})
 
-    return Ticket(
+    return Issue(
         number=gh_issue.number,       # ✅ Safe - always in partial response
         title=raw.get('title'),       # ✅ No API call - from raw_data
         body=raw.get('body'),         # ✅ No API call - from raw_data
@@ -153,28 +153,28 @@ if user_data:
 ### Rule: Never Leave User Waiting >2 Seconds Without Feedback
 
 **Required feedback points**:
-1. **Before network call**: "Searching for tickets..."
-2. **After search**: "Found 123 tickets"
-3. **Before filtering**: "Filtering 123 tickets against existing 456 in database..."
-4. **Before parallel fetch**: "Fetching 67 new tickets in parallel..."
-5. **During fetch**: Progress bar with "Fetched 13/67 tickets (19%)"
-6. **After fetch**: "✓ Synced 67 tickets"
+1. **Before network call**: "Searching for issues..."
+2. **After search**: "Found 123 issues"
+3. **Before filtering**: "Filtering 123 issues against existing 456 in database..."
+4. **Before parallel fetch**: "Fetching 67 new issues in parallel..."
+5. **During fetch**: Progress bar with "Fetched 13/67 issues (19%)"
+6. **After fetch**: "✓ Synced 67 issues"
 
 **Example implementation**:
 ```python
-console.print("[cyan]Searching for tickets...[/cyan]")
+console.print("[cyan]Searching for issues...[/cyan]")
 query = f"repo:{repo_name} is:issue"
 issues = gh.search_issues(query)
-console.print(f"[green]✓[/green] Found {len(issues)} tickets")
+console.print(f"[green]✓[/green] Found {len(issues)} issues")
 
 if all_numbers:
-    console.print(f"[dim]Filtering {len(all_numbers)} tickets...[/dim]")
+    console.print(f"[dim]Filtering {len(all_numbers)} issues...[/dim]")
 new_numbers = [n for n in all_numbers if n not in existing]
 
-console.print(f"[cyan]Fetching {len(new_numbers)} new tickets in parallel...[/cyan]")
+console.print(f"[cyan]Fetching {len(new_numbers)} new issues in parallel...[/cyan]")
 
 with Progress(...) as progress:
-    task = progress.add_task("Fetching tickets...", total=len(new_numbers))
+    task = progress.add_task("Fetching issues...", total=len(new_numbers))
     for future in as_completed(futures):
         result = future.result()
         progress.update(task, advance=1, description=f"Fetched {completed}/{total}")
@@ -207,22 +207,22 @@ for pr in gh_prs:
 
 **Bad** - Fetch everything every time:
 ```python
-all_tickets = fetch_all_tickets()  # Wasteful
-store_in_db(all_tickets)
+all_issues = fetch_all_issues()  # Wasteful
+store_in_db(all_issues)
 ```
 
 **Good** - Incremental with cutoff date:
 ```python
-last_sync = db.get_last_sync(repo, 'tickets')
+last_sync = db.get_last_sync(repo, 'issues')
 cutoff_date = last_sync or config.sync.cutoff_date
 
 # Only fetch items since last sync
 query = f"repo:{repo_name} is:issue created:>={cutoff_date}"
-new_tickets = gh.search_issues(query)
+new_issues = gh.search_issues(query)
 
 # Filter out any we already have
-existing_numbers = db.get_existing_ticket_numbers(repo)
-to_fetch = [n for n in new_tickets if n not in existing_numbers]
+existing_numbers = db.get_existing_issue_numbers(repo)
+to_fetch = [n for n in new_issues if n not in existing_numbers]
 ```
 
 ## Performance Metrics

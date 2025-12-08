@@ -24,7 +24,7 @@ Steps:
    ```
 
 3. Analyze the output for:
-   - **Search phase timing**: How long "Searching for tickets/PRs" takes
+   - **Search phase timing**: How long "Searching for issues/PRs" takes
    - **Filtering phase**: Time spent filtering against existing DB
    - **Parallel fetch timing**: Items/second throughput
    - **Progress gaps**: Any delays >2 seconds without feedback
@@ -46,7 +46,7 @@ Steps:
 6. Analyze database size and query performance:
    ```bash
    ls -lh release_tool.db
-   sqlite3 release_tool.db "SELECT COUNT(*) FROM tickets;"
+   sqlite3 release_tool.db "SELECT COUNT(*) FROM issues;"
    sqlite3 release_tool.db "SELECT COUNT(*) FROM pull_requests;"
    ```
 

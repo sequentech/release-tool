@@ -7,10 +7,10 @@
 import pytest
 from datetime import datetime
 from release_tool.policies import (
-    TicketExtractor, CommitConsolidator, ReleaseNoteGenerator, VersionGapChecker
+    IssueExtractor, CommitConsolidator, ReleaseNoteGenerator, VersionGapChecker
 )
-from release_tool.config import Config, TicketPolicyConfig, ReleaseNoteConfig, CategoryConfig
-from release_tool.models import Commit, PullRequest, Ticket, Label, ConsolidatedChange, Author
+from release_tool.config import Config, IssuePolicyConfig, ReleaseNoteConfig, CategoryConfig
+from release_tool.models import Commit, PullRequest, Issue, Label, ConsolidatedChange, Author
 
 
 @pytest.fixture
@@ -27,28 +27,28 @@ def test_config():
     return Config.from_dict(config_dict)
 
 
-class TestTicketExtractor:
-    """Tests for ticket extraction."""
+class TestIssueExtractor:
+    """Tests for issue extraction."""
 
-    def test_extract_from_commit_with_jira_ticket(self, test_config):
-        """Test extraction from commit messages with JIRA-style tickets."""
-        extractor = TicketExtractor(test_config)
+    def test_extract_from_commit_with_jira_issue(self, test_config):
+        """Test extraction from commit messages with JIRA-style issues."""
+        extractor = IssueExtractor(test_config)
         commit = Commit(
             sha="abc123",
             repo_id=1,
-            message="Fix bug in TICKET-789",
+            message="Fix bug in ISSUE-789",
             author=Author(name="dev"),
             date=datetime.now()
         )
 
-        tickets = extractor.extract_from_commit(commit)
+        issues = extractor.extract_from_commit(commit)
 
-        assert len(tickets) > 0
-        assert "789" in tickets
+        assert len(issues) > 0
+        assert "789" in issues
 
     def test_extract_from_commit_with_github_ref(self, test_config):
         """Test extraction from commit messages with GitHub issue refs."""
-        extractor = TicketExtractor(test_config)
+        extractor = IssueExtractor(test_config)
         commit = Commit(
             sha="abc456",
             repo_id=1,
@@ -57,13 +57,13 @@ class TestTicketExtractor:
             date=datetime.now()
         )
 
-        tickets = extractor.extract_from_commit(commit)
+        issues = extractor.extract_from_commit(commit)
 
-        assert "456" in tickets
+        assert "456" in issues
 
     def test_extract_from_branch_name(self, test_config):
         """Test extraction from branch names like feat/meta-123/main."""
-        extractor = TicketExtractor(test_config)
+        extractor = IssueExtractor(test_config)
 
         # Test various branch name patterns
         assert "123" in extractor.extract_from_branch("feat/meta-123/main")
@@ -72,7 +72,7 @@ class TestTicketExtractor:
 
     def test_extract_parent_issue_from_pr(self, test_config):
         """Test extraction of parent issue URL from PR body."""
-        extractor = TicketExtractor(test_config)
+        extractor = IssueExtractor(test_config)
 
         pr = PullRequest(
             repo_id=1,
@@ -90,12 +90,12 @@ class TestTicketExtractor:
             head_branch="feature/branch"
         )
 
-        tickets = extractor.extract_from_pr(pr)
-        assert "999" in tickets
+        issues = extractor.extract_from_pr(pr)
+        assert "999" in issues
 
     def test_extract_from_pr_title(self, test_config):
         """Test extraction from PR title."""
-        extractor = TicketExtractor(test_config)
+        extractor = IssueExtractor(test_config)
 
         pr = PullRequest(
             repo_id=1,
@@ -105,14 +105,14 @@ class TestTicketExtractor:
             head_branch="fix/branch"
         )
 
-        tickets = extractor.extract_from_pr(pr)
-        assert "123" in tickets
+        issues = extractor.extract_from_pr(pr)
+        assert "123" in issues
 
     def test_debug_mode_output(self, test_config, capsys):
         """Test that debug mode produces detailed pattern matching output."""
-        extractor = TicketExtractor(test_config, debug=True)
+        extractor = IssueExtractor(test_config, debug=True)
 
-        # Test with commit that has a ticket
+        # Test with commit that has a issue
         commit = Commit(
             sha="abc123def",
             repo_id=1,
@@ -121,7 +121,7 @@ class TestTicketExtractor:
             date=datetime.now()
         )
 
-        tickets = extractor.extract_from_commit(commit)
+        issues = extractor.extract_from_commit(commit)
 
         # Capture output
         captured = capsys.readouterr()
@@ -132,10 +132,10 @@ class TestTicketExtractor:
         assert "Fix authentication bug" in captured.out  # Commit message
         assert "Trying pattern" in captured.out  # Pattern attempt
         assert "Regex:" in captured.out  # Pattern regex shown
-        assert "Extracted tickets:" in captured.out  # Results shown
+        assert "Extracted issues:" in captured.out  # Results shown
 
         # Verify correct extraction
-        assert "456" in tickets
+        assert "456" in issues
 
         # Test with PR
         pr = PullRequest(
@@ -147,7 +147,7 @@ class TestTicketExtractor:
             head_branch="feat/meta-123/main"
         )
 
-        tickets_pr = extractor.extract_from_pr(pr)
+        issues_pr = extractor.extract_from_pr(pr)
 
         # Capture PR output
         captured = capsys.readouterr()
@@ -160,28 +160,28 @@ class TestTicketExtractor:
         assert "MATCH!" in captured.out or "No match" in captured.out
 
         # Verify correct extraction (branch pattern should match)
-        assert "123" in tickets_pr
+        assert "123" in issues_pr
 
 
 class TestCommitConsolidator:
     """Tests for commit consolidation."""
 
-    def test_consolidate_by_ticket(self, test_config):
-        extractor = TicketExtractor(test_config)
+    def test_consolidate_by_issue(self, test_config):
+        extractor = IssueExtractor(test_config)
         consolidator = CommitConsolidator(test_config, extractor)
 
         commits = [
             Commit(
                 sha="1",
                 repo_id=1,
-                message="TICKET-1: Part 1",
+                message="ISSUE-1: Part 1",
                 author=Author(name="dev"),
                 date=datetime.now()
             ),
             Commit(
                 sha="2",
                 repo_id=1,
-                message="TICKET-1: Part 2",
+                message="ISSUE-1: Part 2",
                 author=Author(name="dev"),
                 date=datetime.now()
             )
@@ -189,14 +189,14 @@ class TestCommitConsolidator:
 
         consolidated = consolidator.consolidate(commits, {})
 
-        # Should consolidate commits with same ticket
+        # Should consolidate commits with same issue
         assert len(consolidated) <= len(commits)
 
     def test_consolidation_disabled(self, test_config):
         # Disable consolidation
-        test_config.ticket_policy.consolidation_enabled = False
+        test_config.issue_policy.consolidation_enabled = False
 
-        extractor = TicketExtractor(test_config)
+        extractor = IssueExtractor(test_config)
         consolidator = CommitConsolidator(test_config, extractor)
 
         commits = [
@@ -293,26 +293,26 @@ class TestTOMLPatternEscaping:
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "branch_name",
                         # Double backslash in Python dict (simulates TOML parsing)
-                        "pattern": r"/(?P<repo>\w+)-(?P<ticket>\d+)",
+                        "pattern": r"/(?P<repo>\w+)-(?P<issue>\d+)",
                         "description": "Branch pattern"
                     },
                     {
                         "order": 2,
                         "strategy": "pr_body",
-                        "pattern": r"Parent issue:.*?/issues/(?P<ticket>\d+)",
+                        "pattern": r"Parent issue:.*?/issues/(?P<issue>\d+)",
                         "description": "Parent issue pattern"
                     },
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         # Test branch pattern
         pr = PullRequest(
@@ -324,29 +324,29 @@ class TestTOMLPatternEscaping:
             head_branch="docs/feat-8853/main"
         )
 
-        tickets = extractor.extract_from_pr(pr)
+        issues = extractor.extract_from_pr(pr)
 
         # Should match branch pattern (order 1) and extract "8853"
-        assert "8853" in tickets, f"Expected '8853' in tickets, but got: {tickets}"
+        assert "8853" in issues, f"Expected '8853' in issues, but got: {issues}"
 
     def test_branch_pattern_real_world_examples(self):
         """Test branch pattern with real-world branch names."""
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "branch_name",
-                        "pattern": r"/(?P<repo>\w+)-(?P<ticket>\d+)",
+                        "pattern": r"/(?P<repo>\w+)-(?P<issue>\d+)",
                         "description": "Branch pattern"
                     }
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         # Test various real-world branch names
         test_cases = [
@@ -357,29 +357,29 @@ class TestTOMLPatternEscaping:
             ("feature/issue-999/release", "999"),
         ]
 
-        for branch_name, expected_ticket in test_cases:
-            tickets = extractor.extract_from_branch(branch_name)
-            assert expected_ticket in tickets, \
-                f"Branch '{branch_name}' should extract ticket '{expected_ticket}', but got: {tickets}"
+        for branch_name, expected_issue in test_cases:
+            issues = extractor.extract_from_branch(branch_name)
+            assert expected_issue in issues, \
+                f"Branch '{branch_name}' should extract issue '{expected_issue}', but got: {issues}"
 
     def test_parent_issue_pattern_real_world_examples(self):
         """Test parent issue pattern with real-world PR bodies."""
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "pr_body",
-                        "pattern": r"Parent issue:.*?/issues/(?P<ticket>\d+)",
+                        "pattern": r"Parent issue:.*?/issues/(?P<issue>\d+)",
                         "description": "Parent issue pattern"
                     }
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         # Test various real-world PR body formats
         test_cases = [
@@ -389,7 +389,7 @@ class TestTOMLPatternEscaping:
             ("Parent issue: http://github.com/test/test/issues/789", "789"),
         ]
 
-        for pr_body, expected_ticket in test_cases:
+        for pr_body, expected_issue in test_cases:
             pr = PullRequest(
                 repo_id=1,
                 number=1,
@@ -398,34 +398,34 @@ class TestTOMLPatternEscaping:
                 state="closed",
                 head_branch="test"
             )
-            tickets = extractor.extract_from_pr(pr)
-            assert expected_ticket in tickets, \
-                f"PR body '{pr_body}' should extract ticket '{expected_ticket}', but got: {tickets}"
+            issues = extractor.extract_from_pr(pr)
+            assert expected_issue in issues, \
+                f"PR body '{pr_body}' should extract issue '{expected_issue}', but got: {issues}"
 
     def test_github_issue_reference_patterns(self):
         """Test GitHub issue reference patterns (#123) in various contexts."""
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "pr_title",
-                        "pattern": r"#(?P<ticket>\d+)",
+                        "pattern": r"#(?P<issue>\d+)",
                         "description": "GitHub issue in PR title"
                     },
                     {
                         "order": 2,
                         "strategy": "commit_message",
-                        "pattern": r"#(?P<ticket>\d+)",
+                        "pattern": r"#(?P<issue>\d+)",
                         "description": "GitHub issue in commit"
                     }
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         # Test PR title
         pr = PullRequest(
@@ -435,8 +435,8 @@ class TestTOMLPatternEscaping:
             state="closed",
             head_branch="fix/bug"
         )
-        tickets = extractor.extract_from_pr(pr)
-        assert "456" in tickets
+        issues = extractor.extract_from_pr(pr)
+        assert "456" in issues
 
         # Test commit message
         commit = Commit(
@@ -446,35 +446,35 @@ class TestTOMLPatternEscaping:
             author=Author(name="dev"),
             date=datetime.now()
         )
-        tickets = extractor.extract_from_commit(commit)
-        assert "789" in tickets
+        issues = extractor.extract_from_commit(commit)
+        assert "789" in issues
 
     def test_jira_style_pattern(self):
-        """Test JIRA-style ticket patterns (PROJ-123)."""
+        """Test JIRA-style issue patterns (PROJ-123)."""
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "commit_message",
-                        "pattern": r"(?P<project>[A-Z]+)-(?P<ticket>\d+)",
-                        "description": "JIRA-style tickets"
+                        "pattern": r"(?P<project>[A-Z]+)-(?P<issue>\d+)",
+                        "description": "JIRA-style issues"
                     }
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         test_cases = [
-            ("Fix bug in TICKET-789", "789"),
+            ("Fix bug in ISSUE-789", "789"),
             ("PROJ-123: Add new feature", "123"),
             ("Update ABC-456 implementation", "456"),
         ]
 
-        for message, expected_ticket in test_cases:
+        for message, expected_issue in test_cases:
             commit = Commit(
                 sha="abc123",
                 repo_id=1,
@@ -482,34 +482,34 @@ class TestTOMLPatternEscaping:
                 author=Author(name="dev"),
                 date=datetime.now()
             )
-            tickets = extractor.extract_from_commit(commit)
-            assert expected_ticket in tickets, \
-                f"Commit message '{message}' should extract ticket '{expected_ticket}', but got: {tickets}"
+            issues = extractor.extract_from_commit(commit)
+            assert expected_issue in issues, \
+                f"Commit message '{message}' should extract issue '{expected_issue}', but got: {issues}"
 
     def test_pattern_priority_order(self):
         """Test that patterns are tried in order and first match wins for PRs."""
         config_dict = {
             "repository": {"code_repo": "test/repo"},
             "github": {"token": "test_token"},
-            "ticket_policy": {
+            "issue_policy": {
                 "patterns": [
                     {
                         "order": 1,
                         "strategy": "branch_name",
-                        "pattern": r"/(?P<repo>\w+)-(?P<ticket>\d+)",
+                        "pattern": r"/(?P<repo>\w+)-(?P<issue>\d+)",
                         "description": "Branch pattern (highest priority)"
                     },
                     {
                         "order": 2,
                         "strategy": "pr_body",
-                        "pattern": r"Parent issue:.*?/issues/(?P<ticket>\d+)",
+                        "pattern": r"Parent issue:.*?/issues/(?P<issue>\d+)",
                         "description": "Parent issue pattern (lower priority)"
                     }
                 ]
             }
         }
         config = Config.from_dict(config_dict)
-        extractor = TicketExtractor(config)
+        extractor = IssueExtractor(config)
 
         # PR with both branch name and parent issue
         # Should extract from branch (order 1) and stop
@@ -522,23 +522,23 @@ class TestTOMLPatternEscaping:
             head_branch="feat/meta-123/main"
         )
 
-        tickets = extractor.extract_from_pr(pr)
+        issues = extractor.extract_from_pr(pr)
 
         # Should only extract "123" from branch (first match wins)
         # Should NOT extract "999" from body (stopped after first match)
-        assert "123" in tickets
-        assert len(tickets) == 1, f"Should only extract one ticket (first match wins), but got: {tickets}"
+        assert "123" in issues
+        assert len(issues) == 1, f"Should only extract one issue (first match wins), but got: {issues}"
 
 
 class TestURLHandlingAndShortLinks:
     """Tests for URL priority and short link generation."""
 
-    def test_url_priority_ticket_over_pr(self, test_config):
-        """Test that ticket_url is prioritized over pr_url in the smart url field."""
-        from release_tool.models import ConsolidatedChange, Ticket, PullRequest, Repository
+    def test_url_priority_issue_over_pr(self, test_config):
+        """Test that issue_url is prioritized over pr_url in the smart url field."""
+        from release_tool.models import ConsolidatedChange, Issue, PullRequest, Repository
 
-        # Create a ticket
-        ticket = Ticket(
+        # Create a issue
+        issue = Issue(
             repo_id=1,
             number=8853,
             key="8853",
@@ -559,26 +559,26 @@ class TestURLHandlingAndShortLinks:
 
         # Create a consolidated change with both
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="8853",
+            type="issue",
+            issue_key="8853",
             prs=[pr],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         # Verify URL priority
-        assert note.ticket_url == "https://github.com/sequentech/meta/issues/8853"
+        assert note.issue_url == "https://github.com/sequentech/meta/issues/8853"
         assert note.pr_url == "https://github.com/sequentech/step/pull/2169"
-        assert note.url == note.ticket_url, "url should prioritize ticket_url"
+        assert note.url == note.issue_url, "url should prioritize issue_url"
         assert note.url != note.pr_url
 
-    def test_url_fallback_to_pr_when_no_ticket(self, test_config):
-        """Test that pr_url is used when ticket_url is not available."""
+    def test_url_fallback_to_pr_when_no_issue(self, test_config):
+        """Test that pr_url is used when issue_url is not available."""
         from release_tool.models import ConsolidatedChange, PullRequest
 
-        # Create a PR (no ticket)
+        # Create a PR (no issue)
         pr = PullRequest(
             repo_id=2,
             number=2169,
@@ -588,7 +588,7 @@ class TestURLHandlingAndShortLinks:
             url="https://github.com/sequentech/step/pull/2169"
         )
 
-        # Create a consolidated change without ticket
+        # Create a consolidated change without issue
         change = ConsolidatedChange(
             type="pr",
             pr_number=2169,
@@ -600,32 +600,32 @@ class TestURLHandlingAndShortLinks:
         note = generator.create_release_note(change, None)
 
         # Verify URL fallback
-        assert note.ticket_url is None
+        assert note.issue_url is None
         assert note.pr_url == "https://github.com/sequentech/step/pull/2169"
         assert note.url == note.pr_url, "url should fall back to pr_url"
 
-    def test_short_link_from_ticket_url(self, test_config):
-        """Test short_link generation from ticket URL."""
-        from release_tool.models import ConsolidatedChange, Ticket
+    def test_short_link_from_issue_url(self, test_config):
+        """Test short_link generation from issue URL."""
+        from release_tool.models import ConsolidatedChange, Issue
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=8853,
             key="8853",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             url="https://github.com/sequentech/meta/issues/8853"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="8853",
+            type="issue",
+            issue_key="8853",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.short_link == "#8853"
         assert note.short_repo_link == "sequentech/meta#8853"
@@ -656,15 +656,15 @@ class TestURLHandlingAndShortLinks:
         assert note.short_link == "#2169"
         assert note.short_repo_link == "sequentech/step#2169"
 
-    def test_short_link_prioritizes_ticket_url(self, test_config):
-        """Test that short links are computed from ticket_url when both exist."""
-        from release_tool.models import ConsolidatedChange, Ticket, PullRequest
+    def test_short_link_prioritizes_issue_url(self, test_config):
+        """Test that short links are computed from issue_url when both exist."""
+        from release_tool.models import ConsolidatedChange, Issue, PullRequest
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=8853,
             key="8853",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             url="https://github.com/sequentech/meta/issues/8853"
         )
@@ -679,16 +679,16 @@ class TestURLHandlingAndShortLinks:
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="8853",
+            type="issue",
+            issue_key="8853",
             prs=[pr],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
-        # Should use ticket info for short links, not PR info
+        # Should use issue info for short links, not PR info
         assert note.short_link == "#8853"
         assert note.short_repo_link == "sequentech/meta#8853"
         assert note.short_link != "#2169"
@@ -742,26 +742,26 @@ class TestURLHandlingAndShortLinks:
 
     def test_short_links_in_template_context(self, test_config):
         """Test that short_link and short_repo_link are passed to templates."""
-        from release_tool.models import ConsolidatedChange, Ticket
+        from release_tool.models import ConsolidatedChange, Issue
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=8853,
             key="8853",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             url="https://github.com/sequentech/meta/issues/8853"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="8853",
+            type="issue",
+            issue_key="8853",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         # Prepare note for template
         note_dict = generator._prepare_note_for_template(note, "1.0.0", None, None)
@@ -771,68 +771,68 @@ class TestURLHandlingAndShortLinks:
         assert note_dict["short_link"] == "#8853"
         assert note_dict["short_repo_link"] == "sequentech/meta#8853"
 
-    def test_ticket_key_without_hash_prefix(self, test_config):
-        """Test that ticket keys without '#' prefix still work correctly."""
-        from release_tool.models import ConsolidatedChange, Ticket
+    def test_issue_key_without_hash_prefix(self, test_config):
+        """Test that issue keys without '#' prefix still work correctly."""
+        from release_tool.models import ConsolidatedChange, Issue
 
-        # Ticket with bare number as key (as extracted from branch names)
-        ticket = Ticket(
+        # Issue with bare number as key (as extracted from branch names)
+        issue = Issue(
             repo_id=1,
             number=8624,
             key="8624",  # Bare number, not "#8624"
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             url="https://github.com/sequentech/meta/issues/8624"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="8624",  # Bare number
+            type="issue",
+            issue_key="8624",  # Bare number
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
-        # Should use ticket URL and generate correct short links
-        assert note.ticket_url == "https://github.com/sequentech/meta/issues/8624"
-        assert note.url == note.ticket_url
+        # Should use issue URL and generate correct short links
+        assert note.issue_url == "https://github.com/sequentech/meta/issues/8624"
+        assert note.url == note.issue_url
         assert note.short_link == "#8624"
         assert note.short_repo_link == "sequentech/meta#8624"
 
 
 class TestDescriptionAndMigrationExtraction:
-    """Tests for extracting description and migration notes from ticket bodies."""
+    """Tests for extracting description and migration notes from issue bodies."""
 
     def test_extract_description_section(self, test_config):
-        """Test extraction of Description section from ticket body."""
-        ticket_body = """## Description
+        """Test extraction of Description section from issue body."""
+        issue_body = """## Description
 This is the description text.
 It can span multiple lines.
 
 ## Other Section
 Something else here."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=123,
             key="123",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/123"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="123",
+            type="issue",
+            issue_key="123",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is not None
         assert "This is the description text" in note.description
@@ -841,39 +841,39 @@ Something else here."""
 
     def test_extract_summary_section(self, test_config):
         """Test extraction of Summary section (alternative to Description)."""
-        ticket_body = """## Summary
+        issue_body = """## Summary
 This is a summary of the changes.
 
 ## Details
 More information here."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=124,
             key="124",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/124"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="124",
+            type="issue",
+            issue_key="124",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is not None
         assert "This is a summary of the changes" in note.description
         assert "Details" not in note.description
 
     def test_extract_migration_notes_section(self, test_config):
-        """Test extraction of Migration section from ticket body."""
-        ticket_body = """## Description
+        """Test extraction of Migration section from issue body."""
+        issue_body = """## Description
 Some description.
 
 ## Migration
@@ -885,25 +885,25 @@ python manage.py migrate
 ## Other Section
 Something else."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=125,
             key="125",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/125"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="125",
+            type="issue",
+            issue_key="125",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.migration_notes is not None
         assert "Run the following command" in note.migration_notes
@@ -912,7 +912,7 @@ Something else."""
 
     def test_extract_migration_notes_alternative_heading(self, test_config):
         """Test extraction of Migration Notes section (alternative heading)."""
-        ticket_body = """## Description
+        issue_body = """## Description
 Some description.
 
 ## Migration Notes
@@ -923,25 +923,25 @@ Database schema changes required:
 ## Testing
 Test steps."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=126,
             key="126",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/126"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="126",
+            type="issue",
+            issue_key="126",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.migration_notes is not None
         assert "Database schema changes required" in note.migration_notes
@@ -949,92 +949,92 @@ Test steps."""
         assert "Testing" not in note.migration_notes
 
     def test_no_description_section(self, test_config):
-        """Test ticket without Description section returns None."""
-        ticket_body = """## Other Section
+        """Test issue without Description section returns None."""
+        issue_body = """## Other Section
 Some content.
 
 ## Another Section
 More content."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=127,
             key="127",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/127"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="127",
+            type="issue",
+            issue_key="127",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is None
 
     def test_no_migration_section(self, test_config):
-        """Test ticket without Migration section returns None."""
-        ticket_body = """## Description
+        """Test issue without Migration section returns None."""
+        issue_body = """## Description
 Some description.
 
 ## Other Section
 Some content."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=128,
             key="128",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/128"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="128",
+            type="issue",
+            issue_key="128",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.migration_notes is None
 
     def test_case_insensitive_section_matching(self, test_config):
         """Test that section matching is case-insensitive."""
-        ticket_body = """## description
+        issue_body = """## description
 Lowercase description heading.
 
 ## MIGRATION
 Uppercase migration heading."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=129,
             key="129",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/129"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="129",
+            type="issue",
+            issue_key="129",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is not None
         assert "Lowercase description heading" in note.description
@@ -1042,8 +1042,8 @@ Uppercase migration heading."""
         assert "Uppercase migration heading" in note.migration_notes
 
     def test_extract_both_description_and_migration(self, test_config):
-        """Test extracting both description and migration notes from same ticket."""
-        ticket_body = """## Description
+        """Test extracting both description and migration notes from same issue."""
+        issue_body = """## Description
 This feature adds new functionality.
 
 ## Migration
@@ -1052,25 +1052,25 @@ Run: python manage.py migrate
 ## Testing
 Test instructions."""
 
-        ticket = Ticket(
+        issue = Issue(
             repo_id=1,
             number=130,
             key="130",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
-            body=ticket_body,
+            body=issue_body,
             url="https://github.com/test/repo/issues/130"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="130",
+            type="issue",
+            issue_key="130",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is not None
         assert "This feature adds new functionality" in note.description
@@ -1079,52 +1079,52 @@ Test instructions."""
         assert "Testing" not in note.description
         assert "Testing" not in note.migration_notes
 
-    def test_empty_ticket_body(self, test_config):
-        """Test ticket with empty body."""
-        ticket = Ticket(
+    def test_empty_issue_body(self, test_config):
+        """Test issue with empty body."""
+        issue = Issue(
             repo_id=1,
             number=131,
             key="131",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             body="",
             url="https://github.com/test/repo/issues/131"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="131",
+            type="issue",
+            issue_key="131",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is None
         assert note.migration_notes is None
 
-    def test_none_ticket_body(self, test_config):
-        """Test ticket with None body."""
-        ticket = Ticket(
+    def test_none_issue_body(self, test_config):
+        """Test issue with None body."""
+        issue = Issue(
             repo_id=1,
             number=132,
             key="132",
-            title="Test ticket",
+            title="Test issue",
             state="closed",
             body=None,
             url="https://github.com/test/repo/issues/132"
         )
 
         change = ConsolidatedChange(
-            type="ticket",
-            ticket_key="132",
+            type="issue",
+            issue_key="132",
             prs=[],
             commits=[]
         )
 
         generator = ReleaseNoteGenerator(test_config)
-        note = generator.create_release_note(change, ticket)
+        note = generator.create_release_note(change, issue)
 
         assert note.description is None
         assert note.migration_notes is None

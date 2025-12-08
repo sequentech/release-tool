@@ -24,7 +24,7 @@ The `output_template` is a **master Jinja2 template** that gives you complete co
    - `{{ render_entry(note) }}` - Function to render individual entries
 
 4. **Note Fields**: Each note dict contains:
-   - `title`, `url`, `pr_numbers`, `commit_shas`, `labels`, `ticket_key`, `category`
+   - `title`, `url`, `pr_numbers`, `commit_shas`, `labels`, `issue_key`, `category`
    - `description`, `migration_notes` (may be None)
    - `authors` (list of author dicts with name, username, email, etc.)
 
@@ -94,10 +94,10 @@ All changes in this release:
 
 ### 3. Detailed Descriptions Layout (example_detailed_descriptions.toml)
 
-**Use Case**: Technical release notes with full ticket details
+**Use Case**: Technical release notes with full issue details
 
 **Features**:
-- Each ticket gets its own section (##)
+- Each issue gets its own section (##)
 - Full descriptions displayed
 - Metadata block (category, PR, labels, authors)
 - Inline migration notes

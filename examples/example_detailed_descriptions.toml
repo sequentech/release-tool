@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
-# Example configuration showcasing detailed descriptions and full ticket information
-# This layout displays each ticket as a full section with description and metadata
+# Example configuration showcasing detailed descriptions and full issue information
+# This layout displays each issue as a full section with description and metadata
 
 [repository]
 code_repo = "owner/repo"
@@ -17,7 +17,7 @@ title_template = "Release {{ version }}"
 # Simple entry template - not used in this layout since we render manually
 entry_template = "- {{ title }}"
 
-# Detailed output template - each ticket gets its own section
+# Detailed output template - each issue gets its own section
 output_template = '''# {{ title }}
 
 {% for note in all_notes %}

@@ -49,7 +49,7 @@ Standard unit tests covering:
 - Git operations (`test_git_ops.py`)
 - Policies and business logic (`test_policies.py`)
 - Template rendering (`test_output_template.py`, `test_default_template.py`)
-- Ticket management (`test_query_tickets.py`, `test_partial_tickets.py`)
+- Issue management (`test_query_issues.py`, `test_partial_issues.py`)
 - Publishing and syncing (`test_publish.py`, `test_sync.py`)
 
 ```bash

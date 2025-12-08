@@ -13,7 +13,7 @@ Debug synchronization issues with detailed logging and GitHub API diagnostics.
 Steps:
 1. Check configuration is valid:
    ```bash
-   cat release_tool.toml | grep -E "(code_repo|ticket_repos|parallel_workers|cutoff_date)"
+   cat release_tool.toml | grep -E "(code_repo|issue_repos|parallel_workers|cutoff_date)"
    ```
 
 2. Verify GitHub token is set and valid:
@@ -44,7 +44,7 @@ Steps:
    ```bash
    sqlite3 release_tool.db << EOF
    SELECT 'Repositories:', COUNT(*) FROM repositories;
-   SELECT 'Tickets:', COUNT(*) FROM tickets;
+   SELECT 'Issues:', COUNT(*) FROM issues;
    SELECT 'Pull Requests:', COUNT(*) FROM pull_requests;
    SELECT 'Releases:', COUNT(*) FROM releases;
    SELECT 'Sync Metadata:', * FROM sync_metadata;

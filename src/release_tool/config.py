@@ -20,18 +20,18 @@ class PolicyAction(str, Enum):
     ERROR = "error"
 
 
-class TicketExtractionStrategy(str, Enum):
-    """Ticket extraction strategies."""
+class IssueExtractionStrategy(str, Enum):
+    """Issue extraction strategies."""
     BRANCH_NAME = "branch_name"
     COMMIT_MESSAGE = "commit_message"
     PR_BODY = "pr_body"
     PR_TITLE = "pr_title"
 
 
-class TicketPattern(BaseModel):
-    """A ticket extraction pattern with its associated strategy."""
+class IssuePattern(BaseModel):
+    """A issue extraction pattern with its associated strategy."""
     order: int
-    strategy: TicketExtractionStrategy
+    strategy: IssueExtractionStrategy
     pattern: str
     description: Optional[str] = None
 
@@ -49,20 +49,20 @@ class CategoryConfig(BaseModel):
 
         Args:
             label: The label name to check
-            source: Either "pr" or "ticket" indicating where the label comes from
+            source: Either "pr" or "issue" indicating where the label comes from
 
         Returns:
             True if the label matches this category
         """
         for pattern in self.labels:
-            # Check for prefix (pr:, ticket:, or no prefix for any)
+            # Check for prefix (pr:, issue:, or no prefix for any)
             if pattern.startswith("pr:"):
                 # Only match PR labels
                 if source == "pr" and pattern[3:] == label:
                     return True
-            elif pattern.startswith("ticket:"):
-                # Only match ticket labels
-                if source == "ticket" and pattern[7:] == label:
+            elif pattern.startswith("issue:"):
+                # Only match issue labels
+                if source == "issue" and pattern[6:] == label:
                     return True
             else:
                 # No prefix = match from any source
@@ -90,11 +90,11 @@ class PRTemplateConfig(BaseModel):
     )
 
 
-class TicketTemplateConfig(BaseModel):
-    """Ticket template configuration for release tracking."""
+class IssueTemplateConfig(BaseModel):
+    """Issue template configuration for release tracking."""
     title_template: str = Field(
         default="✨ Prepare Release {{version}}",
-        description="Ticket title template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}"
+        description="Issue title template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}"
     )
     body_template: str = Field(
         default=(
@@ -113,20 +113,20 @@ class TicketTemplateConfig(BaseModel):
             "### PRs to deploy new version in different environments\n\n"
             "- [ ] PR 1"
         ),
-        description="Ticket body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
+        description="Issue body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
                     "{{num_changes}}, {{num_categories}}"
     )
     labels: List[str] = Field(
         default_factory=lambda: ["release", "devops", "infrastructure"],
-        description="Labels to apply to the release tracking ticket"
+        description="Labels to apply to the release tracking issue"
     )
     assignee: Optional[str] = Field(
         default=None,
-        description="GitHub username to assign the ticket to. If None, assigns to the authenticated user from the GitHub token."
+        description="GitHub username to assign the issue to. If None, assigns to the authenticated user from the GitHub token."
     )
     project_id: Optional[str] = Field(
         default=None,
-        description="GitHub Project ID (number) to add the ticket to. Find this in the project URL: github.com/orgs/ORG/projects/ID"
+        description="GitHub Project ID (number) to add the issue to. Find this in the project URL: github.com/orgs/ORG/projects/ID"
     )
     project_status: Optional[str] = Field(
         default=None,
@@ -143,84 +143,84 @@ class TicketTemplateConfig(BaseModel):
     )
     milestone: Optional[str] = Field(
         default=None,
-        description="Milestone name to assign the ticket to (e.g., 'v1.0.0')."
+        description="Milestone name to assign the issue to (e.g., 'v1.0.0')."
     )
 
 
-class TicketPolicyConfig(BaseModel):
-    """Ticket extraction and consolidation policy configuration."""
-    patterns: List[TicketPattern] = Field(
+class IssuePolicyConfig(BaseModel):
+    """Issue extraction and consolidation policy configuration."""
+    patterns: List[IssuePattern] = Field(
         default_factory=lambda: [
-            TicketPattern(
+            IssuePattern(
                 order=1,
-                strategy=TicketExtractionStrategy.BRANCH_NAME,
-                pattern=r'/(?P<repo>\w+)-(?P<ticket>\d+)',
+                strategy=IssueExtractionStrategy.BRANCH_NAME,
+                pattern=r'/(?P<repo>\w+)-(?P<issue>\d+)',
                 description="Branch names like feat/meta-123/main"
             ),
-            TicketPattern(
+            IssuePattern(
                 order=2,
-                strategy=TicketExtractionStrategy.PR_BODY,
-                pattern=r'Parent issue:.*?/issues/(?P<ticket>\d+)',
+                strategy=IssueExtractionStrategy.PR_BODY,
+                pattern=r'Parent issue:.*?/issues/(?P<issue>\d+)',
                 description="Parent issue URL in PR body"
             ),
-            TicketPattern(
+            IssuePattern(
                 order=3,
-                strategy=TicketExtractionStrategy.PR_TITLE,
-                pattern=r'#(?P<ticket>\d+)',
+                strategy=IssueExtractionStrategy.PR_TITLE,
+                pattern=r'#(?P<issue>\d+)',
                 description="GitHub issue reference in PR title"
             ),
-            TicketPattern(
+            IssuePattern(
                 order=4,
-                strategy=TicketExtractionStrategy.COMMIT_MESSAGE,
-                pattern=r'#(?P<ticket>\d+)',
+                strategy=IssueExtractionStrategy.COMMIT_MESSAGE,
+                pattern=r'#(?P<issue>\d+)',
                 description="GitHub issue reference in commit message"
             ),
-            TicketPattern(
+            IssuePattern(
                 order=5,
-                strategy=TicketExtractionStrategy.COMMIT_MESSAGE,
-                pattern=r'(?P<project>[A-Z]+)-(?P<ticket>\d+)',
-                description="JIRA-style tickets in commit message"
+                strategy=IssueExtractionStrategy.COMMIT_MESSAGE,
+                pattern=r'(?P<project>[A-Z]+)-(?P<issue>\d+)',
+                description="JIRA-style issues in commit message"
             ),
         ],
         description="Ordered list of patterns with their extraction strategies"
     )
-    no_ticket_action: PolicyAction = Field(
+    no_issue_action: PolicyAction = Field(
         default=PolicyAction.WARN,
-        description="What to do when no ticket is found"
+        description="What to do when no issue is found"
     )
-    unclosed_ticket_action: PolicyAction = Field(
+    unclosed_issue_action: PolicyAction = Field(
         default=PolicyAction.WARN,
-        description="What to do with unclosed tickets"
+        description="What to do with unclosed issues"
     )
-    partial_ticket_action: PolicyAction = Field(
+    partial_issue_action: PolicyAction = Field(
         default=PolicyAction.WARN,
-        description="What to do with partial ticket matches (extracted but not found or wrong repo)"
+        description="What to do with partial issue matches (extracted but not found or wrong repo)"
     )
     inter_release_duplicate_action: PolicyAction = Field(
         default=PolicyAction.WARN,
-        description="What to do when a ticket appears in multiple releases (ignore=exclude from new release, warn=include but warn, error=fail)"
+        description="What to do when a issue appears in multiple releases (ignore=exclude from new release, warn=include but warn, error=fail)"
     )
     consolidation_enabled: bool = Field(
         default=True,
-        description="Whether to consolidate commits by parent ticket"
+        description="Whether to consolidate commits by parent issue"
     )
     description_section_regex: Optional[str] = Field(
         default=r'(?:## Description|## Summary)\n(.*?)(?=\n##|\Z)',
-        description="Regex to extract description from ticket body"
+        description="Regex to extract description from issue body"
     )
     migration_section_regex: Optional[str] = Field(
         default=r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)',
-        description="Regex to extract migration notes from ticket body"
+        description="Regex to extract migration notes from issue body"
     )
     release_notes_inclusion_policy: List[str] = Field(
-        default_factory=lambda: ["tickets", "pull-requests"],
-        description="Types of changes to include in release notes: 'tickets', 'pull-requests', 'commits'"
+        default_factory=lambda: ["issues", "pull-requests"],
+        description="Types of changes to include in release notes: 'issues', 'pull-requests', 'commits'"
     )
 
     @model_validator(mode='after')
     def validate_inclusion_policy(self):
         """Validate release_notes_inclusion_policy values."""
-        valid_values = {"tickets", "pull-requests", "commits"}
+        valid_values = {"issues", "pull-requests", "commits"}
         for value in self.release_notes_inclusion_policy:
             if value not in valid_values:
                 raise ValueError(
@@ -385,7 +385,7 @@ class ReleaseNoteConfig(BaseModel):
         description="Master Jinja2 template for GitHub release notes output. "
                     "Available variables: version, title, categories (with 'alias' field), "
                     "all_notes, render_entry (function to render entry_template). "
-                    "Note variables: title, url (prioritizes ticket_url over pr_url), ticket_url, pr_url, "
+                    "Note variables: title, url (prioritizes issue_url over pr_url), issue_url, pr_url, "
                     "short_link (#1234), short_repo_link (owner/repo#1234), pr_numbers, authors, description, etc."
     )
     doc_output_template: Optional[str] = Field(
@@ -402,7 +402,7 @@ class SyncConfig(BaseModel):
     """Sync configuration for GitHub data fetching."""
     cutoff_date: Optional[str] = Field(
         default=None,
-        description="ISO format date (YYYY-MM-DD) to limit historical fetching. Only fetch tickets/PRs from this date onwards."
+        description="ISO format date (YYYY-MM-DD) to limit historical fetching. Only fetch issues/PRs from this date onwards."
     )
     parallel_workers: int = Field(
         default=20,
@@ -426,7 +426,7 @@ class SyncConfig(BaseModel):
     )
     show_progress: bool = Field(
         default=True,
-        description="Show progress updates during sync (e.g., 'syncing 13 / 156 tickets')"
+        description="Show progress updates during sync (e.g., 'syncing 13 / 156 issues')"
     )
 
 
@@ -435,9 +435,9 @@ class RepositoryConfig(BaseModel):
     code_repo: str = Field(
         description="Full name of code repository (owner/name)"
     )
-    ticket_repos: List[str] = Field(
+    issue_repos: List[str] = Field(
         default_factory=list,
-        description="List of ticket repository names (owner/name). If empty, uses code_repo."
+        description="List of issue repository names (owner/name). If empty, uses code_repo."
     )
     default_branch: Optional[str] = Field(
         default=None,
@@ -486,7 +486,7 @@ class OutputConfig(BaseModel):
     )
     download_media: bool = Field(
         default=True,
-        description="Download and include images/videos from ticket descriptions"
+        description="Download and include images/videos from issue descriptions"
     )
     create_github_release: bool = Field(
         default=False,
@@ -504,14 +504,14 @@ class OutputConfig(BaseModel):
         default="auto",
         description="Mark GitHub releases as prereleases. Options: 'auto' (detect from version), true, false"
     )
-    create_ticket: bool = Field(
+    create_issue: bool = Field(
         default=True,
         description="Whether to create a tracking issue for the release. "
                     "When true, a GitHub issue will be created and PR templates can use {{issue_repo}}, {{issue_number}}, and {{issue_link}} variables."
     )
-    ticket_templates: TicketTemplateConfig = Field(
-        default_factory=TicketTemplateConfig,
-        description="Templates for release tracking ticket (title, body, labels)"
+    issue_templates: IssueTemplateConfig = Field(
+        default_factory=IssueTemplateConfig,
+        description="Templates for release tracking issue (title, body, labels)"
     )
     pr_templates: PRTemplateConfig = Field(
         default_factory=PRTemplateConfig,
@@ -526,7 +526,7 @@ class Config(BaseModel):
     github: GitHubConfig = Field(default_factory=GitHubConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     sync: SyncConfig = Field(default_factory=SyncConfig)
-    ticket_policy: TicketPolicyConfig = Field(default_factory=TicketPolicyConfig)
+    issue_policy: IssuePolicyConfig = Field(default_factory=IssuePolicyConfig)
     version_policy: VersionPolicyConfig = Field(default_factory=VersionPolicyConfig)
     branch_policy: BranchPolicyConfig = Field(default_factory=BranchPolicyConfig)
     release_notes: ReleaseNoteConfig = Field(default_factory=ReleaseNoteConfig)
@@ -619,10 +619,10 @@ class Config(BaseModel):
 
         return cls(**data)
 
-    def get_ticket_repos(self) -> List[str]:
-        """Get the list of ticket repositories (defaults to code repo if not specified)."""
-        if self.repository.ticket_repos:
-            return self.repository.ticket_repos
+    def get_issue_repos(self) -> List[str]:
+        """Get the list of issue repositories (defaults to code repo if not specified)."""
+        if self.repository.issue_repos:
+            return self.repository.issue_repos
         return [self.repository.code_repo]
 
     def get_code_repo_path(self) -> str:
