@@ -418,12 +418,16 @@ class GitHubClient:
             repo = self.gh.get_repo(repo_full_name)
 
             # Use Core API with explicit pagination
-            issues_paginated = repo.get_issues(
-                state='all',
-                since=since,
-                sort='created',
-                direction='asc'
-            )
+            # Build kwargs conditionally - PyGithub doesn't accept since=None
+            kwargs = {
+                'state': 'all',
+                'sort': 'created',
+                'direction': 'asc'
+            }
+            if since is not None:
+                kwargs['since'] = since
+            
+            issues_paginated = repo.get_issues(**kwargs)
 
             issues = []
             page_num = 0
@@ -455,22 +459,23 @@ class GitHubClient:
 
                         # Convert issues to Issue objects directly
                         convert_start = time.time()
-                        for idx, issue in enumerate(page):
+                        for idx, gh_item in enumerate(page):
                             # Skip PRs - GitHub's /issues endpoint returns both issues and PRs
-                            # PRs have a pull_request field that is not None
-                            if issue.pull_request is not None:
+                            # Check raw_data to avoid lazy loading
+                            raw = getattr(gh_item, '_rawData', None) or getattr(gh_item, 'raw_data', {})
+                            if raw.get('pull_request') is not None:
                                 continue
                             
                             item_start = time.time()
                             # Convert to Issue using helper (doesn't trigger extra API calls)
-                            issue = self._issue_to_issue(issue, repo_id)
-                            issues.append(issue)
+                            issue_obj = self._issue_to_issue(gh_item, repo_id)
+                            issues.append(issue_obj)
                             item_time = time.time() - item_start
 
                             # Update every 10 items to show progress
-                            if (idx + 1) % 10 == 0:
-                                avg_time = (time.time() - convert_start) / (idx + 1)
-                                progress.update(task, description=f"Fetching issues... page {page_num + 1} (converting {idx + 1}/{len(page)}... {avg_time*1000:.0f}ms/item)")
+                            if len(issues) % 10 == 0:
+                                avg_time = (time.time() - convert_start) / len(issues)
+                                progress.update(task, description=f"Fetching issues... page {page_num + 1} (converting {len(issues)} issues... {avg_time*1000:.0f}ms/item)")
 
                         convert_time = time.time() - convert_start
                         page_num += 1

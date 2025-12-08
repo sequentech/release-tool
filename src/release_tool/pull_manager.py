@@ -522,8 +522,12 @@ class PullManager:
             return new_issues
 
         except Exception as e:
+            import traceback
             console.print(f"[red]Error fetching issues: {e}[/red]")
-            return []
+            console.print(f"[red]Traceback:[/red]")
+            traceback.print_exc()
+            import sys
+            sys.exit(1)
 
     def _fetch_prs_streaming(
         self,
