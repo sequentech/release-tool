@@ -504,13 +504,10 @@ def get_release_commit_range(
         except Exception:
             return None, []
 
-    try:
-        commits = git_ops.get_commits_for_version_range(comparison_version, target_version)
+    # Always use head_ref as the target for generating release notes
+    # This ensures we generate notes from the release branch, not from existing tags
+    from_tag = git_ops._find_tag_for_version(comparison_version)
+    if from_tag:
+        commits = git_ops.get_commits_between_refs(from_tag, head_ref)
         return comparison_version, commits
-    except ValueError:
-        # Target version tag doesn't exist yet, compare from comparison to head_ref
-        from_tag = git_ops._find_tag_for_version(comparison_version)
-        if from_tag:
-            commits = git_ops.get_commits_between_refs(from_tag, head_ref)
-            return comparison_version, commits
-        return comparison_version, []
+    return comparison_version, []
