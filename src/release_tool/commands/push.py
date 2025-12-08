@@ -1331,7 +1331,18 @@ def _find_existing_issue_auto(config: Config, github_client: GitHubClient, versi
         console.print(f"[dim]Searching for open issues matching version {version}...[/dim]")
     
     # Search for open issues matching the version
-    issues = list(github_client.gh.search_issues(query)[:5])
+    # Safely iterate and collect up to 5 results
+    issues = []
+    try:
+        search_results = github_client.gh.search_issues(query)
+        for i, issue in enumerate(search_results):
+            if i >= 5:
+                break
+            issues.append(issue)
+    except Exception as e:
+        if debug:
+            console.print(f"[dim]Error searching for issues: {e}[/dim]")
+        return None
     
     if not issues:
         if debug:
