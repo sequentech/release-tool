@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Scenarios | Release Tool</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://sequentech.github.io/release-tool/docs/scenarios"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Scenarios | Release Tool"><meta data-rh="true" name="description" content="&lt;!--"><meta data-rh="true" property="og:description" content="&lt;!--"><link data-rh="true" rel="icon" href="/release-tool/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://sequentech.github.io/release-tool/docs/scenarios"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/scenarios" hreflang="en"><link data-rh="true" rel="alternate" href="https://sequentech.github.io/release-tool/docs/scenarios" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Scenarios","item":"https://sequentech.github.io/release-tool/docs/scenarios"}]}</script><link rel="stylesheet" href="/release-tool/assets/css/styles.d2ccc06d.css">
-<script src="/release-tool/assets/js/runtime~main.a8aa17ca.js" defer="defer"></script>
+<script src="/release-tool/assets/js/runtime~main.e20d122c.js" defer="defer"></script>
 <script src="/release-tool/assets/js/main.0c994e5b.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -17,7 +17,7 @@
 <p><strong>Context</strong>: You are releasing a regular update (e.g., <code>1.2.0</code>) that includes several feature PRs and bug fixes.</p>
 <p><strong>Steps</strong>:</p>
 <ol>
-<li class="">Sync the repo: <code>release-tool sync sequentech/app</code></li>
+<li class="">Sync the repo: <code>release-tool pull sequentech/app</code></li>
 <li class="">Generate notes: <code>release-tool generate-notes 1.2.0</code></li>
 <li class="">Release: <code>release-tool release 1.2.0</code></li>
 </ol>
@@ -26,7 +26,7 @@
 <p><strong>Context</strong>: You need to release a critical bug fix (e.g., <code>1.2.1</code>) immediately.</p>
 <p><strong>Steps</strong>:</p>
 <ol>
-<li class="">Sync the repo: <code>release-tool sync sequentech/app</code></li>
+<li class="">Sync the repo: <code>release-tool pull sequentech/app</code></li>
 <li class="">Generate notes: <code>release-tool generate-notes 1.2.1 --from-version 1.2.0</code>
 <ul>
 <li class=""><em>Note: Explicitly setting the previous version ensures only the hotfix changes are included.</em></li>
