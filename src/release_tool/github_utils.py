@@ -456,6 +456,11 @@ class GitHubClient:
                         # Convert issues to Issue objects directly
                         convert_start = time.time()
                         for idx, issue in enumerate(page):
+                            # Skip PRs - GitHub's /issues endpoint returns both issues and PRs
+                            # PRs have a pull_request field that is not None
+                            if issue.pull_request is not None:
+                                continue
+                            
                             item_start = time.time()
                             # Convert to Issue using helper (doesn't trigger extra API calls)
                             issue = self._issue_to_issue(issue, repo_id)
