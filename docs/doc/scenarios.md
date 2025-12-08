@@ -18,7 +18,7 @@ This section covers different scenarios you might encounter when using the Relea
 **Context**: You are releasing a regular update (e.g., `1.2.0`) that includes several feature PRs and bug fixes.
 
 **Steps**:
-1.  Sync the repo: `release-tool sync sequentech/app`
+1.  Sync the repo: `release-tool pull sequentech/app`
 2.  Generate notes: `release-tool generate-notes 1.2.0`
 3.  Release: `release-tool release 1.2.0`
 
@@ -29,7 +29,7 @@ This section covers different scenarios you might encounter when using the Relea
 **Context**: You need to release a critical bug fix (e.g., `1.2.1`) immediately.
 
 **Steps**:
-1.  Sync the repo: `release-tool sync sequentech/app`
+1.  Sync the repo: `release-tool pull sequentech/app`
 2.  Generate notes: `release-tool generate-notes 1.2.1 --from-version 1.2.0`
     *   *Note: Explicitly setting the previous version ensures only the hotfix changes are included.*
 3.  Release: `release-tool release 1.2.1`

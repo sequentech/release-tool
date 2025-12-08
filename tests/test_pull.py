@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for sync functionality."""
+"""Tests for pull functionality."""
 
 import pytest
 from datetime import datetime, timedelta
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from release_tool.config import Config
 from release_tool.db import Database
-from release_tool.sync import SyncManager
+from release_tool.pull_manager import PullManager
 from release_tool.github_utils import GitHubClient
 from release_tool.models import Issue, PullRequest, Author, Label
 
@@ -28,7 +28,7 @@ def test_config():
         "github": {
             "token": "test_token"
         },
-        "sync": {
+        "pull": {
             "parallel_workers": 2,
             "show_progress": False,
             "clone_code_repo": False
@@ -40,7 +40,7 @@ def test_config():
 @pytest.fixture
 def test_db(tmp_path):
     """Create test database."""
-    db_path = tmp_path / "test_sync.db"
+    db_path = tmp_path / "test_pull.db"
     db = Database(str(db_path))
     db.connect()
     yield db
@@ -54,14 +54,14 @@ def mock_github():
     return mock
 
 
-def test_sync_metadata_tracking(test_db):
-    """Test sync metadata CRUD operations."""
-    # No sync initially
-    last_sync = test_db.get_last_sync("sequentech/meta", "issues")
-    assert last_sync is None
+def test_pull_metadata_tracking(test_db):
+    """Test pull metadata CRUD operations."""
+    # No pull initially
+    last_pull = test_db.get_last_pull("sequentech/meta", "issues")
+    assert last_pull is None
 
-    # Update sync metadata
-    test_db.update_sync_metadata(
+    # Update pull metadata
+    test_db.update_pull_metadata(
         "sequentech/meta",
         "issues",
         cutoff_date="2024-01-01",
@@ -69,12 +69,12 @@ def test_sync_metadata_tracking(test_db):
     )
 
     # Should have sync timestamp now
-    last_sync = test_db.get_last_sync("sequentech/meta", "issues")
-    assert last_sync is not None
-    assert isinstance(last_sync, datetime)
+    last_pull = test_db.get_last_pull("sequentech/meta", "issues")
+    assert last_pull is not None
+    assert isinstance(last_pull, datetime)
 
     # Get all sync status
-    status = test_db.get_all_sync_status()
+    status = test_db.get_all_pull_status()
     assert len(status) == 1
     assert status[0]['repo_full_name'] == "sequentech/meta"
     assert status[0]['entity_type'] == "issues"
@@ -189,7 +189,7 @@ def test_config_get_code_repo_path_custom():
         "github": {
             "token": "test_token"
         },
-        "sync": {
+        "pull": {
             "code_repo_path": "/custom/path/to/repo"
         }
     }
@@ -198,7 +198,7 @@ def test_config_get_code_repo_path_custom():
     assert path == "/custom/path/to/repo"
 
 
-def test_sync_config_defaults():
+def test_pull_config_defaults():
     """Test sync configuration defaults."""
     config_dict = {
         "repository": {
@@ -207,41 +207,41 @@ def test_sync_config_defaults():
     }
     config = Config.from_dict(config_dict)
 
-    assert config.sync.parallel_workers == 20
-    assert config.sync.show_progress is True
-    assert config.sync.clone_code_repo is True
-    assert config.sync.cutoff_date is None
+    assert config.pull.parallel_workers == 20
+    assert config.pull.show_progress is True
+    assert config.pull.clone_code_repo is True
+    assert config.pull.cutoff_date is None
 
 
-def test_sync_config_cutoff_date():
+def test_pull_config_cutoff_date():
     """Test sync configuration with cutoff date."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
         },
-        "sync": {
+        "pull": {
             "cutoff_date": "2024-01-01"
         }
     }
     config = Config.from_dict(config_dict)
-    assert config.sync.cutoff_date == "2024-01-01"
+    assert config.pull.cutoff_date == "2024-01-01"
 
 
-@patch('release_tool.sync.subprocess.run')
-def test_sync_git_repository_clone(mock_run, test_config, tmp_path):
+@patch('release_tool.pull_manager.subprocess.run')
+def test_pull_git_repository_clone(mock_run, test_config, tmp_path):
     """Test cloning a new git repository."""
     # Update config to use temp path
-    test_config.sync.code_repo_path = str(tmp_path / "test_repo")
+    test_config.pull.code_repo_path = str(tmp_path / "test_repo")
 
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
 
-    sync_manager = SyncManager(test_config, mock_db, mock_github)
+    sync_manager = PullManager(test_config, mock_db, mock_github)
 
     # Mock successful clone
     mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
-    repo_path = sync_manager._sync_git_repository("sequentech/step")
+    repo_path = sync_manager._pull_git_repository("sequentech/step")
 
     # Should have called git clone
     assert mock_run.called
@@ -251,25 +251,25 @@ def test_sync_git_repository_clone(mock_run, test_config, tmp_path):
     assert "sequentech/step" in ' '.join(call_args)
 
 
-@patch('release_tool.sync.subprocess.run')
-def test_sync_git_repository_update(mock_run, test_config, tmp_path):
+@patch('release_tool.pull_manager.subprocess.run')
+def test_pull_git_repository_update(mock_run, test_config, tmp_path):
     """Test updating an existing git repository."""
     # Create fake repo directory with .git
     repo_path = tmp_path / "test_repo"
     repo_path.mkdir()
     (repo_path / ".git").mkdir()
 
-    test_config.sync.code_repo_path = str(repo_path)
+    test_config.pull.code_repo_path = str(repo_path)
 
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
 
-    sync_manager = SyncManager(test_config, mock_db, mock_github)
+    sync_manager = PullManager(test_config, mock_db, mock_github)
 
     # Mock successful fetch and reset
     mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
-    result_path = sync_manager._sync_git_repository("sequentech/step")
+    result_path = sync_manager._pull_git_repository("sequentech/step")
 
     # Should have called git fetch and git reset
     assert mock_run.call_count >= 2
@@ -316,7 +316,7 @@ def test_incremental_sync_filters_existing(test_config, test_db, mock_github):
     # Mock GitHub to return all issues (including existing)
     mock_github.search_issue_numbers.return_value = [1, 2, 3, 4, 5, 6]
 
-    sync_manager = SyncManager(test_config, test_db, mock_github)
+    sync_manager = PullManager(test_config, test_db, mock_github)
 
     # Get issue numbers to fetch
     to_fetch = sync_manager._get_issue_numbers_to_fetch("sequentech/meta", None)
@@ -331,16 +331,16 @@ def test_parallel_workers_config():
         "repository": {
             "code_repo": "test/repo"
         },
-        "sync": {
+        "pull": {
             "parallel_workers": 20
         }
     }
     config = Config.from_dict(config_dict)
 
-    assert config.sync.parallel_workers == 20
+    assert config.pull.parallel_workers == 20
 
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
 
-    sync_manager = SyncManager(config, mock_db, mock_github)
+    sync_manager = PullManager(config, mock_db, mock_github)
     assert sync_manager.parallel_workers == 20

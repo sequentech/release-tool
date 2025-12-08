@@ -50,7 +50,7 @@ Standard unit tests covering:
 - Policies and business logic (`test_policies.py`)
 - Template rendering (`test_output_template.py`, `test_default_template.py`)
 - Issue management (`test_query_issues.py`, `test_partial_issues.py`)
-- Publishing and syncing (`test_publish.py`, `test_sync.py`)
+- Pushing and syncing (`test_push.py`, `test_pull.py`)
 
 ```bash
 # Run all unit tests except Docker tests

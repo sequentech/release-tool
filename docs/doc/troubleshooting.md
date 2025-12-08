@@ -96,7 +96,7 @@ For HTTPS (recommended for GitHub Actions):
 2. For private repos, ensure the token can access the repository
 3. Configure the clone method:
    ```toml
-   [sync]
+   [pull]
    clone_method = "https"  # or "auto" (default)
    ```
 
@@ -104,7 +104,7 @@ For SSH (local development):
 1. Ensure SSH keys are configured: `ssh -T git@github.com`
 2. Configure the clone method:
    ```toml
-   [sync]
+   [pull]
    clone_method = "ssh"
    ```
 3. In GitHub Actions, use the SSH agent:
@@ -135,12 +135,12 @@ For SSH (local development):
    - name: Sync repository data
      env:
        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-     run: release-tool sync
+     run: release-tool pull
    ```
 
 3. Use `clone_method = "auto"` (default) or `"https"` in your config:
    ```toml
-   [sync]
+   [pull]
    clone_method = "auto"
    ```
 
@@ -156,7 +156,7 @@ For SSH (local development):
    [github]
    api_url = "https://github.enterprise.com/api/v3"
 
-   [sync]
+   [pull]
    clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
    ```
 

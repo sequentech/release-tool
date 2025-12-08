@@ -19,12 +19,12 @@ Ensure you have the tool installed and configured as described in the [Installat
 
 ## Step-by-Step Workflow
 
-### 1. Sync Repository Data
+### 1. Pull Repository Data
 
 Before generating release notes, you need to sync the latest data from GitHub to your local database.
 
 ```bash
-release-tool sync
+release-tool pull
 ```
 
 This command:
@@ -76,19 +76,19 @@ release-tool generate --new-minor
 vim .release_tool_cache/draft-releases/owner-repo/9.1.0.md
 ```
 
-### 4. Publish Release
+### 4. Push Release
 
 Once satisfied with the notes, publish to GitHub. The tool will automatically find your draft notes if you don't specify a file:
 
 ```bash
 # Auto-finds draft notes for the version
-release-tool publish 9.1.0
+release-tool push 9.1.0
 
 # Or explicitly specify a notes file
-release-tool publish 9.1.0 -f .release_tool_cache/draft-releases/owner-repo/9.1.0.md
+release-tool push 9.1.0 -f .release_tool_cache/draft-releases/owner-repo/9.1.0.md
 
 # Associate with a specific GitHub issue/issue
-release-tool publish 9.1.0 --issue 123
+release-tool push 9.1.0 --issue 123
 ```
 
 #### Release Modes
@@ -97,19 +97,19 @@ Control how the release is published with `--release-mode`:
 
 ```bash
 # Create a draft release (default in many configs)
-release-tool publish 9.1.0 --release-mode draft
+release-tool push 9.1.0 --release-mode draft
 
 # Create a published release (full tag/notes creation)
-release-tool publish 9.1.0 --release-mode published
+release-tool push 9.1.0 --release-mode published
 
 # Mark existing release as published (no tag operations)
-release-tool publish 9.1.0 --release-mode just-publish
+release-tool push 9.1.0 --release-mode just-push
 ```
 
 **Mode Details**:
 - `draft`: Creates GitHub release with `draft: true` (not public)
 - `published`: Creates/updates full release with tags and notes
-- `just-publish`: Only marks existing release as published (no tag/note changes)
+- `just-push`: Only marks existing release as published (no tag/note changes)
   - ✅ Perfect for automation (e.g., PR merge triggers)
   - ✅ Preserves all existing release properties
   - ❌ Fails if no existing release found
@@ -121,16 +121,16 @@ release-tool publish 9.1.0 --release-mode just-publish
 - Optionally create a PR with release notes (use `--pr`)
 - Optionally associate with a GitHub issue for tracking (use `--issue`)
 
-#### Testing Before Publishing
+#### Testing Before Pushing
 
 Use `--dry-run` to preview what would be published without making any changes:
 
 ```bash
 # Preview the publish operation
-release-tool publish 9.1.0 -f notes.md --dry-run
+release-tool push 9.1.0 -f notes.md --dry-run
 
 # Preview with specific flags
-release-tool publish 9.1.0 -f notes.md --dry-run --release --pr --draft
+release-tool push 9.1.0 -f notes.md --dry-run --release --pr --draft
 ```
 
 #### Debugging Issues
@@ -139,10 +139,10 @@ Use `--debug` to see detailed information:
 
 ```bash
 # Show verbose debugging information
-release-tool publish 9.1.0 -f notes.md --debug
+release-tool push 9.1.0 -f notes.md --debug
 
 # Combine with dry-run for safe debugging
-release-tool publish 9.1.0 -f notes.md --debug --dry-run
+release-tool push 9.1.0 -f notes.md --debug --dry-run
 ```
 
 Debug mode shows:
@@ -173,25 +173,25 @@ Then simply run:
 
 ```bash
 # Uses config defaults (auto-finds notes file)
-release-tool publish 9.1.0
+release-tool push 9.1.0
 
 # Explicitly specify notes file
-release-tool publish 9.1.0 -f notes.md
+release-tool push 9.1.0 -f notes.md
 
 # Override config with CLI flags
-release-tool publish 9.1.0 -f notes.md --no-release --pr --draft
+release-tool push 9.1.0 -f notes.md --no-release --pr --draft
 
 # Override prerelease setting
-release-tool publish 9.1.0 --prerelease true  # Force prerelease
-release-tool publish 9.1.0 --prerelease false # Force stable
-release-tool publish 9.1.0 --prerelease auto  # Auto-detect
+release-tool push 9.1.0 --prerelease true  # Force prerelease
+release-tool push 9.1.0 --prerelease false # Force stable
+release-tool push 9.1.0 --prerelease auto  # Auto-detect
 ```
 
 ## Common Commands
 
 | Command | Description |
 |---------|-------------|
-| `sync` | Syncs repository, issues, PRs, and releases from GitHub |
+| `pull` | Pulls repository, issues, PRs, and releases from GitHub |
 | `generate <version>` | Generates release notes for the specified version |
 | `generate --new-major/minor/patch/rc` | Auto-bumps version and generates notes |
 | `generate --dry-run` | Preview generated notes without creating files |
@@ -199,7 +199,7 @@ release-tool publish 9.1.0 --prerelease auto  # Auto-detect
 | `publish <version>` | Creates a GitHub release (auto-finds draft notes) |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
 | `publish <version> --issue <number>` | Associate release with a GitHub issue |
-| `publish <version> --release-mode draft\|published\|just-publish` | Control release creation mode |
+| `publish <version> --release-mode draft\|published\|just-push` | Control release creation mode |
 | `publish --list` or `publish -l` | List all available draft releases |
 | `publish --dry-run` | Preview publish operation without making changes |
 | `publish --debug` | Show detailed debugging information |
@@ -214,10 +214,10 @@ View all available draft releases that are ready to be published:
 
 ```bash
 # List all draft releases
-release-tool publish --list
+release-tool push --list
 
 # Or use the shorthand
-release-tool publish -l
+release-tool push -l
 ```
 
 This shows a table with:
@@ -229,11 +229,11 @@ This shows a table with:
 
 ### Auto-Finding Draft Notes
 
-When publishing without specifying `--notes-file`, the tool automatically searches for matching draft notes:
+When pushing without specifying `--notes-file`, the tool automatically searches for matching draft notes:
 
 ```bash
 # Automatically finds .release_tool_cache/draft-releases/{repo}/9.1.0.md
-release-tool publish 9.1.0
+release-tool push 9.1.0
 ```
 
 If no matching draft is found, it displays all available drafts and exits with an error.

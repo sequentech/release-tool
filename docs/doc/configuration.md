@@ -73,7 +73,7 @@ Sensitive information like tokens should be set via environment variables:
 - `token`: (Optional) GitHub Personal Access Token. Recommended to use `GITHUB_TOKEN` environment variable instead.
 - `api_url`: (Optional) GitHub API URL. Default is `https://api.github.com`. Use for GitHub Enterprise.
 
-### `sync`
+### `pull`
 
 Configuration for syncing data from GitHub.
 
@@ -96,7 +96,7 @@ Configuration for syncing data from GitHub.
 - **Default**: `"auto"`
 - **Example**:
   ```toml
-  [sync]
+  [pull]
   clone_method = "https"  # For GitHub Actions
   ```
 
@@ -105,7 +105,7 @@ Configuration for syncing data from GitHub.
 - **Description**: Custom clone URL template for GitHub Enterprise or custom Git servers. Use `{repo_full_name}` as placeholder.
 - **Example**:
   ```toml
-  [sync]
+  [pull]
   clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
   ```
 

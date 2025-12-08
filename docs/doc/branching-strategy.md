@@ -154,9 +154,9 @@ $ release-tool generate 9.0.5 --repo-path .
    # Run tests, build, etc.
    ```
 
-4. **Publish Release**
+4. **Push Release**
    ```bash
-   release-tool publish 9.1.0 -f notes.md
+   release-tool push 9.1.0 -f notes.md
    ```
 
 ## Custom Branch Templates

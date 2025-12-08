@@ -36,7 +36,7 @@ api_url = "https://api.github.com"
 [database]
 path = "release_tool.db"
 
-[sync]
+[pull]
 cutoff_date = "2025-01-01"
 parallel_workers = 10
 clone_code_repo = true
@@ -166,5 +166,5 @@ This PR adds release notes for {version} with {num_changes} changes across {num_
     console.print("\n[blue]Next steps:[/blue]")
     console.print("1. Edit release_tool.toml and set your repository")
     console.print("2. Set GITHUB_TOKEN environment variable")
-    console.print("3. Run: release-tool sync")
+    console.print("3. Run: release-tool pull")
     console.print("4. Run: release-tool generate <version> --repo-path /path/to/repo")

@@ -24,9 +24,9 @@ class PartialIssueReason(Enum):
     """Reasons why a issue might be partially matched."""
 
     # Not found reasons
-    OLDER_THAN_CUTOFF = "older_than_cutoff"  # Issue may be older than sync cutoff date
+    OLDER_THAN_CUTOFF = "older_than_cutoff"  # Issue may be older than pull cutoff date
     TYPO = "typo"  # Issue may not exist (typo in branch/PR)
-    SYNC_NOT_RUN = "sync_not_run"  # Sync may not have been run yet
+    PULL_NOT_RUN = "pull_not_run"  # Pull may not have been run yet
 
     # Different repo reasons
     REPO_CONFIG_MISMATCH = "repo_config_mismatch"  # Issue found in different repo than configured
@@ -36,9 +36,9 @@ class PartialIssueReason(Enum):
     def description(self) -> str:
         """Get human-readable description of the reason."""
         descriptions = {
-            PartialIssueReason.OLDER_THAN_CUTOFF: "Issue may be older than sync cutoff date",
+            PartialIssueReason.OLDER_THAN_CUTOFF: "Issue may be older than pull cutoff date",
             PartialIssueReason.TYPO: "Issue may not exist (typo in branch/PR)",
-            PartialIssueReason.SYNC_NOT_RUN: "Sync may not have been run yet",
+            PartialIssueReason.PULL_NOT_RUN: "Pull may not have been run yet",
             PartialIssueReason.REPO_CONFIG_MISMATCH: "Issue found in different repo than configured",
             PartialIssueReason.WRONG_ISSUE_REPOS: "Check repository.issue_repos in config",
         }

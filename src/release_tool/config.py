@@ -398,8 +398,8 @@ class ReleaseNoteConfig(BaseModel):
     )
 
 
-class SyncConfig(BaseModel):
-    """Sync configuration for GitHub data fetching."""
+class PullConfig(BaseModel):
+    """Pull configuration for GitHub data fetching."""
     cutoff_date: Optional[str] = Field(
         default=None,
         description="ISO format date (YYYY-MM-DD) to limit historical fetching. Only fetch issues/PRs from this date onwards."
@@ -410,7 +410,7 @@ class SyncConfig(BaseModel):
     )
     clone_code_repo: bool = Field(
         default=True,
-        description="Whether to clone/sync the code repository locally for offline operation"
+        description="Whether to clone/pull the code repository locally for offline operation"
     )
     code_repo_path: Optional[str] = Field(
         default=None,
@@ -426,7 +426,7 @@ class SyncConfig(BaseModel):
     )
     show_progress: bool = Field(
         default=True,
-        description="Show progress updates during sync (e.g., 'syncing 13 / 156 issues')"
+        description="Show progress updates during pull (e.g., 'pulling 13 / 156 issues')"
     )
 
 
@@ -525,7 +525,7 @@ class Config(BaseModel):
     repository: RepositoryConfig
     github: GitHubConfig = Field(default_factory=GitHubConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    sync: SyncConfig = Field(default_factory=SyncConfig)
+    pull: PullConfig = Field(default_factory=PullConfig)
     issue_policy: IssuePolicyConfig = Field(default_factory=IssuePolicyConfig)
     version_policy: VersionPolicyConfig = Field(default_factory=VersionPolicyConfig)
     branch_policy: BranchPolicyConfig = Field(default_factory=BranchPolicyConfig)
@@ -627,8 +627,8 @@ class Config(BaseModel):
 
     def get_code_repo_path(self) -> str:
         """Get the local path for the cloned code repository."""
-        if self.sync.code_repo_path:
-            return self.sync.code_repo_path
+        if self.pull.code_repo_path:
+            return self.pull.code_repo_path
         # Default to .release_tool_cache/{repo_name}
         repo_name = self.repository.code_repo.split('/')[-1]
         return str(Path.cwd() / '.release_tool_cache' / repo_name)

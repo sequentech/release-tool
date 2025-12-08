@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Sync module for highly parallelized GitHub data fetching."""
+"""Pull module for highly parallelized GitHub data fetching."""
 
 import asyncio
 import subprocess
@@ -23,106 +23,106 @@ from .models import Issue, PullRequest
 console = Console()
 
 
-class SyncManager:
-    """Manager for parallelized GitHub data synchronization."""
+class PullManager:
+    """Manager for parallelized GitHub data data pulling."""
 
     def __init__(self, config: Config, db: Database, github_client: GitHubClient):
         self.config = config
         self.db = db
         self.github = github_client
-        self.parallel_workers = config.sync.parallel_workers
+        self.parallel_workers = config.pull.parallel_workers
 
-    def sync_all(self) -> Dict[str, Any]:
+    def pull_all(self) -> Dict[str, Any]:
         """
-        Sync all data from GitHub (issues, PRs, commits).
+        Pull all data from GitHub (issues, PRs, commits).
 
         Returns:
-            Dictionary with sync statistics
+            Dictionary with pull statistics
         """
         stats = {
             'issues': 0,
             'pull_requests': 0,
             'commits': 0,
-            'repos_synced': set()
+            'repos_pulled': set()
         }
 
-        if self.config.sync.show_progress:
-            console.print("[bold cyan]Starting GitHub data sync...[/bold cyan]")
+        if self.config.pull.show_progress:
+            console.print("[bold cyan]Starting GitHub data pull...[/bold cyan]")
 
-        # Sync issues from all issue repos
+        # Pull issues from all issue repos
         issue_repos = self.config.get_issue_repos()
         for repo_full_name in issue_repos:
-            if self.config.sync.show_progress:
-                console.print(f"[cyan]Syncing issues from {repo_full_name}...[/cyan]")
+            if self.config.pull.show_progress:
+                console.print(f"[cyan]Pulling issues from {repo_full_name}...[/cyan]")
 
-            issue_count = self._sync_issues_for_repo(repo_full_name)
+            issue_count = self._pull_issues_for_repo(repo_full_name)
             stats['issues'] += issue_count
-            stats['repos_synced'].add(repo_full_name)
+            stats['repos_pulled'].add(repo_full_name)
 
-        # Sync PRs from code repo
+        # Pull PRs from code repo
         code_repo = self.config.repository.code_repo
-        if self.config.sync.show_progress:
-            console.print(f"[cyan]Syncing pull requests from {code_repo}...[/cyan]")
+        if self.config.pull.show_progress:
+            console.print(f"[cyan]Pulling pull requests from {code_repo}...[/cyan]")
 
-        pr_count = self._sync_pull_requests_for_repo(code_repo)
+        pr_count = self._pull_pull_requests_for_repo(code_repo)
         stats['pull_requests'] = pr_count
-        stats['repos_synced'].add(code_repo)
+        stats['repos_pulled'].add(code_repo)
 
-        # Sync git repository if enabled
-        if self.config.sync.clone_code_repo:
-            if self.config.sync.show_progress:
-                console.print(f"[cyan]Syncing git repository for {code_repo}...[/cyan]")
+        # Pull git repository if enabled
+        if self.config.pull.clone_code_repo:
+            if self.config.pull.show_progress:
+                console.print(f"[cyan]Pulling git repository for {code_repo}...[/cyan]")
 
-            git_path = self._sync_git_repository(code_repo)
+            git_path = self._pull_git_repository(code_repo)
             stats['git_repo_path'] = git_path
 
-        if self.config.sync.show_progress:
-            console.print("[bold green]Sync completed successfully![/bold green]")
+        if self.config.pull.show_progress:
+            console.print("[bold green]Pull completed successfully![/bold green]")
             console.print(f"  Issues: {stats['issues']}")
             console.print(f"  Pull Requests: {stats['pull_requests']}")
             if stats.get('git_repo_path'):
-                console.print(f"  Git repo synced to: {stats['git_repo_path']}")
+                console.print(f"  Git repo pulled to: {stats['git_repo_path']}")
 
-        stats['repos_synced'] = list(stats['repos_synced'])
+        stats['repos_pulled'] = list(stats['repos_pulled'])
         return stats
 
-    def _sync_issues_for_repo(self, repo_full_name: str) -> int:
+    def _pull_issues_for_repo(self, repo_full_name: str) -> int:
         """
-        Sync issues for a specific repository with parallel fetching.
+        Pull issues for a specific repository with parallel fetching.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
 
         Returns:
-            Number of issues synced
+            Number of issues pulled
         """
         # Ensure repository exists in DB and get repo_id
         repo_info = self.github.get_repository_info(repo_full_name)
         repo_id = self.db.upsert_repository(repo_info)
 
-        # Get last sync time
-        last_sync = self.db.get_last_sync(repo_full_name, 'issues')
+        # Get last pull time
+        last_sync = self.db.get_last_pull(repo_full_name, 'issues')
 
         # Determine cutoff date
         cutoff_date = None
         cutoff_source = None
-        if self.config.sync.cutoff_date:
-            cutoff_date = datetime.fromisoformat(self.config.sync.cutoff_date)
+        if self.config.pull.cutoff_date:
+            cutoff_date = datetime.fromisoformat(self.config.pull.cutoff_date)
             # Ensure timezone awareness (assume UTC if naive)
             if cutoff_date.tzinfo is None:
                 from datetime import timezone
                 cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-            cutoff_source = f"configured cutoff date: {self.config.sync.cutoff_date}"
+            cutoff_source = f"configured cutoff date: {self.config.pull.cutoff_date}"
         elif last_sync:
-            # Incremental sync - fetch from last sync
+            # Incremental pull - fetch from last pull
             cutoff_date = last_sync
             # Ensure timezone awareness
             if cutoff_date.tzinfo is None:
                 from datetime import timezone
                 cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-            cutoff_source = f"last sync: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
+            cutoff_source = f"last pull: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
 
-        if self.config.sync.show_progress:
+        if self.config.pull.show_progress:
             if cutoff_source:
                 console.print(f"  [dim]Using {cutoff_source}[/dim]")
             else:
@@ -136,60 +136,60 @@ class SyncManager:
         )
 
         if not issues:
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [green]✓[/green] All issues up to date (0 new)")
             return 0
 
-        # Update sync metadata
-        self.db.update_sync_metadata(
+        # Update pull metadata
+        self.db.update_pull_metadata(
             repo_full_name,
             'issues',
-            cutoff_date=self.config.sync.cutoff_date,
+            cutoff_date=self.config.pull.cutoff_date,
             total_fetched=len(issues)
         )
 
-        if self.config.sync.show_progress:
-            console.print(f"  [green]✓[/green] Synced {len(issues)} issues")
+        if self.config.pull.show_progress:
+            console.print(f"  [green]✓[/green] Pulled {len(issues)} issues")
 
         return len(issues)
 
-    def _sync_pull_requests_for_repo(self, repo_full_name: str) -> int:
+    def _pull_pull_requests_for_repo(self, repo_full_name: str) -> int:
         """
-        Sync pull requests for a specific repository with parallel fetching.
+        Pull pull requests for a specific repository with parallel fetching.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
 
         Returns:
-            Number of PRs synced
+            Number of PRs pulled
         """
         # Ensure repository exists in DB and get repo_id
         repo_info = self.github.get_repository_info(repo_full_name)
         repo_id = self.db.upsert_repository(repo_info)
 
-        # Get last sync time
-        last_sync = self.db.get_last_sync(repo_full_name, 'pull_requests')
+        # Get last pull time
+        last_sync = self.db.get_last_pull(repo_full_name, 'pull_requests')
 
         # Determine cutoff date
         cutoff_date = None
         cutoff_source = None
-        if self.config.sync.cutoff_date:
-            cutoff_date = datetime.fromisoformat(self.config.sync.cutoff_date)
+        if self.config.pull.cutoff_date:
+            cutoff_date = datetime.fromisoformat(self.config.pull.cutoff_date)
             # Ensure timezone awareness (assume UTC if naive)
             if cutoff_date.tzinfo is None:
                 from datetime import timezone
                 cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-            cutoff_source = f"configured cutoff date: {self.config.sync.cutoff_date}"
+            cutoff_source = f"configured cutoff date: {self.config.pull.cutoff_date}"
         elif last_sync:
-            # Incremental sync - fetch from last sync
+            # Incremental pull - fetch from last pull
             cutoff_date = last_sync
             # Ensure timezone awareness
             if cutoff_date.tzinfo is None:
                 from datetime import timezone
                 cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-            cutoff_source = f"last sync: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
+            cutoff_source = f"last pull: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}"
 
-        if self.config.sync.show_progress:
+        if self.config.pull.show_progress:
             if cutoff_source:
                 console.print(f"  [dim]Using {cutoff_source}[/dim]")
             else:
@@ -203,20 +203,20 @@ class SyncManager:
         )
 
         if not prs:
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [green]✓[/green] All PRs up to date (0 new)")
             return 0
 
-        # Update sync metadata
-        self.db.update_sync_metadata(
+        # Update pull metadata
+        self.db.update_pull_metadata(
             repo_full_name,
             'pull_requests',
-            cutoff_date=self.config.sync.cutoff_date,
+            cutoff_date=self.config.pull.cutoff_date,
             total_fetched=len(prs)
         )
 
-        if self.config.sync.show_progress:
-            console.print(f"  [green]✓[/green] Synced {len(prs)} PRs")
+        if self.config.pull.show_progress:
+            console.print(f"  [green]✓[/green] Pulled {len(prs)} PRs")
 
         return len(prs)
 
@@ -290,16 +290,16 @@ class SyncManager:
             Clone URL string
         """
         # Use custom template if provided
-        if self.config.sync.clone_url_template:
-            url = self.config.sync.clone_url_template.format(repo_full_name=repo_full_name)
-            if self.config.sync.show_progress:
+        if self.config.pull.clone_url_template:
+            url = self.config.pull.clone_url_template.format(repo_full_name=repo_full_name)
+            if self.config.pull.show_progress:
                 console.print(f"  [dim]Using custom clone URL template[/dim]")
             return url
 
         # Use method-specific URL format
         if method == 'ssh':
             url = f"git@github.com:{repo_full_name}.git"
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [dim]Clone URL (SSH): {url}[/dim]")
             return url
         else:  # https or auto
@@ -309,18 +309,18 @@ class SyncManager:
                 token = self.config.github.token
                 masked_token = f"{token[:7]}...{token[-4:]}" if len(token) > 11 else "***"
                 url = f"https://x-access-token:{token}@github.com/{repo_full_name}.git"
-                if self.config.sync.show_progress:
+                if self.config.pull.show_progress:
                     console.print(f"  [dim]Clone URL (HTTPS): https://x-access-token:{masked_token}@github.com/{repo_full_name}.git[/dim]")
                     console.print(f"  [dim]Token length: {len(token)} chars[/dim]")
                 return url
             else:
                 url = f"https://github.com/{repo_full_name}.git"
-                if self.config.sync.show_progress:
+                if self.config.pull.show_progress:
                     console.print(f"  [yellow]Clone URL (HTTPS, no token): {url}[/yellow]")
                     console.print(f"  [yellow]Warning: No GitHub token available, private repos will fail[/yellow]")
                 return url
 
-    def _sync_git_repository(self, repo_full_name: str) -> str:
+    def _pull_git_repository(self, repo_full_name: str) -> str:
         """
         Clone or update the git repository for offline operation.
 
@@ -328,14 +328,14 @@ class SyncManager:
             repo_full_name: Full repository name (owner/repo)
 
         Returns:
-            Path to the synced git repository
+            Path to the pulled git repository
         """
         repo_path = Path(self.config.get_code_repo_path())
 
         # Check if repo already exists
         if repo_path.exists() and (repo_path / '.git').exists():
             # Repository exists - update it
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [dim]Updating existing repository at {repo_path}[/dim]")
 
             try:
@@ -362,7 +362,7 @@ class SyncManager:
                     text=True
                 )
 
-                if self.config.sync.show_progress:
+                if self.config.pull.show_progress:
                     console.print(f"  [green]✓[/green] Updated repository")
 
             except subprocess.CalledProcessError as e:
@@ -371,7 +371,7 @@ class SyncManager:
 
         else:
             # Repository doesn't exist - clone it
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [dim]Cloning repository to {repo_path}[/dim]")
 
             # Ensure parent directory exists
@@ -381,7 +381,7 @@ class SyncManager:
             if repo_path.exists():
                 shutil.rmtree(repo_path)
 
-            clone_method = self.config.sync.clone_method
+            clone_method = self.config.pull.clone_method
             last_error = None
 
             # Try cloning with the configured method
@@ -392,7 +392,7 @@ class SyncManager:
             else:
                 methods_to_try = [clone_method]
 
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [dim]Clone method: {clone_method}[/dim]")
                 console.print(f"  [dim]Will try methods in order: {', '.join(methods_to_try)}[/dim]")
                 console.print(f"  [dim]Repository: {repo_full_name}[/dim]")
@@ -401,11 +401,11 @@ class SyncManager:
                 try:
                     clone_url = self._get_clone_url(repo_full_name, method)
 
-                    if self.config.sync.show_progress and len(methods_to_try) > 1:
+                    if self.config.pull.show_progress and len(methods_to_try) > 1:
                         console.print(f"  [dim]Trying {method.upper()} clone...[/dim]")
 
                     # Show the git command (with masked token)
-                    if self.config.sync.show_progress:
+                    if self.config.pull.show_progress:
                         masked_url = clone_url
                         if 'x-access-token:' in clone_url:
                             # Mask the token in the URL
@@ -425,7 +425,7 @@ class SyncManager:
                         text=True
                     )
 
-                    if self.config.sync.show_progress:
+                    if self.config.pull.show_progress:
                         console.print(f"  [green]✓[/green] Cloned repository using {method.upper()}")
                         if result.stdout:
                             console.print(f"  [dim]Git output: {result.stdout.strip()}[/dim]")
@@ -434,7 +434,7 @@ class SyncManager:
 
                 except subprocess.CalledProcessError as e:
                     last_error = e
-                    if self.config.sync.show_progress:
+                    if self.config.pull.show_progress:
                         console.print(f"  [red]Git clone failed with exit code {e.returncode}[/red]")
                         if e.stdout:
                             console.print(f"  [red]Git stdout: {e.stdout.strip()}[/red]")
@@ -443,7 +443,7 @@ class SyncManager:
 
                     if len(methods_to_try) > 1:
                         # In auto mode, try next method
-                        if self.config.sync.show_progress:
+                        if self.config.pull.show_progress:
                             console.print(f"  [yellow]Failed with {method.upper()}, trying next method...[/yellow]")
                         continue
                     else:
@@ -500,24 +500,24 @@ class SyncManager:
             all_issues = self.github.fetch_all_issues(repo_full_name, repo_id, since=cutoff_date)
 
             # Filter out existing
-            if self.config.sync.show_progress and all_issues:
+            if self.config.pull.show_progress and all_issues:
                 console.print(f"  [dim]Filtering {len(all_issues)} issues against existing {len(existing_numbers)} in database...[/dim]")
             new_issues = [issue for issue in all_issues if issue.number not in existing_numbers]
 
             if not new_issues:
-                if self.config.sync.show_progress:
-                    console.print(f"  [dim]No new issues to sync[/dim]")
+                if self.config.pull.show_progress:
+                    console.print(f"  [dim]No new issues to pull[/dim]")
                 return []
 
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [cyan]Storing {len(new_issues)} new issues...[/cyan]")
 
             # Insert issues to database
             for issue in new_issues:
                 self.db.upsert_issue(issue)
 
-            if self.config.sync.show_progress:
-                console.print(f"  [green]✓[/green] Synced {len(new_issues)} new issues")
+            if self.config.pull.show_progress:
+                console.print(f"  [green]✓[/green] Pulled {len(new_issues)} new issues")
 
             return new_issues
 
@@ -558,24 +558,24 @@ class SyncManager:
             ]
 
             # Filter out existing
-            if self.config.sync.show_progress and merged_prs:
+            if self.config.pull.show_progress and merged_prs:
                 console.print(f"  [dim]Filtering {len(merged_prs)} merged PRs against existing {len(existing_numbers)} in database...[/dim]")
             new_prs = [pr for pr in merged_prs if pr.number not in existing_numbers]
 
             if not new_prs:
-                if self.config.sync.show_progress:
+                if self.config.pull.show_progress:
                     console.print(f"  [dim]No new PRs to sync[/dim]")
                 return []
 
-            if self.config.sync.show_progress:
+            if self.config.pull.show_progress:
                 console.print(f"  [cyan]Storing {len(new_prs)} new PRs...[/cyan]")
 
             # Insert PRs to database
             for pr in new_prs:
                 self.db.upsert_pull_request(pr)
 
-            if self.config.sync.show_progress:
-                console.print(f"  [green]✓[/green] Synced {len(new_prs)} new PRs")
+            if self.config.pull.show_progress:
+                console.print(f"  [green]✓[/green] Pulled {len(new_prs)} new PRs")
 
             return new_prs
 

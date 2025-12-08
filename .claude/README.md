@@ -56,7 +56,7 @@ export GITHUB_TOKEN="ghp_..."    # Set GitHub token
 
 ### 2. Sync GitHub Data
 ```bash
-release-tool sync                 # Sync issues, PRs, releases
+release-tool pull                 # Sync issues, PRs, releases
 ```
 
 ### 3. Generate Release Notes
@@ -138,7 +138,7 @@ See `.claude/commands/` for custom slash commands:
 ## Important Files
 
 - `release_tool.toml` - Configuration file (created by `init-config`)
-- `release_tool.db` - SQLite cache (auto-created by `sync`)
+- `release_tool.db` - SQLite cache (auto-created by `pull`)
 - `.release_tool_cache/` - Cloned git repositories for offline access
 - `docs/` - User documentation
 - `tests/` - Comprehensive unit tests

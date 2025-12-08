@@ -54,9 +54,9 @@ api_url = "https://api.github.com"
 path = "release_tool.db"
 
 # =============================================================================
-# Sync Configuration
+# Pull Configuration
 # =============================================================================
-[sync]
+[pull]
 # cutoff_date: Only fetch issues/PRs created after this date (ISO format: YYYY-MM-DD)
 # This limits historical data fetching and speeds up initial sync
 # Example: "2024-01-01" to only fetch data from 2024 onwards
@@ -80,8 +80,8 @@ clone_code_repo = true
 # Default: null (uses .release_tool_cache/{repo_name})
 # code_repo_path = "/path/to/local/repo"
 
-# show_progress: Show progress updates during sync
-# When true, displays messages like "syncing 13 / 156 issues (10% done)"
+# show_progress: Show progress updates during pull
+# When true, displays messages like "pulling 13 / 156 issues (10% done)"
 # Default: true
 show_progress = true
 
@@ -158,7 +158,7 @@ unclosed_issue_action = "warn"
 #
 # "Partial matches" occur when:
 #   - Issue key extracted from branch/PR, but issue not in database (common causes):
-#     * Issue created before your sync cutoff date
+#     * Issue created before your pull cutoff date
 #     * Issue doesn't exist (typo in branch name)
 #     * Sync hasn't been run yet
 #   - Issue found in database, but in wrong repository:

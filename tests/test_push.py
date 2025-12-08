@@ -2,14 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for publish command functionality."""
+"""Tests for push command functionality."""
 
 import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from click.testing import CliRunner
 
-from release_tool.commands.publish import publish
+from release_tool.commands.push import push
 from release_tool.config import Config
 
 
@@ -51,9 +51,9 @@ def test_dry_run_shows_output_without_api_calls(test_config, test_notes_file):
     """Test that dry-run shows expected output without making API calls."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client:
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '-f', str(test_notes_file), '--dry-run', '--release'],
             obj={'config': test_config}
         )
@@ -63,7 +63,7 @@ def test_dry_run_shows_output_without_api_calls(test_config, test_notes_file):
 
         # Should show dry-run banner
         assert 'DRY RUN' in result.output
-        assert 'Publish release 1.0.0' in result.output
+        assert 'Push release 1.0.0' in result.output
 
         # Should show what would be created
         assert 'Would create' in result.output
@@ -79,7 +79,7 @@ def test_dry_run_with_pr_flag(test_config, test_notes_file):
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--dry-run', '--pr', '--no-release'],
         obj={'config': test_config}
     )
@@ -94,7 +94,7 @@ def test_dry_run_with_draft_and_prerelease(test_config, test_notes_file):
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0-rc.1', '-f', str(test_notes_file), '--dry-run', '--release', '--release-mode', 'draft', '--prerelease', 'true'],
         obj={'config': test_config}
     )
@@ -112,8 +112,8 @@ def test_config_defaults_used_when_no_cli_flags(test_config, test_notes_file):
 
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.get_release_by_tag.return_value = None  # No existing release
@@ -126,7 +126,7 @@ def test_config_defaults_used_when_no_cli_flags(test_config, test_notes_file):
         mock_git_instance.get_version_tags.return_value = []
 
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '-f', str(test_notes_file)],
             obj={'config': test_config}
         )
@@ -145,8 +145,8 @@ def test_cli_flags_override_config(test_config, test_notes_file):
 
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.get_release_by_tag.return_value = None  # No existing release
@@ -160,7 +160,7 @@ def test_cli_flags_override_config(test_config, test_notes_file):
 
         # Override with --release flag
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -174,9 +174,9 @@ def test_debug_mode_shows_verbose_output(test_config, test_notes_file):
     """Test that debug mode shows verbose information."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient'):
+    with patch('release_tool.commands.push.GitHubClient'):
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
             obj={'config': test_config, 'debug': True}
         )
@@ -200,7 +200,7 @@ def test_debug_mode_shows_docusaurus_preview(test_config, test_notes_file, tmp_p
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
         obj={'config': test_config, 'debug': True}
     )
@@ -216,9 +216,9 @@ def test_error_handling_with_debug(test_config, test_notes_file):
     """Test that debug mode re-raises exceptions with stack trace."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.SemanticVersion.parse', side_effect=Exception("Test error")):
+    with patch('release_tool.commands.push.SemanticVersion.parse', side_effect=Exception("Test error")):
         result = runner.invoke(
-            publish,
+            push,
             ['invalid', '-f', str(test_notes_file)],
             obj={'config': test_config, 'debug': True}
         )
@@ -232,9 +232,9 @@ def test_error_handling_without_debug(test_config, test_notes_file):
     """Test that non-debug mode shows error message without stack trace."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.SemanticVersion.parse', side_effect=Exception("Test error")):
+    with patch('release_tool.commands.push.SemanticVersion.parse', side_effect=Exception("Test error")):
         result = runner.invoke(
-            publish,
+            push,
             ['invalid', '-f', str(test_notes_file)],
             obj={'config': test_config}
         )
@@ -251,8 +251,8 @@ def test_auto_detect_prerelease_version(test_config, test_notes_file):
     # Ensure config is set to "auto" (default)
     test_config.output.prerelease = "auto"
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.get_release_by_tag.return_value = None  # No existing release
@@ -265,7 +265,7 @@ def test_auto_detect_prerelease_version(test_config, test_notes_file):
         mock_git_instance.get_version_tags.return_value = []
 
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0-rc.1', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -284,7 +284,7 @@ def test_dry_run_shows_release_notes_preview(test_config, test_notes_file):
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--dry-run', '--release'],
         obj={'config': test_config}
     )
@@ -300,7 +300,7 @@ def test_dry_run_summary_at_end(test_config, test_notes_file):
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
         obj={'config': test_config}
     )
@@ -323,7 +323,7 @@ def test_docusaurus_file_detection_in_dry_run(test_config, test_notes_file, tmp_
     runner = CliRunner()
 
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--dry-run'],
         obj={'config': test_config}
     )
@@ -339,9 +339,9 @@ def test_pr_without_notes_file_shows_warning(test_config):
     """Test that creating PR without notes file shows warning and skips."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish._find_draft_releases', return_value=[]):
+    with patch('release_tool.commands.push._find_draft_releases', return_value=[]):
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '--pr', '--dry-run'],
             obj={'config': test_config}
         )
@@ -354,8 +354,8 @@ def test_prerelease_explicit_true(test_config, test_notes_file):
     """Test that --prerelease true always marks as prerelease."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.get_release_by_tag.return_value = None  # No existing release
@@ -369,7 +369,7 @@ def test_prerelease_explicit_true(test_config, test_notes_file):
 
         # Use a stable version but force prerelease
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0', '-f', str(test_notes_file), '--release', '--prerelease', 'true'],
             obj={'config': test_config}
         )
@@ -384,8 +384,8 @@ def test_prerelease_explicit_false(test_config, test_notes_file):
     """Test that --prerelease false never marks as prerelease."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+    with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops:
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.get_release_by_tag.return_value = None  # No existing release
@@ -399,7 +399,7 @@ def test_prerelease_explicit_false(test_config, test_notes_file):
 
         # Use an RC version but force stable
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0-rc.1', '-f', str(test_notes_file), '--release', '--prerelease', 'false'],
             obj={'config': test_config}
         )
@@ -424,8 +424,8 @@ def test_auto_find_draft_notes_success(test_config, tmp_path):
     try:
         runner = CliRunner()
 
-        with patch('release_tool.commands.publish.GitHubClient') as mock_client_class, \
-             patch('release_tool.commands.publish.GitOperations') as mock_git_ops:
+        with patch('release_tool.commands.push.GitHubClient') as mock_client_class, \
+             patch('release_tool.commands.push.GitOperations') as mock_git_ops:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             mock_client.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
@@ -438,7 +438,7 @@ def test_auto_find_draft_notes_success(test_config, tmp_path):
 
             # Don't specify --notes-file, should auto-find
             result = runner.invoke(
-                publish,
+                push,
                 ['1.0.0', '--release'],
                 obj={'config': test_config},
                 catch_exceptions=False
@@ -463,9 +463,9 @@ def test_auto_find_draft_notes_not_found(test_config):
     runner = CliRunner()
 
     # Don't create any draft files
-    with patch('release_tool.commands.publish._find_draft_releases', return_value=[]):
+    with patch('release_tool.commands.push._find_draft_releases', return_value=[]):
         result = runner.invoke(
-            publish,
+            push,
             ['1.0.0'],
             obj={'config': test_config}
         )
@@ -479,10 +479,10 @@ def test_branch_creation_when_needed(test_config, test_notes_file):
     """Test that release branch is created and pushed when it doesn't exist."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
 
         # Mock database
         mock_db = MagicMock()
@@ -506,7 +506,7 @@ def test_branch_creation_when_needed(test_config, test_notes_file):
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -529,10 +529,10 @@ def test_branch_creation_not_called_when_exists(test_config, test_notes_file):
     """Test that branch creation is skipped when branch already exists."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
 
         # Mock database
         mock_db = MagicMock()
@@ -555,7 +555,7 @@ def test_branch_creation_not_called_when_exists(test_config, test_notes_file):
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1"
 
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -576,9 +576,9 @@ def test_branch_creation_in_dry_run(test_config, test_notes_file):
     """Test that dry-run shows branch creation without actually creating it."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
 
         # Mock database
         mock_db = MagicMock()
@@ -594,7 +594,7 @@ def test_branch_creation_in_dry_run(test_config, test_notes_file):
         mock_strategy.return_value = ("release/0.0", "main", True)
 
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1-rc.0', '-f', str(test_notes_file), '--dry-run', '--release'],
             obj={'config': test_config}
         )
@@ -614,10 +614,10 @@ def test_branch_creation_error_handling(test_config, test_notes_file):
     """Test that branch creation errors are handled gracefully."""
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
 
         # Mock database
         mock_db = MagicMock()
@@ -644,7 +644,7 @@ def test_branch_creation_error_handling(test_config, test_notes_file):
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -662,10 +662,10 @@ def test_branch_creation_disabled_by_config(test_config, test_notes_file):
 
     runner = CliRunner()
 
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
 
         # Mock database
         mock_db = MagicMock()
@@ -688,7 +688,7 @@ def test_branch_creation_disabled_by_config(test_config, test_notes_file):
         mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v0.0.1-rc.0"
 
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1-rc.0', '-f', str(test_notes_file), '--release'],
             obj={'config': test_config}
         )
@@ -710,10 +710,10 @@ def test_issue_parameter_associates_with_issue(test_config, test_notes_file):
     """Test that --issue parameter properly associates release with a GitHub issue."""
     runner = CliRunner()
     
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class:
         
         # Mock database
         mock_db = MagicMock()
@@ -748,7 +748,7 @@ def test_issue_parameter_associates_with_issue(test_config, test_notes_file):
         test_config.output.create_pr = True
         
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1', '-f', str(test_notes_file), '--release', '--pr', '--issue', '123'],
             obj={'config': test_config}
         )
@@ -773,11 +773,11 @@ def test_auto_select_open_issue_for_draft_release(test_config, test_notes_file):
     """Test that publishing with --force draft auto-selects the first open issue."""
     runner = CliRunner()
     
-    with patch('release_tool.commands.publish.GitHubClient') as mock_gh_client, \
-         patch('release_tool.commands.publish.GitOperations') as mock_git_ops, \
-         patch('release_tool.commands.publish.determine_release_branch_strategy') as mock_strategy, \
-         patch('release_tool.commands.publish.Database') as mock_db_class, \
-         patch('release_tool.commands.publish._find_existing_issue_auto') as mock_find_issue:
+    with patch('release_tool.commands.push.GitHubClient') as mock_gh_client, \
+         patch('release_tool.commands.push.GitOperations') as mock_git_ops, \
+         patch('release_tool.commands.push.determine_release_branch_strategy') as mock_strategy, \
+         patch('release_tool.commands.push.Database') as mock_db_class, \
+         patch('release_tool.commands.push._find_existing_issue_auto') as mock_find_issue:
         
         # Mock database
         mock_db = MagicMock()
@@ -811,7 +811,7 @@ def test_auto_select_open_issue_for_draft_release(test_config, test_notes_file):
         test_config.output.create_pr = True
         
         result = runner.invoke(
-            publish,
+            push,
             ['0.0.1-rc.0', '-f', str(test_notes_file), '--release', '--pr', '--force', 'draft'],
             obj={'config': test_config}
         )
@@ -828,10 +828,10 @@ def test_auto_select_open_issue_for_draft_release(test_config, test_notes_file):
         assert call_args[1]['version'] == '0.0.1-rc.0'
 
 
-@patch('release_tool.commands.publish.Database')
-@patch('release_tool.commands.publish.GitOperations')
-@patch('release_tool.commands.publish.determine_release_branch_strategy')
-@patch('release_tool.commands.publish.GitHubClient')
+@patch("release_tool.commands.push.Database")
+@patch("release_tool.commands.push.GitOperations")
+@patch("release_tool.commands.push.determine_release_branch_strategy")
+@patch("release_tool.commands.push.GitHubClient")
 def test_existing_release_without_force_errors(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
     """Test that publishing fails when release exists and --force is not set."""
     runner = CliRunner()
@@ -864,7 +864,7 @@ def test_existing_release_without_force_errors(mock_gh_client, mock_strategy, mo
     mock_gh_instance.get_release_by_tag.return_value = mock_existing_release
     
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--release'],
         obj={'config': test_config}
     )
@@ -875,10 +875,10 @@ def test_existing_release_without_force_errors(mock_gh_client, mock_strategy, mo
     assert 'Use --force' in result.output
 
 
-@patch('release_tool.commands.publish.Database')
-@patch('release_tool.commands.publish.GitOperations')
-@patch('release_tool.commands.publish.determine_release_branch_strategy')
-@patch('release_tool.commands.publish.GitHubClient')
+@patch("release_tool.commands.push.Database")
+@patch("release_tool.commands.push.GitOperations")
+@patch("release_tool.commands.push.determine_release_branch_strategy")
+@patch("release_tool.commands.push.GitHubClient")
 def test_existing_release_with_force_updates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
     """Test that publishing updates existing release when --force is set."""
     runner = CliRunner()
@@ -912,7 +912,7 @@ def test_existing_release_with_force_updates(mock_gh_client, mock_strategy, mock
     mock_gh_instance.update_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
     
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--release', '--force', 'published'],
         obj={'config': test_config}
     )
@@ -928,10 +928,10 @@ def test_existing_release_with_force_updates(mock_gh_client, mock_strategy, mock
     assert call_args[0][1] == 'v1.0.0'
 
 
-@patch('release_tool.commands.publish.Database')
-@patch('release_tool.commands.publish.GitOperations')
-@patch('release_tool.commands.publish.determine_release_branch_strategy')
-@patch('release_tool.commands.publish.GitHubClient')
+@patch("release_tool.commands.push.Database")
+@patch("release_tool.commands.push.GitOperations")
+@patch("release_tool.commands.push.determine_release_branch_strategy")
+@patch("release_tool.commands.push.GitHubClient")
 def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
     """Test that publishing creates new release when it doesn't exist."""
     runner = CliRunner()
@@ -961,7 +961,7 @@ def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_g
     mock_gh_instance.create_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
     
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--release'],
         obj={'config': test_config}
     )
@@ -975,10 +975,10 @@ def test_new_release_without_force_creates(mock_gh_client, mock_strategy, mock_g
     mock_gh_instance.update_release.assert_not_called()
 
 
-@patch('release_tool.commands.publish.Database')
-@patch('release_tool.commands.publish.GitOperations')
-@patch('release_tool.commands.publish.determine_release_branch_strategy')
-@patch('release_tool.commands.publish.GitHubClient')
+@patch("release_tool.commands.push.Database")
+@patch("release_tool.commands.push.GitOperations")
+@patch("release_tool.commands.push.determine_release_branch_strategy")
+@patch("release_tool.commands.push.GitHubClient")
 def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
     """Test that publishing deletes and recreates an 'untagged' release when --force is set."""
     runner = CliRunner()
@@ -1020,7 +1020,7 @@ def test_existing_untagged_release_with_force_updates(mock_gh_client, mock_strat
     mock_gh_instance.update_release.return_value = "https://github.com/test/repo/releases/tag/v1.0.0"
     
     result = runner.invoke(
-        publish,
+        push,
         ['1.0.0', '-f', str(test_notes_file), '--release', '--force', 'published'],
         obj={'config': test_config}
     )

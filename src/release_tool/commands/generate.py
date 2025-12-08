@@ -40,7 +40,7 @@ def _get_issues_repo(config: Config) -> str:
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version', required=False)
 @click.option('--from-version', help='Compare from this version (auto-detected if not specified)')
-@click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to synced repo)')
+@click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to pulled repo)')
 @click.option('--output', '-o', type=click.Path(), help='Output file for release notes')
 @click.option('--dry-run', is_flag=True, help='Show what would be generated without creating files')
 @click.option('--new', type=click.Choice(['major', 'minor', 'patch', 'rc'], case_sensitive=False), help='Auto-bump version')
@@ -255,17 +255,17 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
     config: Config = ctx.obj['config']
 
-    # Determine repo path (use synced repo as default)
+    # Determine repo path (use pulled repo as default)
     if not repo_path:
         repo_path = config.get_code_repo_path()
-        console.print(f"[blue]Using synced repository: {repo_path}[/blue]")
+        console.print(f"[blue]Using pulled repository: {repo_path}[/blue]")
 
     # Verify repo path exists
     from pathlib import Path
     if not Path(repo_path).exists():
         console.print(f"[red]Error: Repository path does not exist: {repo_path}[/red]")
-        if not config.sync.code_repo_path:
-            console.print("[yellow]Tip: Run 'release-tool sync' first to clone the repository[/yellow]")
+        if not config.pull.code_repo_path:
+            console.print("[yellow]Tip: Run 'release-tool pull' first to clone the repository[/yellow]")
         return
 
     try:
@@ -278,7 +278,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             repo_name = config.repository.code_repo
             repo = db.get_repository(repo_name)
             if not repo:
-                console.print(f"[yellow]Repository {repo_name} not found in database. Running sync...[/yellow]")
+                console.print(f"[yellow]Repository {repo_name} not found in database. Running pull...[/yellow]")
                 github_client = GitHubClient(config)
                 repo = github_client.get_repository_info(repo_name)
                 repo.id = db.upsert_repository(repo)
@@ -522,7 +522,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             consolidator.handle_missing_issues(consolidated_changes)
 
             # Load issue information from database (offline) with partial detection
-            # Issues must be synced first using: release-tool sync
+            # Issues must be pulled first using: release-tool pull
             partial_matches: List[PartialIssueMatch] = []
             resolved_issue_keys: Set[str] = set()  # Track successfully resolved issues
 
@@ -549,7 +549,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                             potential_reasons={
                                 PartialIssueReason.OLDER_THAN_CUTOFF,
                                 PartialIssueReason.TYPO,
-                                PartialIssueReason.SYNC_NOT_RUN
+                                PartialIssueReason.PULL_NOT_RUN
                             }
                         )
                         partial_matches.append(partial)
@@ -736,7 +736,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     console.print(f"[green]✓ Docusaurus release notes written to:[/green]")
                     console.print(f"[green]  {doc_path_obj.absolute()}[/green]")
 
-                console.print(f"[blue]→ Review and edit the files, then use 'release-tool publish {version} -f {release_output_path}' to upload to GitHub[/blue]")
+                console.print(f"[blue]→ Review and edit the files, then use 'release-tool push {version} -f {release_output_path}' to upload to GitHub[/blue]")
 
         finally:
             db.close()
@@ -1109,7 +1109,7 @@ def _handle_partial_issues(
         # Add resolution tips for unresolved
         if unresolved_partials:
             msg_lines.append("[dim]To resolve:[/dim]")
-            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest issues")
+            msg_lines.append("  1. Run [bold]'release-tool pull'[/bold] to fetch latest issues")
             msg_lines.append("  2. Check [bold]repository.issue_repos[/bold] in config")
             msg_lines.append("  3. Verify issue numbers in branches/PRs")
             msg_lines.append("")
@@ -1136,7 +1136,7 @@ def _handle_partial_issues(
 
             # Add resolution tips
             msg_lines.append("[dim]To resolve:[/dim]")
-            msg_lines.append("  1. Run [bold]'release-tool sync'[/bold] to fetch latest issues")
+            msg_lines.append("  1. Run [bold]'release-tool pull'[/bold] to fetch latest issues")
             msg_lines.append("  2. Check [bold]repository.issue_repos[/bold] in config")
             msg_lines.append("  3. Verify issue numbers in branches/PRs")
             msg_lines.append("")

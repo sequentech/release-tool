@@ -17,9 +17,9 @@ Release Bot is a GitHub Action that automates your release workflow by integrati
 
 The Release Bot provides three main automation features:
 
-1. **Manual Release Generation** - Create and publish releases via GitHub Actions workflow dispatch
+1. **Manual Release Generation** - Create and push releases via GitHub Actions workflow dispatch
 2. **ChatOps Integration** - Control releases through PR and Issue comments
-3. **Automatic Publishing** - Auto-publish releases when PRs merge or issues close
+3. **Automatic Pushing** - Auto-push releases when PRs merge or issues close
 
 ## Setup
 
@@ -134,7 +134,7 @@ Regenerates and publishes release notes. Equivalent to manual trigger.
 
 **Use case**: You've added more commits/PRs and want to refresh the release notes.
 
-**Workflow**: sync → generate → publish
+**Workflow**: pull → generate → push
 
 #### `/release-bot publish [version]`
 
@@ -156,14 +156,14 @@ Publishes a specific version or auto-detects from issue.
 
 #### `/release-bot generate [version]`
 
-Generates release notes without publishing.
+Generates release notes without pushing.
 
 ```
 /release-bot generate
 /release-bot generate 1.2.3
 ```
 
-**Use case**: Preview release notes before publishing.
+**Use case**: Preview release notes before pushing.
 
 #### `/release-bot list`
 
@@ -173,11 +173,11 @@ Lists available draft releases ready to publish.
 /release-bot list
 ```
 
-### Automatic Publishing
+### Automatic Pushing
 
 The bot automatically publishes releases based on two triggers:
 
-#### PR Merge Auto-Publishing
+#### PR Merge Auto-Pushing
 
 When a PR from a release branch is merged:
 
@@ -193,7 +193,7 @@ When a PR from a release branch is merged:
    - Pattern 1 (closing): `closes #123`, `fixes #456`, `resolves #789`
    - Pattern 2 (related): `related to #123`, `see #456`, `issue #789`
    - Pattern 3 (bare): `#123`
-3. Execute: `release-tool publish 1.2.3 --release-mode just-publish --issue 123`
+3. Execute: `release-tool push 1.2.3 --release-mode just-push --issue 123`
 
 **Just-Publish Mode**:
 - ✅ Marks existing draft release as published
@@ -204,10 +204,10 @@ When a PR from a release branch is merged:
 
 **Typical Workflow**:
 ```
-Manual trigger (draft) → PR created → PR merged → just-publish
+Manual trigger (draft) → PR created → PR merged → just-push
 ```
 
-#### Issue Close Auto-Publishing
+#### Issue Close Auto-Pushing
 
 When an issue tagged as a release issue is closed:
 
@@ -216,7 +216,7 @@ When an issue tagged as a release issue is closed:
 **Bot Actions**:
 1. Detect issue closure
 2. Extract version from title or database
-3. Execute: `release-tool publish 1.2.3 --release-mode published`
+3. Execute: `release-tool push 1.2.3 --release-mode published`
 
 **Published Mode**:
 - Creates or updates full release
@@ -239,7 +239,7 @@ The bot uses three release modes depending on the context:
 **Behavior**:
 - Creates GitHub release with `draft: true`
 - Not visible to public
-- Allows review before publishing
+- Allows review before pushing
 
 **Use cases**:
 - Preparing releases for review
@@ -261,18 +261,18 @@ The bot uses three release modes depending on the context:
 
 **Use cases**:
 - First-time release creation
-- Issue-triggered auto-publishing
+- Issue-triggered auto-pushing
 - Manual publish with full control
 
 **Example**:
 ```bash
-release-tool publish 1.2.3 --release-mode published
+release-tool push 1.2.3 --release-mode published
 ```
 
 ### Just-Publish Mode (New)
 
 ```bash
---release-mode just-publish
+--release-mode just-push
 ```
 
 **Purpose**: Mark existing draft as published without modifications
@@ -286,12 +286,12 @@ release-tool publish 1.2.3 --release-mode published
 
 **Use cases**:
 - PR merge automation
-- Publishing pre-prepared drafts
-- Separating preparation from publishing
+- Pushing pre-prepared drafts
+- Separating preparation from pushing
 
 **Example**:
 ```bash
-release-tool publish 1.2.3 --release-mode just-publish
+release-tool push 1.2.3 --release-mode just-push
 ```
 
 **Error handling**:
@@ -316,10 +316,10 @@ Use --release-mode published or draft to create a new release
    Bot creates PR with release notes
    Team reviews changes
 
-3. **Merge PR** (Automatic just-publish)
+3. **Merge PR** (Automatic just-push)
    PR merges → Bot runs:
    ```bash
-   release-tool publish 1.2.3 --release-mode just-publish
+   release-tool push 1.2.3 --release-mode just-push
    ```
    Result: Draft marked as published
 
@@ -339,7 +339,7 @@ Use --release-mode published or draft to create a new release
    ```
    Comment: /release-bot update
    ```
-   Result: sync → generate → publish
+   Result: pull → generate → push
 
 2. **Add More Changes** (Development)
    Merge more PRs/commits
@@ -427,7 +427,7 @@ release_branch_template = "release/{major}.{minor}"  # Default
 # release_branch_template = "releases/{major}.{minor}"
 ```
 
-**Branch Pattern Detection**: The bot uses `release_branch_template` to detect which PR merges should trigger auto-publishing. The template supports Jinja2-style placeholders:
+**Branch Pattern Detection**: The bot uses `release_branch_template` to detect which PR merges should trigger auto-pushing. The template supports Jinja2-style placeholders:
 - `{major}` - Major version number
 - `{minor}` - Minor version number  
 - `{patch}` - Patch version number
@@ -462,7 +462,7 @@ on:
 **Checks**:
 1. Issue title includes version: "✨ Prepare Release 1.2.3"
 2. PRs reference issue: `closes #123`
-3. Database synced: Run sync command
+3. Database synced: Run pull command
 
 **Solution**: Manually specify version:
 ```
@@ -478,14 +478,14 @@ on:
 **Solution**: Create draft first:
 ```bash
 release-tool generate 1.2.3
-release-tool publish 1.2.3 --release-mode draft
+release-tool push 1.2.3 --release-mode draft
 ```
 
 ## Best Practices
 
 ### 1. Use Draft Mode for Preparation
 
-Create drafts early, review before publishing:
+Create drafts early, review before pushing:
 ```yaml
 [output]
 release_mode = "draft"

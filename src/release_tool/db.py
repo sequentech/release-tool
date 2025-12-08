@@ -177,7 +177,7 @@ class Database:
             # Migration might have already happened
             pass
 
-        # Sync metadata table - tracks last sync timestamp per repository
+        # Pull metadata table - tracks last pull timestamp per repository
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_metadata (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,19 +234,19 @@ class Database:
             self.cursor = None
 
     # =========================================================================
-    # Sync Metadata Methods
+    # Pull Metadata Methods
     # =========================================================================
 
-    def get_last_sync(self, repo_full_name: str, entity_type: str) -> Optional[datetime]:
+    def get_last_pull(self, repo_full_name: str, entity_type: str) -> Optional[datetime]:
         """
-        Get the last sync timestamp for a repository and entity type.
+        Get the last pull timestamp for a repository and entity type.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
             entity_type: Type of entity ('issues', 'pull_requests', 'commits')
 
         Returns:
-            Last sync datetime or None if never synced
+            Last pull datetime or None if never pulled
         """
         self.cursor.execute(
             """SELECT last_sync_at FROM sync_metadata
@@ -258,7 +258,7 @@ class Database:
             return datetime.fromisoformat(row['last_sync_at'])
         return None
 
-    def update_sync_metadata(
+    def update_pull_metadata(
         self,
         repo_full_name: str,
         entity_type: str,
@@ -266,13 +266,13 @@ class Database:
         total_fetched: int = 0
     ) -> None:
         """
-        Update sync metadata for a repository and entity type.
+        Update pull metadata for a repository and entity type.
 
         Args:
             repo_full_name: Full repository name (owner/repo)
             entity_type: Type of entity ('issues', 'pull_requests', 'commits')
             cutoff_date: Optional cutoff date (ISO format)
-            total_fetched: Number of items fetched in this sync
+            total_fetched: Number of items fetched in this pull
         """
         now = datetime.now().isoformat()
 
@@ -284,8 +284,8 @@ class Database:
         )
         self.conn.commit()
 
-    def get_all_sync_status(self) -> List[Dict[str, Any]]:
-        """Get sync status for all repositories and entity types."""
+    def get_all_pull_status(self) -> List[Dict[str, Any]]:
+        """Get pull status for all repositories and entity types."""
         self.cursor.execute(
             """SELECT repo_full_name, entity_type, last_sync_at, cutoff_date, total_fetched
                FROM sync_metadata

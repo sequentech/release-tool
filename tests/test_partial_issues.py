@@ -81,7 +81,7 @@ class TestPartialIssueMatch:
             potential_reasons={
                 PartialIssueReason.OLDER_THAN_CUTOFF,
                 PartialIssueReason.TYPO,
-                PartialIssueReason.SYNC_NOT_RUN
+                PartialIssueReason.PULL_NOT_RUN
             }
         )
 
@@ -119,9 +119,9 @@ class TestPartialIssueReason:
 
     def test_reason_descriptions(self):
         """Test that all reasons have descriptions."""
-        assert PartialIssueReason.OLDER_THAN_CUTOFF.description == "Issue may be older than sync cutoff date"
+        assert PartialIssueReason.OLDER_THAN_CUTOFF.description == "Issue may be older than pull cutoff date"
         assert PartialIssueReason.TYPO.description == "Issue may not exist (typo in branch/PR)"
-        assert PartialIssueReason.SYNC_NOT_RUN.description == "Sync may not have been run yet"
+        assert PartialIssueReason.PULL_NOT_RUN.description == "Pull may not have been run yet"
         assert PartialIssueReason.REPO_CONFIG_MISMATCH.description == "Issue found in different repo than configured"
         assert PartialIssueReason.WRONG_ISSUE_REPOS.description == "Check repository.issue_repos in config"
 
@@ -129,7 +129,7 @@ class TestPartialIssueReason:
         """Test enum values are correct."""
         assert PartialIssueReason.OLDER_THAN_CUTOFF.value == "older_than_cutoff"
         assert PartialIssueReason.TYPO.value == "typo"
-        assert PartialIssueReason.SYNC_NOT_RUN.value == "sync_not_run"
+        assert PartialIssueReason.PULL_NOT_RUN.value == "pull_not_run"
         assert PartialIssueReason.REPO_CONFIG_MISMATCH.value == "repo_config_mismatch"
         assert PartialIssueReason.WRONG_ISSUE_REPOS.value == "wrong_issue_repos"
 
@@ -262,7 +262,7 @@ class TestHandlePartialIssues:
                 issue_key="8624",
                 extracted_from="branch feat/meta-8624/main",
                 match_type="not_found",
-                potential_reasons={PartialIssueReason.SYNC_NOT_RUN}
+                potential_reasons={PartialIssueReason.PULL_NOT_RUN}
             )
         ]
 
@@ -315,7 +315,7 @@ class TestHandlePartialIssues:
                 match_type="not_found",
                 potential_reasons={
                     PartialIssueReason.OLDER_THAN_CUTOFF,
-                    PartialIssueReason.SYNC_NOT_RUN
+                    PartialIssueReason.PULL_NOT_RUN
                 }
             ),
             PartialIssueMatch(
@@ -341,7 +341,7 @@ class TestHandlePartialIssues:
         assert "8853" in call_args
 
         # Should mention the reason
-        assert "older than sync cutoff" in call_args or "OLDER_THAN_CUTOFF" in call_args
+        assert "older than pull cutoff" in call_args or "OLDER_THAN_CUTOFF" in call_args
 
     @patch('release_tool.commands.generate.console')
     def test_warn_different_repo_includes_url(self, mock_console, test_config_warn):
@@ -377,7 +377,7 @@ class TestHandlePartialIssues:
                 issue_key="8624",
                 extracted_from="branch feat/meta-8624/main",
                 match_type="not_found",
-                potential_reasons={PartialIssueReason.SYNC_NOT_RUN}
+                potential_reasons={PartialIssueReason.PULL_NOT_RUN}
             )
         ]
 
@@ -388,7 +388,7 @@ class TestHandlePartialIssues:
 
         # Should include resolution steps
         assert "To resolve:" in call_args
-        assert "release-tool sync" in call_args
+        assert "release-tool pull" in call_args
 
 
 class TestPartialIssueIntegration:

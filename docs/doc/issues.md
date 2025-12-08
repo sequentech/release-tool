@@ -24,7 +24,7 @@ The `issues` command allows you to search and inspect issues that have been sync
 - **Offline access** - Query issues without internet connectivity
 
 :::caution Prerequisites
-This command only searches issues that have been synced. Make sure to run `release-tool sync` first to populate your local database.
+This command only searches issues that have been synced. Make sure to run `release-tool pull` first to populate your local database.
 :::
 
 ## Smart ISSUE_KEY Format
@@ -256,7 +256,7 @@ If you see:
 
 Issues not found in database (1):
   • 8853 (from branch feat/meta-8853/main, PR #2122)
-    → Issue may be older than sync cutoff date
+    → Issue may be older than pull cutoff date
     → Issue may not exist (typo in branch/PR)
     → Sync may not have been run yet
 ```
@@ -280,7 +280,7 @@ Issues not found in database (1):
 
 4. If not found, verify on GitHub or re-run sync:
    ```bash
-   release-tool sync
+   release-tool pull
    ```
 
 ### Scenario 2: Issue in Different Repo
@@ -418,7 +418,7 @@ Since results are sorted by `created_at DESC`, the first results show the newest
 release-tool issues --limit 10
 ```
 
-### 5. Verify Sync Coverage
+### 5. Verify Pull Coverage
 
 Check if issues from a specific time period are synced:
 
@@ -435,36 +435,36 @@ release-tool issues --limit 1000 --format csv > all_issues.csv
 
 **Error:**
 ```
-Error: Database not found. Please run 'release-tool sync' first.
+Error: Database not found. Please run 'release-tool pull' first.
 ```
 
 **Solution:**
 ```bash
-release-tool sync
+release-tool pull
 ```
 
-The database is created by the `sync` command. If you've never synced, the database doesn't exist yet.
+The database is created by the `pull` command. If you've never synced, the database doesn't exist yet.
 
 ### "Repository 'X' not found in database"
 
 **Error:**
 ```
 Error: Repository 'sequentech/unknown' not found in database.
-Tip: Run 'release-tool sync' to fetch repository data.
+Tip: Run 'release-tool pull' to fetch repository data.
 ```
 
 **Solutions:**
 1. Check the repository name spelling
 2. Ensure the repository is configured in `release_tool.toml`
-3. Run `release-tool sync` to fetch repository metadata
+3. Run `release-tool pull` to fetch repository metadata
 
 ### No Results Found
 
 If your query returns no results:
 
 1. Verify issues exist on GitHub
-2. Check your sync cutoff date (might be excluding old issues)
-3. Re-run sync: `release-tool sync`
+2. Check your pull cutoff date (might be excluding old issues)
+3. Re-run sync: `release-tool pull`
 4. Try fuzzy matching instead of exact match
 
 ### CSV Output Looks Wrong in Terminal

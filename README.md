@@ -84,7 +84,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          release-tool sync
+          release-tool pull
           release-tool generate ${{ github.event.inputs.version }} --upload
 ```
 
@@ -93,7 +93,7 @@ jobs:
 If you need to use SSH (e.g., for private repos without token access), configure your `release_tool.toml`:
 
 ```toml
-[sync]
+[pull]
 clone_method = "ssh"  # Options: "https", "ssh", "auto" (default)
 ```
 
@@ -109,7 +109,7 @@ Then set up SSH keys in your workflow:
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Still needed for API calls
   run: |
-    release-tool sync
+    release-tool pull
     release-tool generate ${{ github.event.inputs.version }}
 ```
 
@@ -129,7 +129,7 @@ For GitHub Enterprise or custom Git servers:
 [github]
 api_url = "https://github.enterprise.com/api/v3"
 
-[sync]
+[pull]
 clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
 ```
 
@@ -167,9 +167,9 @@ If you encounter clone errors:
    export GITHUB_TOKEN="your_github_token"
    ```
 
-4. **Sync repository data**:
+4. **Pull repository data**:
    ```bash
-   release-tool sync
+   release-tool pull
    ```
 
 5. **Generate release notes**:
@@ -179,10 +179,10 @@ If you encounter clone errors:
 
 ## CLI Commands
 
-### `sync`
-Sync repository data from GitHub to the local database:
+### `pull`
+Pull repository data from GitHub to the local database:
 ```bash
-release-tool sync [repository] [--repo-path PATH]
+release-tool pull [repository] [--repo-path PATH]
 ```
 
 ### `generate`
@@ -226,9 +226,9 @@ issue_repo = "owner/issues"  # Optional: separate repo for issues
 default_branch = "main"
 ```
 
-### Sync Configuration
+### Pull Configuration
 ```toml
-[sync]
+[pull]
 clone_code_repo = true  # Whether to clone the repository locally
 clone_method = "auto"   # Options: "https", "ssh", "auto" (default)
 clone_url_template = ""  # Custom clone URL template (optional)
@@ -364,7 +364,7 @@ export GITHUB_TOKEN="ghp_your_token"
 # 2. Edit release_tool.toml with your repo settings
 
 # 3. Sync GitHub data once or periodically
-release-tool sync
+release-tool pull
 
 # 4. Generate release notes for version 2.0.0
 release-tool generate 2.0.0 \

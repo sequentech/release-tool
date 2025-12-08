@@ -11,9 +11,9 @@ import click
 from rich.console import Console
 
 from .config import load_config
-from .commands.sync import sync
+from .commands.pull import pull
 from .commands.generate import generate
-from .commands.publish import publish
+from .commands.push import push
 from .commands.list_releases import list_releases
 from .commands.init_config import init_config
 from .commands.update_config import update_config
@@ -61,9 +61,9 @@ def cli(ctx, config: Optional[str], auto: bool, assume_yes: bool, debug: bool):
 
 
 # Register commands
-cli.add_command(sync)
+cli.add_command(pull)
 cli.add_command(generate)
-cli.add_command(publish)
+cli.add_command(push)
 cli.add_command(list_releases)
 cli.add_command(init_config)
 cli.add_command(update_config)

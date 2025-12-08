@@ -369,23 +369,23 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('version', required=False)
-@click.option('--list', '-l', 'list_drafts', is_flag=True, help='List draft releases ready to be published')
+@click.option('--list', '-l', 'list_drafts', is_flag=True, help='List draft releases ready to be pushed')
 @click.option('--delete', '-d', 'delete_drafts', is_flag=True, help='Delete draft releases for the specified version')
 @click.option('--notes-file', '-f', type=click.Path(), help='Path to release notes file (markdown, optional - will auto-find if not specified)')
 @click.option('--release/--no-release', 'create_release', default=None, help='Create GitHub release (default: from config)')
 @click.option('--pr/--no-pr', 'create_pr', default=None, help='Create PR with release notes (default: from config)')
-@click.option('--release-mode', type=click.Choice(['draft', 'published', 'just-publish'], case_sensitive=False), default=None, help='Release mode: draft, published, or just-publish (mark existing as published without recreating)')
+@click.option('--release-mode', type=click.Choice(['draft', 'published', 'just-push'], case_sensitive=False), default=None, help='Release mode: draft, published, or just-push (mark existing as pushed without recreating)')
 @click.option('--prerelease', type=click.Choice(['auto', 'true', 'false'], case_sensitive=False), default=None,
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
 @click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
 @click.option('--issue', type=int, default=None, help='Issue/issue number to associate with this release')
-@click.option('--dry-run', is_flag=True, help='Show what would be published without making changes')
+@click.option('--dry-run', is_flag=True, help='Show what would be pushed without making changes')
 @click.pass_context
-def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
+def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, notes_file: Optional[str], create_release: Optional[bool],
            create_pr: Optional[bool], release_mode: Optional[str], prerelease: Optional[str], force: str, issue: Optional[int],
            dry_run: bool):
     """
-    Publish a release to GitHub.
+    Push a release to GitHub.
 
     Creates a GitHub release and/or pull request with release notes.
     Release notes can be read from a file or will be loaded from the database.
@@ -394,15 +394,15 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
     Examples:
 
-      release-tool publish 9.1.0 -f docs/releases/9.1.0.md
+      release-tool push 9.1.0 -f docs/releases/9.1.0.md
 
-      release-tool publish 9.1.0-rc.0 --release-mode draft
+      release-tool push 9.1.0-rc.0 --release-mode draft
 
-      release-tool publish 9.1.0 --pr --no-release
+      release-tool push 9.1.0 --pr --no-release
 
-      release-tool publish 9.1.0 -f notes.md --dry-run
+      release-tool push 9.1.0 -f notes.md --dry-run
 
-      release-tool publish 9.1.0 -f notes.md --debug
+      release-tool push 9.1.0 -f notes.md --debug
     """
     # Get debug flag from global context
     debug = ctx.obj.get('debug', False)
@@ -424,8 +424,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
             elif filename.endswith("-release"):
                 version_str = filename[:-8]
 
-            console.print(f"\n[yellow]Tip: Publish a release with:[/yellow]")
-            console.print(f"[dim]  release-tool publish {version_str}[/dim]")
+            console.print(f"\n[yellow]Tip: Push a release with:[/yellow]")
+            console.print(f"[dim]  release-tool push {version_str}[/dim]")
 
         return
 
@@ -433,7 +433,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
     if delete_drafts:
         if not version:
             console.print("[red]Error: VERSION required when using --delete[/red]")
-            console.print("\nUsage: release-tool publish --delete VERSION")
+            console.print("\nUsage: release-tool push --delete VERSION")
             sys.exit(1)
 
         # Find drafts for this version
@@ -478,8 +478,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
 
     if not version:
         console.print("[red]Error: Missing argument 'VERSION'.[/red]")
-        console.print("\nUsage: release-tool publish [OPTIONS] VERSION")
-        console.print("Try 'release-tool publish --help' for help.")
+        console.print("\nUsage: release-tool push [OPTIONS] VERSION")
+        console.print("Try 'release-tool push --help' for help.")
         sys.exit(1)
 
     try:
@@ -494,8 +494,8 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
         else:
             mode = release_mode if release_mode is not None else config.output.release_mode
         
-        # Handle just-publish mode: only mark existing release as published
-        is_just_publish = (mode == 'just-publish')
+        # Handle just-push mode: only mark existing release as published
+        is_just_push = (mode == 'just-push')
         is_draft = (mode == 'draft')
 
         # Handle tri-state prerelease: "auto", "true", "false"
@@ -621,7 +621,7 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
                         example_version = filename[:-8]
                     
                     console.print(f"\n[yellow]Tip: Use an existing draft or generate new notes:[/yellow]")
-                    console.print(f"[dim]  release-tool publish {example_version}[/dim]")
+                    console.print(f"[dim]  release-tool push {example_version}[/dim]")
                     console.print(f"[dim]  release-tool generate {version}[/dim]")
                 else:
                     console.print(f"\n[yellow]Tip: Generate release notes first with:[/yellow]")
@@ -770,15 +770,15 @@ def publish(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool,
         # Dry-run banner
         if dry_run:
             console.print(f"\n[yellow]{'='*80}[/yellow]")
-            console.print(f"[yellow]DRY RUN - Publish release {version}[/yellow]")
+            console.print(f"[yellow]DRY RUN - Push release {version}[/yellow]")
             console.print(f"[yellow]{'='*80}[/yellow]\n")
 
         # Create GitHub release
         if create_release:
             tag_name = f"v{version}"
             
-            # Handle just-publish mode: only update existing release to published
-            if is_just_publish:
+            # Handle just-push mode: only update existing release to published
+            if is_just_push:
                 if dry_run:
                     console.print(f"[yellow]Would mark existing GitHub release as published:[/yellow]")
                     console.print(f"[yellow]  Repository: {repo_name}[/yellow]")

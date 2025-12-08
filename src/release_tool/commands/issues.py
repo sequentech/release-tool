@@ -66,7 +66,7 @@ def _display_issues_table(issues: List, limit: int, offset: int):
     """Display issues in a formatted table."""
     if not issues:
         console.print("[yellow]No issues found.[/yellow]")
-        console.print("[dim]Tip: Run 'release-tool sync' to fetch latest issues.[/dim]")
+        console.print("[dim]Tip: Run 'release-tool pull' to fetch latest issues.[/dim]")
         return
 
     table = Table(title="Issues" if offset == 0 else f"Issues (offset: {offset})")
@@ -166,8 +166,8 @@ def _display_issues_csv(issues: List):
 def issues(ctx, issue_key, repo, limit, offset, output_format, starts_with, ends_with, close_to, close_range):
     """Query issues from local database (offline).
 
-    IMPORTANT: This command works offline and only searches synced data.
-    Run 'release-tool sync' first to ensure you have the latest issues.
+    IMPORTANT: This command works offline and only searches pulled data.
+    Run 'release-tool pull' first to ensure you have the latest issues.
 
     ISSUE_KEY supports smart formats:
 
@@ -247,7 +247,7 @@ def issues(ctx, issue_key, repo, limit, offset, output_format, starts_with, ends
     # Open database
     db_path = Path(config.database.path)
     if not db_path.exists():
-        console.print("[red]Error: Database not found. Please run 'release-tool sync' first.[/red]")
+        console.print("[red]Error: Database not found. Please run 'release-tool pull' first.[/red]")
         sys.exit(1)
 
     db = Database(str(db_path))
@@ -274,7 +274,7 @@ def issues(ctx, issue_key, repo, limit, offset, output_format, starts_with, ends
 
         if not repo_obj:
             console.print(f"[red]Error: Repository '{repo}' not found in database.[/red]")
-            console.print("[yellow]Tip: Run 'release-tool sync' to fetch repository data.[/yellow]")
+            console.print("[yellow]Tip: Run 'release-tool pull' to fetch repository data.[/yellow]")
             sys.exit(1)
         repo_id = repo_obj.id
 

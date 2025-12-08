@@ -70,7 +70,7 @@ def list_releases(ctx, version: Optional[str], repository: Optional[str], limit:
     try:
         repo = db.get_repository(repo_name)
         if not repo:
-            console.print(f"[red]Repository {repo_name} not found. Run 'sync' first.[/red]")
+            console.print(f"[red]Repository {repo_name} not found. Run 'pull' first.[/red]")
             return
 
         # Convert type tuple to list, default to all types if not specified
