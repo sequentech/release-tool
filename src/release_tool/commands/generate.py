@@ -150,12 +150,26 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     repo = db.get_repository(repo_name)
 
                     if repo:
+                        # Debug: Show all releases in database
+                        if debug:
+                            all_db_releases = db.get_all_releases(repo_id=repo.id, limit=10)
+                            console.print(f"[dim]Last 10 releases in database:[/dim]")
+                            for rel in all_db_releases:
+                                draft_str = " (draft)" if rel.is_draft else ""
+                                console.print(f"[dim]  • {rel.version}{draft_str}[/dim]")
+                        
                         # Check for final release of this base version
                         final_version_str = f"{base_version.major}.{base_version.minor}.{base_version.patch}"
                         all_releases = db.get_all_releases(
                             repo_id=repo.id,
                             version_prefix=final_version_str
                         )
+
+                        if debug:
+                            console.print(f"[dim]Looking for versions matching prefix: {final_version_str}[/dim]")
+                            console.print(f"[dim]Found {len(all_releases)} matching releases[/dim]")
+                            for rel in all_releases:
+                                console.print(f"[dim]  • {rel.version} (draft={rel.is_draft})[/dim]")
 
                         for release in all_releases:
                             # Filter by detect_mode
@@ -195,6 +209,12 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         if Path(repo_path).exists():
                             git_ops_temp = GitOperations(repo_path)
                             git_versions = git_ops_temp.get_version_tags()
+
+                            if debug:
+                                console.print(f"[dim]Found {len(git_versions)} version tags in git[/dim]")
+                                # Show last 10
+                                for v in sorted(git_versions, reverse=True)[:10]:
+                                    console.print(f"[dim]  • {v.to_string()}[/dim]")
 
                             for v in git_versions:
                                 # Check for final version
