@@ -107,14 +107,16 @@ def _find_pr_for_version(
     db: Database,
     repo_full_name: str,
     version: str,
-    issue_number: Optional[int] = None
+    issue_number: Optional[int] = None,
+    debug: bool = False
 ) -> Optional[int]:
     """
     Find the PR number associated with a version.
 
     Strategy:
     1. If issue_number provided, find PRs referencing that issue
-    2. Otherwise, look for open PRs from release branches matching the version
+    2. Search for PRs from release branches matching the version pattern
+    3. Search for PRs with version in title
 
     Args:
         github_client: GitHub client instance
@@ -122,34 +124,74 @@ def _find_pr_for_version(
         repo_full_name: Full repository name
         version: Version string
         issue_number: Optional issue number to search for PRs
+        debug: Enable debug output
 
     Returns:
         PR number if found, None otherwise
     """
     if issue_number:
-        # Find PRs that reference this issue
+        # Strategy 1: Find PRs that reference this issue in their body
+        if debug:
+            console.print(f"[dim]    Strategy 1: Searching PRs that reference issue #{issue_number} in body...[/dim]")
+
         pr_numbers = github_client.find_prs_referencing_issue(
             repo_full_name,
             issue_number,
-            state="open"
+            state="open",
+            quiet=True  # Suppress console output, we'll handle logging
         )
 
         if pr_numbers:
-            # Return the first one (most recently updated)
+            if debug:
+                console.print(f"[dim]    Found open PR(s): {pr_numbers}[/dim]")
             return pr_numbers[0]
 
         # Also try closed PRs if no open ones found
         pr_numbers = github_client.find_prs_referencing_issue(
             repo_full_name,
             issue_number,
-            state="closed"
+            state="closed",
+            quiet=True  # Suppress console output, we'll handle logging
         )
 
         if pr_numbers:
+            if debug:
+                console.print(f"[dim]    Found closed PR(s): {pr_numbers}[/dim]")
             return pr_numbers[0]
 
-    # TODO: Could also search for PRs from release branches matching version
-    # This would require parsing branch names from the config's release_branch_template
+    # Strategy 2: Search for PRs from release branches or with version in title
+    if debug:
+        console.print(f"[dim]    Strategy 2: Searching PRs by branch name or title...[/dim]")
+
+    try:
+        repo = github_client.gh.get_repo(repo_full_name)
+
+        # Search open PRs
+        pulls = repo.get_pulls(state='open', sort='updated', direction='desc')
+
+        for pr in pulls[:50]:  # Check up to 50 most recent PRs
+            # Check if branch name contains version
+            # Common patterns: release/0.0, release/v0.0.1, docs/release-bot-14/release/0.0
+            branch_name = pr.head.ref if pr.head else ""
+
+            if debug and pr.number <= (pr.number if issue_number else 0) + 10:  # Show first few
+                console.print(f"[dim]      Checking PR #{pr.number}: branch={branch_name}, title={pr.title[:50]}...[/dim]")
+
+            # Check if version appears in branch name
+            if version in branch_name or version.replace('.', '') in branch_name.replace('.', ''):
+                if debug:
+                    console.print(f"[dim]    ✓ Found PR #{pr.number} with matching branch: {branch_name}[/dim]")
+                return pr.number
+
+            # Check if version appears in PR title
+            if version in pr.title:
+                if debug:
+                    console.print(f"[dim]    ✓ Found PR #{pr.number} with matching title: {pr.title}[/dim]")
+                return pr.number
+
+    except Exception as e:
+        if debug:
+            console.print(f"[dim]    Warning: Error searching PRs by branch/title: {e}[/dim]")
 
     return None
 
@@ -361,7 +403,7 @@ def _resolve_version_pr_issue(
         if issue_number:
             if debug:
                 console.print(f"[dim]  Searching PRs that reference issue #{issue_number}...[/dim]")
-        pr_number = _find_pr_for_version(github_client, db, repo_full_name, version, issue_number)
+        pr_number = _find_pr_for_version(github_client, db, repo_full_name, version, issue_number, debug=debug)
 
         if pr_number:
             console.print(f"[green]  ✓ Found PR #{pr_number}[/green]")
@@ -478,8 +520,8 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
             push_args = [resolved_version, '--release-mode', 'mark-published']
             if resolved_issue:
                 push_args.extend(['--issue', str(resolved_issue)])
-            if debug:
-                push_args.append('--debug')
+
+            # Note: --debug is passed via ctx.obj, not as a command line flag
 
             # Invoke push command programmatically
             result = runner.invoke(push, push_args, obj=ctx.obj, catch_exceptions=False)

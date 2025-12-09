@@ -2212,7 +2212,8 @@ class GitHubClient:
         self,
         repo_full_name: str,
         issue_number: int,
-        state: str = "all"
+        state: str = "all",
+        quiet: bool = False
     ) -> List[int]:
         """
         Find all PRs that reference a specific issue in their body.
@@ -2265,10 +2266,11 @@ class GitHubClient:
                         matching_prs.append(pr.number)
                         break  # Found match, no need to check other patterns
 
-            if matching_prs:
-                console.print(f"[dim]Found {len(matching_prs)} PR(s) referencing issue #{issue_number}[/dim]")
-            else:
-                console.print(f"[dim]No PRs found referencing issue #{issue_number}[/dim]")
+            if not quiet:
+                if matching_prs:
+                    console.print(f"[dim]Found {len(matching_prs)} PR(s) referencing issue #{issue_number}[/dim]")
+                else:
+                    console.print(f"[dim]No PRs found referencing issue #{issue_number}[/dim]")
 
             return matching_prs
 
