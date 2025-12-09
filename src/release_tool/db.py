@@ -1029,6 +1029,37 @@ class Database:
             return dict(row)
         return None
 
+    def get_issue_association_by_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the release version associated with a tracking issue.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            issue_number: GitHub issue number
+
+        Returns:
+            Dictionary with version, issue_url, created_at if found, None otherwise
+
+        Example:
+            association = db.get_issue_association_by_issue("sequentech/step", 8624)
+            if association:
+                print(f"Version {association['version']}: {association['issue_url']}")
+        """
+        self.cursor.execute(
+            """SELECT version, issue_url, created_at
+               FROM release_issues
+               WHERE repo_full_name=? AND issue_number=?""",
+            (repo_full_name, issue_number)
+        )
+        row = self.cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+
     def has_issue_association(self, repo_full_name: str, version: str) -> bool:
         """
         Check if a release version has an associated tracking issue.

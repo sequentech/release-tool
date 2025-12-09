@@ -406,13 +406,18 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
                 push_args.append('--debug')
 
             # Invoke push command programmatically
-            result = runner.invoke(push, push_args, obj=ctx.obj)
+            result = runner.invoke(push, push_args, obj=ctx.obj, catch_exceptions=False)
 
             if result.exit_code != 0:
                 console.print(f"[red]Failed to mark release as published. Exit code: {result.exit_code}[/red]")
+                # Print clean error output without full traceback
                 if result.output:
-                    console.print(f"[red]{result.output}[/red]")
-                sys.exit(1)
+                    # Only show the last line or two of output (the actual error)
+                    lines = result.output.strip().split('\n')
+                    error_lines = [line for line in lines if line and not line.startswith('  File ')]
+                    if error_lines:
+                        console.print(f"[red]{error_lines[-1]}[/red]")
+                raise Exception(f"Failed to mark release as published")
             else:
                 console.print(f"[green]✓ Release {resolved_version} marked as published[/green]")
         else:
@@ -442,5 +447,13 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         if dry_run:
             console.print("\n[yellow]This was a dry run. Use without --dry-run to execute.[/yellow]")
 
+    except Exception as e:
+        # Clean error handling - print user-friendly message and exit
+        console.print(f"\n[red]Error: {str(e)}[/red]")
+        if debug:
+            import traceback
+            console.print("\n[dim]Full traceback:[/dim]")
+            console.print(traceback.format_exc())
+        sys.exit(1)
     finally:
         db.close()
