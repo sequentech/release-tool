@@ -11,6 +11,7 @@ This command automates the final steps of the release process by:
 """
 
 import sys
+import re
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 import click
@@ -24,6 +25,43 @@ from ..github_utils import GitHubClient
 from ..models import SemanticVersion
 
 console = Console()
+
+
+def _extract_version_from_text(text: str, debug: bool = False) -> Optional[str]:
+    """
+    Extract version string from text (issue title, PR title, etc).
+
+    Looks for patterns like:
+    - "Prepare Release 1.2.3"
+    - "Release 1.2.3-rc.0"
+    - "v1.2.3"
+
+    Args:
+        text: Text to search
+        debug: Enable debug output
+
+    Returns:
+        Version string if found, None otherwise
+    """
+    if not text:
+        return None
+
+    # Pattern to match semantic versions (with optional 'v' prefix and prerelease)
+    # Matches: 1.2.3, v1.2.3, 1.2.3-rc.0, 1.2.3-beta.1, etc.
+    patterns = [
+        r'v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:\.\d+)?)?)',  # Full version with optional prerelease
+        r'v?(\d+\.\d+\.\d+)',  # Simple version
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            version = match.group(1)
+            if debug:
+                console.print(f"[dim]  Extracted version '{version}' from text: {text[:80]}...[/dim]")
+            return version
+
+    return None
 
 
 def _find_matching_versions(
@@ -209,18 +247,44 @@ def _resolve_version_pr_issue(
 
     # Case 1: Issue number provided
     if issue_number and not version:
+        console.print(f"[cyan]Looking up version from issue #{issue_number}...[/cyan]")
         if debug:
-            console.print(f"[dim]Looking up version from issue #{issue_number}...[/dim]")
+            console.print(f"[dim]  Step 1: Checking database for issue association...[/dim]")
 
-        # Look up version from issue association
+        # Step 1: Look up version from issue association in database
         issue_assoc = db.get_issue_association_by_issue(repo_full_name, issue_number)
         if issue_assoc:
             version = issue_assoc['version']
+            console.print(f"[green]  ✓ Found version {version} from database association[/green]")
             if debug:
-                console.print(f"[dim]Found version {version} associated with issue #{issue_number}[/dim]")
+                console.print(f"[dim]    Issue URL: {issue_assoc.get('issue_url', 'N/A')}[/dim]")
         else:
-            console.print(f"[red]Error: No version found associated with issue #{issue_number}[/red]")
-            return None, None, None
+            if debug:
+                console.print(f"[dim]  No database association found for issue #{issue_number}[/dim]")
+                console.print(f"[dim]  Step 2: Fetching issue from GitHub to parse title...[/dim]")
+
+            # Step 2: Fetch issue from GitHub and parse title
+            try:
+                repo = github_client.gh.get_repo(repo_full_name)
+                issue = repo.get_issue(issue_number)
+                issue_title = issue.title
+
+                console.print(f"[cyan]  Issue title: {issue_title}[/cyan]")
+
+                # Try to extract version from title
+                version = _extract_version_from_text(issue_title, debug=debug)
+
+                if version:
+                    console.print(f"[green]  ✓ Extracted version {version} from issue title[/green]")
+                else:
+                    console.print(f"[red]Error: Could not extract version from issue #{issue_number}[/red]")
+                    console.print(f"[yellow]Issue title: {issue_title}[/yellow]")
+                    console.print(f"[yellow]Please ensure the issue title contains a version (e.g., 'Prepare Release 1.2.3')[/yellow]")
+                    return None, None, None
+
+            except Exception as e:
+                console.print(f"[red]Error fetching issue #{issue_number}: {e}[/red]")
+                return None, None, None
 
     # Case 2: Partial version provided
     if version:
@@ -281,28 +345,40 @@ def _resolve_version_pr_issue(
 
     # Find PR if not provided
     if not pr_number:
-        if debug:
-            console.print(f"[dim]Looking for PR associated with version {version}...[/dim]")
+        console.print(f"\n[cyan]Looking for PR associated with version {version}...[/cyan]")
 
         # Get issue number if we have it
         if not issue_number:
+            if debug:
+                console.print(f"[dim]  Checking for issue association in database...[/dim]")
             issue_assoc = db.get_issue_association(repo_full_name, version)
             if issue_assoc:
                 issue_number = issue_assoc.get('issue_number')
+                if debug:
+                    console.print(f"[dim]  Found issue #{issue_number} associated with version {version}[/dim]")
 
         # Try to find PR
+        if issue_number:
+            if debug:
+                console.print(f"[dim]  Searching PRs that reference issue #{issue_number}...[/dim]")
         pr_number = _find_pr_for_version(github_client, db, repo_full_name, version, issue_number)
 
-        if pr_number and debug:
-            console.print(f"[dim]Found PR #{pr_number} for version {version}[/dim]")
+        if pr_number:
+            console.print(f"[green]  ✓ Found PR #{pr_number}[/green]")
+        else:
+            console.print(f"[yellow]  No PR found (will skip merge step)[/yellow]")
 
     # Find issue if not provided
     if not issue_number:
+        if debug:
+            console.print(f"\n[dim]Looking for issue associated with version {version}...[/dim]")
         issue_assoc = db.get_issue_association(repo_full_name, version)
         if issue_assoc:
             issue_number = issue_assoc.get('issue_number')
+            console.print(f"[green]  ✓ Found issue #{issue_number}[/green]")
+        else:
             if debug:
-                console.print(f"[dim]Found issue #{issue_number} for version {version}[/dim]")
+                console.print(f"[dim]  No issue association found (will skip close step)[/dim]")
 
     return version, pr_number, issue_number
 
