@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Tests for push command just-push mode functionality."""
+"""Tests for push command mark-published mode functionality."""
 
 import pytest
 from pathlib import Path
@@ -52,7 +52,7 @@ def test_notes_file(tmp_path):
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_dry_run(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode in dry-run shows expected output."""
+    """Test mark-published mode in dry-run shows expected output."""
     runner = CliRunner()
     
     # Mock database
@@ -74,11 +74,11 @@ def test_just_push_mode_dry_run(mock_gh_client, mock_strategy, mock_git_ops, moc
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--dry-run', '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--dry-run', '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
-    
-    # Should show dry-run output for just-push mode
+
+    # Should show dry-run output for mark-published mode
     assert result.exit_code == 0
     assert 'DRY RUN' in result.output
     assert 'Would mark existing GitHub release as published' in result.output
@@ -94,7 +94,7 @@ def test_just_push_mode_dry_run(mock_gh_client, mock_strategy, mock_git_ops, moc
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_no_existing_release(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode fails when no existing release found."""
+    """Test mark-published mode fails when no existing release found."""
     runner = CliRunner()
     
     # Mock database
@@ -121,10 +121,10 @@ def test_just_push_mode_no_existing_release(mock_gh_client, mock_strategy, mock_
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
-    
+
     # Should fail with error
     assert result.exit_code == 1
     assert 'No existing GitHub release found' in result.output
@@ -139,7 +139,7 @@ def test_just_push_mode_no_existing_release(mock_gh_client, mock_strategy, mock_
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_marks_existing_release_as_published(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode successfully marks existing release as published."""
+    """Test mark-published mode successfully marks existing release as published."""
     runner = CliRunner()
     
     # Mock database
@@ -176,7 +176,7 @@ def test_just_push_mode_marks_existing_release_as_published(mock_gh_client, mock
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
     
@@ -200,7 +200,7 @@ def test_just_push_mode_marks_existing_release_as_published(mock_gh_client, mock
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_preserves_release_properties(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode preserves all existing release properties."""
+    """Test mark-published mode preserves all existing release properties."""
     runner = CliRunner()
     
     # Mock database
@@ -237,7 +237,7 @@ def test_just_push_mode_preserves_release_properties(mock_gh_client, mock_strate
     
     result = runner.invoke(
         push,
-        ['1.0.0-beta.1', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0-beta.1', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
     
@@ -259,7 +259,7 @@ def test_just_push_mode_preserves_release_properties(mock_gh_client, mock_strate
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_skips_tag_creation(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode does not create or push tags."""
+    """Test mark-published mode does not create or push tags."""
     runner = CliRunner()
     
     # Mock database
@@ -296,7 +296,7 @@ def test_just_push_mode_skips_tag_creation(mock_gh_client, mock_strategy, mock_g
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
     
@@ -314,7 +314,7 @@ def test_just_push_mode_skips_tag_creation(mock_gh_client, mock_strategy, mock_g
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_with_debug_output(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode shows debug output when enabled."""
+    """Test mark-published mode shows debug output when enabled."""
     runner = CliRunner()
     
     # Mock database
@@ -351,7 +351,7 @@ def test_just_push_mode_with_debug_output(mock_gh_client, mock_strategy, mock_gi
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config, 'debug': True}
     )
     
@@ -366,7 +366,7 @@ def test_just_push_mode_with_debug_output(mock_gh_client, mock_strategy, mock_gi
 @patch("release_tool.commands.push.determine_release_branch_strategy")
 @patch("release_tool.commands.push.GitHubClient")
 def test_just_push_mode_fails_when_update_fails(mock_gh_client, mock_strategy, mock_git_ops, mock_db, test_config, test_notes_file):
-    """Test just-push mode fails gracefully when GitHub update fails."""
+    """Test mark-published mode fails gracefully when GitHub update fails."""
     runner = CliRunner()
     
     # Mock database
@@ -403,7 +403,7 @@ def test_just_push_mode_fails_when_update_fails(mock_gh_client, mock_strategy, m
     
     result = runner.invoke(
         push,
-        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'just-push'],
+        ['1.0.0', '-f', str(test_notes_file), '--release', '--release-mode', 'mark-published'],
         obj={'config': test_config}
     )
     

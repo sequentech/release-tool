@@ -374,7 +374,7 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
 @click.option('--notes-file', '-f', type=click.Path(), help='Path to release notes file (markdown, optional - will auto-find if not specified)')
 @click.option('--release/--no-release', 'create_release', default=None, help='Create GitHub release (default: from config)')
 @click.option('--pr/--no-pr', 'create_pr', default=None, help='Create PR with release notes (default: from config)')
-@click.option('--release-mode', type=click.Choice(['draft', 'published', 'just-push'], case_sensitive=False), default=None, help='Release mode: draft, published, or just-push (mark existing as pushed without recreating)')
+@click.option('--release-mode', type=click.Choice(['draft', 'published', 'mark-published'], case_sensitive=False), default=None, help='Release mode: draft, published, or mark-published (mark existing draft release as published without recreating)')
 @click.option('--prerelease', type=click.Choice(['auto', 'true', 'false'], case_sensitive=False), default=None,
               help='Mark as prerelease: auto (detect from version), true, or false (default: from config)')
 @click.option('--force', type=click.Choice(['none', 'draft', 'published'], case_sensitive=False), default='none', help='Force overwrite existing release (default: none)')
@@ -494,8 +494,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         else:
             mode = release_mode if release_mode is not None else config.output.release_mode
         
-        # Handle just-push mode: only mark existing release as published
-        is_just_push = (mode == 'just-push')
+        # Handle mark-published mode: only mark existing draft release as published
+        is_mark_published = (mode == 'mark-published')
         is_draft = (mode == 'draft')
 
         # Handle tri-state prerelease: "auto", "true", "false"
@@ -777,8 +777,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         if create_release:
             tag_name = f"v{version}"
             
-            # Handle just-push mode: only update existing release to published
-            if is_just_push:
+            # Handle mark-published mode: only update existing draft release to published
+            if is_mark_published:
                 if dry_run:
                     console.print(f"[yellow]Would mark existing GitHub release as published:[/yellow]")
                     console.print(f"[yellow]  Repository: {repo_name}[/yellow]")
