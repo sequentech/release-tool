@@ -103,13 +103,13 @@ release-tool push 9.1.0 --release-mode draft
 release-tool push 9.1.0 --release-mode published
 
 # Mark existing release as published (no tag operations)
-release-tool push 9.1.0 --release-mode just-push
+release-tool push 9.1.0 --release-mode mark-published
 ```
 
 **Mode Details**:
 - `draft`: Creates GitHub release with `draft: true` (not public)
 - `published`: Creates/updates full release with tags and notes
-- `just-push`: Only marks existing release as published (no tag/note changes)
+- `mark-published`: Only marks existing release as published (no tag/note changes)
   - ✅ Perfect for automation (e.g., PR merge triggers)
   - ✅ Preserves all existing release properties
   - ❌ Fails if no existing release found
@@ -187,6 +187,88 @@ release-tool push 9.1.0 --prerelease false # Force stable
 release-tool push 9.1.0 --prerelease auto  # Auto-detect
 ```
 
+### 5. Merge Release
+
+The `merge` command automates the final steps of the release process by:
+1. Merging the associated PR (if not already merged)
+2. Marking the release as published (from draft to published)
+3. Closing the related issue (if not already closed)
+
+This is particularly useful for finalizing a release in one atomic operation.
+
+#### Basic Usage
+
+```bash
+# Merge with auto-detection from issue
+release-tool merge --issue 42
+
+# Specify full version
+release-tool merge 1.2.3 --issue 42
+
+# Specify partial version (auto-completes)
+release-tool merge 1.2 --issue 42
+
+# Explicitly specify PR number
+release-tool merge 1.2.3 --pr 123 --issue 42
+
+# Dry-run to preview actions
+release-tool merge 1.2.3 --issue 42 --dry-run
+```
+
+#### Auto-Detection
+
+The merge command intelligently auto-detects missing information:
+
+**Version Detection**:
+- From issue association in database
+- From partial version match (finds matching full versions with open PR/issue)
+- Shows first 5 matches if multiple found (prompts for selection or uses first with `--auto`)
+
+**PR Detection**:
+- From PRs referencing the provided issue number
+- Searches both open and closed PRs
+
+**Issue Detection**:
+- From version association in database
+
+#### Behavior
+
+**Idempotent**: Gracefully skips already-completed steps:
+- If PR is already merged, continues to mark release published
+- If release is already published, continues to close issue
+- If issue is already closed, completes successfully
+
+**Safe**: Shows clear status for each operation
+**Flexible**: Works with full or partial versions
+
+#### Examples
+
+**Example 1: Full workflow from issue**
+```bash
+# Auto-detect version, PR, and complete merge
+release-tool merge --issue 42
+```
+
+**Example 2: Partial version with auto-completion**
+```bash
+# Finds matching versions starting with "1.2"
+release-tool merge 1.2 --issue 42
+
+# If multiple matches:
+# 1.2.0 (Issue #42, PR #123)
+# 1.2.1 (Issue #45, PR #124)
+# Select a number (or 'c' to cancel): 1
+```
+
+**Example 3: Preview before executing**
+```bash
+release-tool merge 1.2.3 --issue 42 --dry-run
+# Output shows:
+# Step 1: Would merge PR #123
+# Step 2: Would mark release 1.2.3 as published
+# Step 3: Would close issue #42
+```
+
 ## Common Commands
 
 | Command | Description |
@@ -197,9 +279,10 @@ release-tool push 9.1.0 --prerelease auto  # Auto-detect
 | `generate --dry-run` | Preview generated notes without creating files |
 | `list-releases` | Lists releases from the database with filters |
 | `publish <version>` | Creates a GitHub release (auto-finds draft notes) |
+| `merge [version]` | Merges PR, marks release published, and closes issue in one step |
 | `publish <version> -f <file>` | Creates a GitHub release from a markdown file |
 | `publish <version> --issue <number>` | Associate release with a GitHub issue |
-| `publish <version> --release-mode draft\|published\|just-push` | Control release creation mode |
+| `publish <version> --release-mode draft\|published\|mark-published` | Control release creation mode |
 | `publish --list` or `publish -l` | List all available draft releases |
 | `publish --dry-run` | Preview publish operation without making changes |
 | `publish --debug` | Show detailed debugging information |

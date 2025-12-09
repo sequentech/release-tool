@@ -147,6 +147,30 @@ Publishes a specific version or auto-detects from issue.
 
 **Use case**: Ready to publish a prepared release.
 
+#### `/release-bot merge [version]`
+
+Merges the PR, marks the release as published, and closes the issue in one step.
+
+```
+/release-bot merge
+/release-bot merge 1.2.3
+/release-bot merge version=1.2 issue=42
+```
+
+**Use case**: Finalize a release by merging PR, publishing release, and closing tracking issue.
+
+**Workflow**: merge PR → mark release published → close issue
+
+**Auto-detection**:
+1. Version from issue association or partial match
+2. PR from issue references or release branch
+3. Issue from version association
+
+**Behavior**:
+- Idempotent: Skips already-completed steps
+- Safe: Shows clear status for each operation
+- Flexible: Works with full or partial versions
+
 **Version detection**:
 1. Specified version parameter
 2. Database lookup by issue number
@@ -269,10 +293,10 @@ The bot uses three release modes depending on the context:
 release-tool push 1.2.3 --release-mode published
 ```
 
-### Just-Publish Mode (New)
+### Mark-Published Mode
 
 ```bash
---release-mode just-push
+--release-mode mark-published
 ```
 
 **Purpose**: Mark existing draft as published without modifications
@@ -291,7 +315,7 @@ release-tool push 1.2.3 --release-mode published
 
 **Example**:
 ```bash
-release-tool push 1.2.3 --release-mode just-push
+release-tool push 1.2.3 --release-mode mark-published
 ```
 
 **Error handling**:
@@ -316,10 +340,10 @@ Use --release-mode published or draft to create a new release
    Bot creates PR with release notes
    Team reviews changes
 
-3. **Merge PR** (Automatic just-push)
+3. **Merge PR** (Automatic mark-published)
    PR merges → Bot runs:
    ```bash
-   release-tool push 1.2.3 --release-mode just-push
+   release-tool push 1.2.3 --release-mode mark-published
    ```
    Result: Draft marked as published
 
@@ -469,7 +493,7 @@ on:
 /release-bot publish 1.2.3
 ```
 
-### Just-Publish Fails with "No existing release"
+### Mark-Published Fails with "No existing release"
 
 **Symptoms**: PR merge fails with error
 

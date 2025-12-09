@@ -14,6 +14,7 @@ from .config import load_config
 from .commands.pull import pull
 from .commands.generate import generate
 from .commands.push import push
+from .commands.merge import merge
 from .commands.list_releases import list_releases
 from .commands.init_config import init_config
 from .commands.update_config import update_config
@@ -64,6 +65,7 @@ def cli(ctx, config: Optional[str], auto: bool, assume_yes: bool, debug: bool):
 cli.add_command(pull)
 cli.add_command(generate)
 cli.add_command(push)
+cli.add_command(merge)
 cli.add_command(list_releases)
 cli.add_command(init_config)
 cli.add_command(update_config)

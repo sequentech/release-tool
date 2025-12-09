@@ -2111,3 +2111,167 @@ class GitHubClient:
         except Exception as e:
             console.print(f"[yellow]Warning: Error setting issue type: {e}[/yellow]")
             return False
+
+    def merge_pull_request(
+        self,
+        repo_full_name: str,
+        pr_number: int,
+        merge_method: str = "merge",
+        commit_title: Optional[str] = None,
+        commit_message: Optional[str] = None
+    ) -> bool:
+        """
+        Merge a pull request.
+
+        This method is idempotent - if the PR is already merged, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            pr_number: PR number to merge
+            merge_method: Merge method - "merge", "squash", or "rebase" (default: "merge")
+            commit_title: Optional custom commit title
+            commit_message: Optional custom commit message
+
+        Returns:
+            True if successful (or already merged), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            pr = repo.get_pull(pr_number)
+
+            # Check if already merged (idempotent)
+            if pr.merged:
+                console.print(f"[dim]PR #{pr_number} is already merged, skipping[/dim]")
+                return True
+
+            # Check if PR is open
+            if pr.state != "open":
+                console.print(f"[yellow]Warning: PR #{pr_number} is {pr.state}, cannot merge[/yellow]")
+                return False
+
+            # Merge the PR
+            result = pr.merge(
+                commit_title=commit_title,
+                commit_message=commit_message,
+                merge_method=merge_method
+            )
+
+            if result.merged:
+                console.print(f"[green]✓ Merged PR #{pr_number}: {pr.title}[/green]")
+                return True
+            else:
+                console.print(f"[red]Failed to merge PR #{pr_number}: {result.message}[/red]")
+                return False
+
+        except GithubException as e:
+            console.print(f"[red]Error merging PR #{pr_number}: {e}[/red]")
+            return False
+
+    def close_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        comment: Optional[str] = None
+    ) -> bool:
+        """
+        Close an issue.
+
+        This method is idempotent - if the issue is already closed, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            issue_number: Issue number to close
+            comment: Optional comment to add before closing
+
+        Returns:
+            True if successful (or already closed), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            issue = repo.get_issue(issue_number)
+
+            # Check if already closed (idempotent)
+            if issue.state == "closed":
+                console.print(f"[dim]Issue #{issue_number} is already closed, skipping[/dim]")
+                return True
+
+            # Add comment if provided
+            if comment:
+                issue.create_comment(comment)
+
+            # Close the issue
+            issue.edit(state="closed")
+            console.print(f"[green]✓ Closed issue #{issue_number}: {issue.title}[/green]")
+            return True
+
+        except GithubException as e:
+            console.print(f"[red]Error closing issue #{issue_number}: {e}[/red]")
+            return False
+
+    def find_prs_referencing_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        state: str = "all"
+    ) -> List[int]:
+        """
+        Find all PRs that reference a specific issue in their body.
+
+        Searches for patterns like:
+        - closes #123, fixes #456, resolves #789
+        - related to #123, see #456, issue #789
+        - #123 (bare reference)
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            issue_number: Issue number to search for
+            state: PR state filter - "open", "closed", or "all" (default: "all")
+
+        Returns:
+            List of PR numbers that reference the issue
+        """
+        import re
+
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            # Pattern to find issue references in PR bodies
+            # Matches: closes #N, fixes #N, resolves #N, related to #N, see #N, issue #N, #N
+            patterns = [
+                rf'(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#{issue_number}\b',
+                rf'(?:related to|see|issue)\s+#{issue_number}\b',
+                rf'#{issue_number}\b'
+            ]
+
+            matching_prs = []
+
+            # Search through PRs (limit to reasonable number for performance)
+            prs = repo.get_pulls(state=state, sort='updated', direction='desc')
+
+            # Check up to 500 most recently updated PRs
+            count = 0
+            max_prs = 500
+
+            for pr in prs:
+                if count >= max_prs:
+                    break
+
+                count += 1
+                pr_body = pr.body or ""
+
+                # Check if any pattern matches
+                for pattern in patterns:
+                    if re.search(pattern, pr_body, re.IGNORECASE):
+                        matching_prs.append(pr.number)
+                        break  # Found match, no need to check other patterns
+
+            if matching_prs:
+                console.print(f"[dim]Found {len(matching_prs)} PR(s) referencing issue #{issue_number}[/dim]")
+            else:
+                console.print(f"[dim]No PRs found referencing issue #{issue_number}[/dim]")
+
+            return matching_prs
+
+        except GithubException as e:
+            console.print(f"[yellow]Warning: Error searching for PRs: {e}[/yellow]")
+            return []
