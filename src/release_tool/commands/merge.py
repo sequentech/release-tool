@@ -500,12 +500,34 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         if resolved_pr:
             console.print(f"\n[bold cyan]Step 1: Merging PR #{resolved_pr}[/bold cyan]")
             if not dry_run:
-                success = github_client.merge_pull_request(repo_full_name, resolved_pr)
-                if not success:
-                    console.print(f"[red]Failed to merge PR #{resolved_pr}. Aborting.[/red]")
+                # Fetch PR details to use for commit message
+                try:
+                    repo = github_client.gh.get_repo(repo_full_name)
+                    pr = repo.get_pull(resolved_pr)
+                    pr_title = pr.title
+                    pr_body = pr.body or ""
+
+                    if debug:
+                        console.print(f"[dim]  PR title: {pr_title}[/dim]")
+                        console.print(f"[dim]  PR body length: {len(pr_body)} chars[/dim]")
+
+                    # Merge with PR title and body as commit message
+                    success = github_client.merge_pull_request(
+                        repo_full_name,
+                        resolved_pr,
+                        commit_title=pr_title,
+                        commit_message=pr_body
+                    )
+
+                    if not success:
+                        console.print(f"[red]Failed to merge PR #{resolved_pr}. Aborting.[/red]")
+                        sys.exit(1)
+
+                except Exception as e:
+                    console.print(f"[red]Error fetching PR details: {e}[/red]")
                     sys.exit(1)
             else:
-                console.print(f"[dim]Would merge PR #{resolved_pr}[/dim]")
+                console.print(f"[dim]Would merge PR #{resolved_pr} using PR title and body as commit message[/dim]")
         else:
             console.print("\n[dim]Step 1: No PR to merge (skipping)[/dim]")
 

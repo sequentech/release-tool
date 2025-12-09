@@ -2149,12 +2149,14 @@ class GitHubClient:
                 console.print(f"[yellow]Warning: PR #{pr_number} is {pr.state}, cannot merge[/yellow]")
                 return False
 
-            # Merge the PR
-            result = pr.merge(
-                commit_title=commit_title,
-                commit_message=commit_message,
-                merge_method=merge_method
-            )
+            # Merge the PR - only pass non-None parameters
+            merge_kwargs = {"merge_method": merge_method}
+            if commit_title is not None:
+                merge_kwargs["commit_title"] = commit_title
+            if commit_message is not None:
+                merge_kwargs["commit_message"] = commit_message
+
+            result = pr.merge(**merge_kwargs)
 
             if result.merged:
                 console.print(f"[green]✓ Merged PR #{pr_number}: {pr.title}[/green]")
