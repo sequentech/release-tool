@@ -531,38 +531,60 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         else:
             console.print("\n[dim]Step 1: No PR to merge (skipping)[/dim]")
 
-        # Step 2: Mark release as published
-        console.print(f"\n[bold cyan]Step 2: Marking release {resolved_version} as published[/bold cyan]")
+        # Step 2: Publish release (mark draft as published)
+        console.print(f"\n[bold cyan]Step 2: Publishing release {resolved_version}[/bold cyan]")
         if not dry_run:
-            # Use push command with mark-published mode
-            from release_tool.commands.push import push
-            from click.testing import CliRunner
+            # Check if a GitHub release already exists
+            try:
+                # Construct tag name with proper prefix
+                tag_prefix = config.version_policy.tag_prefix if hasattr(config, 'version_policy') else 'v'
+                tag_name = f"{tag_prefix}{resolved_version}" if not resolved_version.startswith(tag_prefix) else resolved_version
 
-            runner = CliRunner()
-            push_args = [resolved_version, '--release-mode', 'mark-published']
-            if resolved_issue:
-                push_args.extend(['--issue', str(resolved_issue)])
+                if debug:
+                    console.print(f"[dim]  Checking for existing release with tag: {tag_name}[/dim]")
 
-            # Note: --debug is passed via ctx.obj, not as a command line flag
+                existing_release = github_client.get_release_by_tag(repo_full_name, tag_name)
 
-            # Invoke push command programmatically
-            result = runner.invoke(push, push_args, obj=ctx.obj, catch_exceptions=False)
+                if existing_release:
+                    if existing_release.draft:
+                        console.print(f"[cyan]  Found existing draft release, marking as published...[/cyan]")
 
-            if result.exit_code != 0:
-                console.print(f"[red]Failed to mark release as published. Exit code: {result.exit_code}[/red]")
-                # Print clean error output without full traceback
-                if result.output:
-                    # Only show the last line or two of output (the actual error)
-                    lines = result.output.strip().split('\n')
-                    error_lines = [line for line in lines if line and not line.startswith('  File ')]
-                    if error_lines:
-                        console.print(f"[red]{error_lines[-1]}[/red]")
-                raise Exception(f"Failed to mark release as published")
-            else:
-                console.print(f"[green]✓ Release {resolved_version} marked as published[/green]")
+                        # Mark release as published using direct GitHub API
+                        release_url = github_client.update_release(
+                            repo_full_name,
+                            tag_name,
+                            draft=False  # Mark as published
+                        )
+
+                        if release_url:
+                            console.print(f"[green]✓ Release {resolved_version} marked as published[/green]")
+                            if debug:
+                                console.print(f"[dim]  URL: {release_url}[/dim]")
+                        else:
+                            raise Exception("Failed to update release")
+                    else:
+                        console.print(f"[green]  Release already published, skipping[/green]")
+                else:
+                    # No release exists - this is an error since merge should only finalize
+                    console.print(f"[red]Error: No GitHub release found for {tag_name}[/red]")
+                    console.print(f"[yellow]The merge command finalizes an existing release.[/yellow]")
+                    console.print(f"[yellow]Please create the release first:[/yellow]")
+                    console.print(f"[yellow]  1. Generate release notes: release-tool generate {resolved_version}[/yellow]")
+                    console.print(f"[yellow]  2. Create draft release: release-tool push {resolved_version} --release-mode draft[/yellow]")
+                    console.print(f"[yellow]  3. Then run merge again[/yellow]")
+                    raise Exception("No release found to publish")
+
+            except Exception as e:
+                if "No release found" in str(e):
+                    raise
+                console.print(f"[red]Error checking/updating release: {e}[/red]")
+                raise Exception(f"Failed to publish release: {e}")
+
         else:
-            console.print(f"[dim]Would mark release {resolved_version} as published using:[/dim]")
-            console.print(f"[dim]  release-tool push {resolved_version} --release-mode mark-published[/dim]")
+            console.print(f"[dim]Would check for existing draft release and mark as published[/dim]")
+            console.print(f"[dim]  - If draft exists: mark as published ✓[/dim]")
+            console.print(f"[dim]  - If already published: skip (idempotent) ✓[/dim]")
+            console.print(f"[dim]  - If no release: ERROR (must create first)[/dim]")
 
         # Step 3: Close issue
         if resolved_issue:
