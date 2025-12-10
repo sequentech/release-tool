@@ -549,11 +549,27 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
                     if existing_release.draft:
                         console.print(f"[cyan]  Found existing draft release, marking as published...[/cyan]")
 
+                        # Preserve existing release details
+                        release_title = existing_release.title
+                        release_body = existing_release.body
+                        release_prerelease = existing_release.prerelease
+                        release_target = existing_release.target_commitish
+
+                        if debug:
+                            console.print(f"[dim]  Preserving title: {release_title}[/dim]")
+                            console.print(f"[dim]  Preserving body length: {len(release_body or '')} chars[/dim]")
+                            console.print(f"[dim]  Prerelease: {release_prerelease}[/dim]")
+
                         # Mark release as published using direct GitHub API
+                        # IMPORTANT: Must pass name and body to preserve them (in case of untagged release recreation)
                         release_url = github_client.update_release(
                             repo_full_name,
                             tag_name,
-                            draft=False  # Mark as published
+                            name=release_title,  # Preserve title
+                            body=release_body,   # Preserve body
+                            draft=False,         # Mark as published
+                            prerelease=release_prerelease,  # Preserve prerelease status
+                            target_commitish=release_target  # Preserve target
                         )
 
                         if release_url:
