@@ -814,7 +814,7 @@ release_mode = "draft"
 #   - "auto": Most flexible, automatically handles RCs and stable releases
 #   - true: If you typically create beta/RC releases and want to be explicit
 #   - false: For projects that only do stable releases
-prerelease = "auto"
+prerelease = false
 
 # create_issue: Whether to create a tracking issue for the release
 # When true, a GitHub issue will be created automatically and PR templates can use
