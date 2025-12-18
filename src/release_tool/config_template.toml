@@ -369,8 +369,20 @@ branch_from_previous_release = true
 [release_notes]
 # excluded_labels: Skip issues/PRs with these labels from release notes
 # Useful for internal changes, CI updates, etc.
-# Default: ["skip-changelog", "internal"]
-excluded_labels = ["skip-changelog", "internal", "wip", "do-not-merge"]
+# excluded_labels = [
+#   "skip-changelog",
+#   "internal",
+#   "wip",
+#   "do-not-merge",
+#   "release",
+# ]
+excluded_labels = [
+  "skip-changelog",
+  "internal",
+  "wip",
+  "do-not-merge",
+  "release",
+]
 
 # title_template: Jinja2 template for the release notes title
 # Available variables:
