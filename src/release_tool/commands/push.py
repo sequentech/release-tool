@@ -776,7 +776,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         # Create GitHub release
         if create_release:
             tag_name = f"v{version}"
-            
+            release_url = None  # Will be set by create/update operations
+
             # Handle mark-published mode: only update existing draft release to published
             if is_mark_published:
                 if dry_run:
@@ -982,6 +983,9 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
 
             # Save release to database
             if not dry_run and repo:
+                # Use the actual release URL from GitHub if available, otherwise construct it
+                actual_url = release_url if release_url else f"https://github.com/{repo_name}/releases/tag/v{version}"
+
                 release = Release(
                     repo_id=repo.id,
                     version=version,
@@ -992,7 +996,7 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     published_at=datetime.now() if not is_draft else None,
                     is_draft=is_draft,
                     is_prerelease=prerelease_flag,
-                    url=f"https://github.com/{repo_name}/releases/tag/v{version}",
+                    url=actual_url,
                     target_commitish=target_branch
                 )
                 db.upsert_release(release)
