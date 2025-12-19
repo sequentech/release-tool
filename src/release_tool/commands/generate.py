@@ -11,7 +11,7 @@ from rich.console import Console
 from ..config import Config, PolicyAction
 from ..db import Database
 from ..github_utils import GitHubClient
-from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy, find_comparison_version
+from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy, find_comparison_version, find_comparison_version_for_docs
 from ..models import SemanticVersion
 from ..template_utils import render_template, TemplateError
 from ..policies import (
@@ -692,6 +692,14 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     if config.output.doc_output_path and config.release_notes.doc_output_template:
                         # Use draft_output_path for doc draft as well, but with type='doc'
                         template_context['output_file_type'] = 'doc'
+
+                        # Handle documentation_release_version_policy for RC versions
+                        doc_policy = config.release_notes.documentation_release_version_policy
+                        if not target_version.is_final() and doc_policy == "include-rcs":
+                            # Include RC suffix in doc filename for 'include-rcs' mode
+                            template_context['version'] = version  # Keep full version including RC
+                        # For 'final-only' mode, version stays as major.minor.patch (already set above)
+
                         try:
                             doc_output_path = render_template(config.output.draft_output_path, template_context)
                         except TemplateError as e:
@@ -712,26 +720,120 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         'patch': str(target_version.patch),
                         'output_file_type': 'doc'
                     }
+
+                    # Handle documentation_release_version_policy for RC versions
+                    doc_policy = config.release_notes.documentation_release_version_policy
+                    if not target_version.is_final() and doc_policy == "include-rcs":
+                        # Include RC suffix in doc filename for 'include-rcs' mode
+                        template_context['version'] = version  # Keep full version including RC
+                    # For 'final-only' mode, version uses major.minor.patch only (already set above)
+
                     try:
                         doc_output_path = render_template(config.output.doc_output_path, template_context)
                     except TemplateError as e:
                         console.print(f"[red]Error rendering doc_output_path template: {e}[/red]")
                         sys.exit(1)
 
-                # Format markdown with media processing
-                result = note_generator.format_markdown(
-                    grouped_notes,
-                    version,
-                    release_output_path=release_output_path,
-                    doc_output_path=doc_output_path
-                )
+                # Check if documentation needs different content generation
+                doc_grouped_notes = None
+                if (doc_output_path and
+                    not target_version.is_final() and
+                    config.release_notes.documentation_release_version_policy == "final-only"):
+                    # Generate documentation with comparison against previous final version
+                    if debug:
+                        console.print(f"[dim]Generating documentation with 'final-only' policy[/dim]")
 
-                # Handle return value (tuple or single string)
-                if isinstance(result, tuple):
-                    formatted_output, doc_formatted_output = result
+                    # Calculate doc-specific comparison version
+                    doc_comparison_version = find_comparison_version_for_docs(
+                        target_version,
+                        available_versions,
+                        policy="final-only"
+                    )
+
+                    if doc_comparison_version:
+                        if debug:
+                            console.print(f"[dim]Documentation comparing {doc_comparison_version.to_string()} → {version}[/dim]")
+
+                        # Re-fetch commits with doc comparison
+                        from_tag = git_ops._find_tag_for_version(doc_comparison_version)
+                        if from_tag:
+                            doc_commits = git_ops.get_commits_between_refs(from_tag, head_ref)
+
+                            # Convert git commits to models
+                            doc_commit_models = []
+                            for git_commit in doc_commits:
+                                commit_model = git_ops.commit_to_model(git_commit, repo_id)
+                                doc_commit_models.append(commit_model)
+
+                            # Build PR map for doc commits
+                            doc_pr_map = {}
+                            for commit in doc_commit_models:
+                                if commit.pr_number:
+                                    pr = db.get_pull_request(repo_id, commit.pr_number)
+                                    if pr:
+                                        doc_pr_map[commit.pr_number] = pr
+
+                            # Re-run consolidation for doc commits
+                            doc_consolidated_changes = consolidator.consolidate(doc_commit_models, doc_pr_map)
+                            consolidator.handle_missing_issues(doc_consolidated_changes)
+
+                            # Load issue information for doc (reuse same logic as main)
+                            for change in doc_consolidated_changes:
+                                if change.issue_key:
+                                    issue = db.get_issue_by_key(change.issue_key)
+                                    change.issue = issue
+
+                            # Filter by inclusion policy
+                            doc_consolidated_changes = _filter_by_inclusion_policy(
+                                doc_consolidated_changes,
+                                config,
+                                debug
+                            )
+
+                            # Generate doc release notes
+                            doc_release_notes = []
+                            for change in doc_consolidated_changes:
+                                note = note_generator.create_release_note(change, change.issue)
+                                doc_release_notes.append(note)
+
+                            # Group doc notes
+                            doc_grouped_notes = note_generator.group_by_category(doc_release_notes)
+
+                # Format markdown with media processing
+                if doc_grouped_notes:
+                    # Generate release notes separately from documentation
+                    formatted_output = note_generator.format_markdown(
+                        grouped_notes,
+                        version,
+                        release_output_path=release_output_path,
+                        doc_output_path=None  # Don't generate doc in this call
+                    )
+                    # Generate documentation with doc-specific notes
+                    doc_formatted_output = note_generator.format_markdown(
+                        doc_grouped_notes,
+                        version,
+                        release_output_path=None,  # Don't generate release in this call
+                        doc_output_path=doc_output_path
+                    )
+                    # Handle if format_markdown returns a tuple
+                    if isinstance(formatted_output, tuple):
+                        formatted_output = formatted_output[0]
+                    if isinstance(doc_formatted_output, tuple):
+                        doc_formatted_output = doc_formatted_output[1] if len(doc_formatted_output) > 1 else doc_formatted_output[0]
                 else:
-                    formatted_output = result
-                    doc_formatted_output = None
+                    # Standard behavior: generate both from same notes
+                    result = note_generator.format_markdown(
+                        grouped_notes,
+                        version,
+                        release_output_path=release_output_path,
+                        doc_output_path=doc_output_path
+                    )
+                    # Handle return value (tuple or single string)
+                    if isinstance(result, tuple):
+                        formatted_output, doc_formatted_output = result
+                    else:
+                        formatted_output = result
+                        doc_formatted_output = None
 
             # Output handling
             if dry_run:

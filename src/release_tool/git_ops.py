@@ -466,6 +466,61 @@ def find_comparison_version(
     return earlier_versions[0] if earlier_versions else None
 
 
+def find_comparison_version_for_docs(
+    target_version: SemanticVersion,
+    available_versions: List[SemanticVersion],
+    policy: str = "final-only"
+) -> Optional[SemanticVersion]:
+    """
+    Find the appropriate version to compare against for documentation generation.
+
+    This function implements the documentation_release_version_policy behavior:
+    - 'final-only': RCs compare against previous final version (not other RCs)
+    - 'include-rcs': Uses standard comparison logic
+
+    Args:
+        target_version: The version being generated
+        available_versions: List of available versions
+        policy: Documentation release version policy ('final-only' or 'include-rcs')
+
+    Returns:
+        Version to compare against, or None if no suitable version found
+
+    Rules:
+    - 'final-only' mode:
+        * RC versions: Compare to previous final version (ignore RCs)
+        * Final versions: Compare to previous final version
+    - 'include-rcs' mode:
+        * Uses standard comparison logic (delegates to find_comparison_version)
+    """
+    target_type = target_version.get_type()
+
+    # Filter and sort versions before the target
+    earlier_versions = [v for v in available_versions if v < target_version]
+    if not earlier_versions:
+        return None
+
+    earlier_versions = sorted(earlier_versions, reverse=True)
+
+    # For 'include-rcs' mode, use standard comparison logic
+    if policy == "include-rcs":
+        return find_comparison_version(target_version, available_versions)
+
+    # For 'final-only' mode:
+    # Both RCs and final versions compare against previous final version
+    if target_type == target_version.get_type().RELEASE_CANDIDATE or target_version.is_final():
+        # Find the previous final version
+        final_versions = [v for v in earlier_versions if v.is_final()]
+        if final_versions:
+            return final_versions[0]
+
+        # If no final version exists, return the most recent version
+        return earlier_versions[0] if earlier_versions else None
+
+    # For other prerelease types (beta, alpha, etc.), use standard logic
+    return find_comparison_version(target_version, available_versions)
+
+
 def get_release_commit_range(
     git_ops: GitOperations,
     target_version: SemanticVersion,

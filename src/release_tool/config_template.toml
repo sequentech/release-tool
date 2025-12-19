@@ -686,6 +686,60 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 {{ render_release_notes() }}<br>'''
 
+# documentation_release_version_policy: Policy for generating documentation files for release candidates
+#
+# This controls how documentation files are generated when working with release candidates (RC versions).
+# It only affects doc_output_path generation, NOT release_output_path (GitHub release notes).
+#
+# Valid values:
+#   - "final-only" (DEFAULT): Generate documentation as if it were the final version
+#     * RC documentation files use final version name (e.g., 11.0.0.md for 11.0.0-rc.1)
+#     * Content compares against previous final version (e.g., 10.x.x)
+#     * Each RC overwrites the same file, building up cumulative changelog
+#     * Final version generates to the same file with complete changelog
+#     * GitHub release notes still use standard comparison (RC.1 vs RC.0)
+#
+#   - "include-rcs": Generate separate documentation files for each RC
+#     * RC documentation files include RC suffix (e.g., 11.0.0-rc.1.md)
+#     * Content uses standard version comparison (RC.1 vs RC.0 or previous final)
+#     * Each RC generates a separate file
+#     * Final version generates to its own file (11.0.0.md)
+#     * GitHub release notes use standard comparison
+#
+# Use Cases:
+#   - "final-only": Best for Docusaurus/versioned docs where you want one file per version
+#                   that gets updated as RCs progress to final. This ensures documentation
+#                   always shows the complete changelog for the upcoming release.
+#
+#   - "include-rcs": Best when you want to document each RC separately, keeping history
+#                    of what changed in each release candidate. Useful for detailed
+#                    release tracking or when RCs are deployed to different environments.
+#
+# Example with "final-only" for version 11.0.0:
+#   - Generate 11.0.0-rc.0:
+#     * Doc file: docs/releases/11.0.0.md (compares 10.5.0 → 11.0.0-rc.0)
+#     * GitHub release: 11.0.0-rc.0 (compares 10.5.0 → 11.0.0-rc.0)
+#   - Generate 11.0.0-rc.1:
+#     * Doc file: docs/releases/11.0.0.md (compares 10.5.0 → 11.0.0-rc.1, OVERWRITES rc.0 docs)
+#     * GitHub release: 11.0.0-rc.1 (compares 11.0.0-rc.0 → 11.0.0-rc.1)
+#   - Generate 11.0.0:
+#     * Doc file: docs/releases/11.0.0.md (compares 10.5.0 → 11.0.0, OVERWRITES rc.1 docs)
+#     * GitHub release: 11.0.0 (compares 10.5.0 → 11.0.0, complete changelog)
+#
+# Example with "include-rcs" for version 11.0.0:
+#   - Generate 11.0.0-rc.0:
+#     * Doc file: docs/releases/11.0.0-rc.0.md (compares 10.5.0 → 11.0.0-rc.0)
+#     * GitHub release: 11.0.0-rc.0 (compares 10.5.0 → 11.0.0-rc.0)
+#   - Generate 11.0.0-rc.1:
+#     * Doc file: docs/releases/11.0.0-rc.1.md (compares 11.0.0-rc.0 → 11.0.0-rc.1)
+#     * GitHub release: 11.0.0-rc.1 (compares 11.0.0-rc.0 → 11.0.0-rc.1)
+#   - Generate 11.0.0:
+#     * Doc file: docs/releases/11.0.0.md (compares 10.5.0 → 11.0.0)
+#     * GitHub release: 11.0.0 (compares 10.5.0 → 11.0.0)
+#
+# Default: "final-only"
+documentation_release_version_policy = "final-only"
+
 # =============================================================================
 # Output Configuration
 # =============================================================================

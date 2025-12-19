@@ -7,7 +7,7 @@
 import pytest
 from unittest.mock import Mock, MagicMock
 from release_tool.models import SemanticVersion
-from release_tool.git_ops import find_comparison_version, determine_release_branch_strategy
+from release_tool.git_ops import find_comparison_version, find_comparison_version_for_docs, determine_release_branch_strategy
 
 
 class TestFindComparisonVersion:
@@ -59,6 +59,71 @@ class TestFindComparisonVersion:
 
         result = find_comparison_version(target, available)
         assert result is None
+
+
+class TestFindComparisonVersionForDocs:
+    """Tests for find_comparison_version_for_docs with documentation policies."""
+
+    def test_final_only_policy_rc_skips_other_rcs(self):
+        """In final-only mode, RC should skip other RCs and compare to final."""
+        target = SemanticVersion.parse("2.0.0-rc.2")
+        available = [
+            SemanticVersion.parse("1.9.0"),
+            SemanticVersion.parse("2.0.0-rc.0"),
+            SemanticVersion.parse("2.0.0-rc.1")
+        ]
+
+        result = find_comparison_version_for_docs(target, available, policy="final-only")
+        assert result == SemanticVersion.parse("1.9.0")
+
+    def test_final_only_policy_final_version_compares_to_previous_final(self):
+        """In final-only mode, final version should skip RCs and compare to previous final."""
+        target = SemanticVersion.parse("2.0.0")
+        available = [
+            SemanticVersion.parse("1.9.0"),
+            SemanticVersion.parse("2.0.0-rc.0"),
+            SemanticVersion.parse("2.0.0-rc.1")
+        ]
+
+        result = find_comparison_version_for_docs(target, available, policy="final-only")
+        assert result == SemanticVersion.parse("1.9.0")
+
+    def test_include_rcs_policy_uses_standard_logic(self):
+        """In include-rcs mode, should use standard comparison logic."""
+        target = SemanticVersion.parse("2.0.0-rc.2")
+        available = [
+            SemanticVersion.parse("1.9.0"),
+            SemanticVersion.parse("2.0.0-rc.0"),
+            SemanticVersion.parse("2.0.0-rc.1")
+        ]
+
+        result = find_comparison_version_for_docs(target, available, policy="include-rcs")
+        # Should compare to previous RC like standard logic
+        assert result == SemanticVersion.parse("2.0.0-rc.1")
+
+    def test_include_rcs_policy_final_compares_to_previous_final(self):
+        """In include-rcs mode, final version should compare to previous final for complete changelog."""
+        target = SemanticVersion.parse("2.0.0")
+        available = [
+            SemanticVersion.parse("1.9.0"),
+            SemanticVersion.parse("2.0.0-rc.0"),
+            SemanticVersion.parse("2.0.0-rc.1")
+        ]
+
+        result = find_comparison_version_for_docs(target, available, policy="include-rcs")
+        assert result == SemanticVersion.parse("1.9.0")
+
+    def test_default_policy_is_final_only(self):
+        """Default policy should be final-only."""
+        target = SemanticVersion.parse("2.0.0-rc.1")
+        available = [
+            SemanticVersion.parse("1.9.0"),
+            SemanticVersion.parse("2.0.0-rc.0")
+        ]
+
+        result = find_comparison_version_for_docs(target, available)  # No policy specified
+        # Should behave like final-only (compare to 1.9.0, not rc.0)
+        assert result == SemanticVersion.parse("1.9.0")
 
 
 class TestReleaseBranchStrategy:
