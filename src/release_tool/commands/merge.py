@@ -533,6 +533,7 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
 
         # Step 2: Publish release (mark draft as published)
         console.print(f"\n[bold cyan]Step 2: Publishing release {resolved_version}[/bold cyan]")
+        release_url = None  # Initialize release_url
         if not dry_run:
             # Check if a GitHub release already exists
             try:
@@ -580,6 +581,8 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
                             raise Exception("Failed to update release")
                     else:
                         console.print(f"[green]  Release already published, skipping[/green]")
+                        # Get URL from existing release
+                        release_url = existing_release.html_url
                 else:
                     # No release exists - this is an error since merge should only finalize
                     console.print(f"[red]Error: No GitHub release found for {tag_name}[/red]")
@@ -606,10 +609,16 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         if resolved_issue:
             console.print(f"\n[bold cyan]Step 3: Closing issue #{resolved_issue}[/bold cyan]")
             if not dry_run:
+                # Build comment with release link if available
+                comment_parts = [f"Release {resolved_version} has been published."]
+                if release_url:
+                    comment_parts.append(f"\n[View Release]({release_url})")
+                issue_comment = "".join(comment_parts)
+
                 success = github_client.close_issue(
                     repo_full_name,
                     resolved_issue,
-                    comment=f"Release {resolved_version} has been published."
+                    comment=issue_comment
                 )
                 if not success:
                     console.print(f"[yellow]Warning: Failed to close issue #{resolved_issue}[/yellow]")
