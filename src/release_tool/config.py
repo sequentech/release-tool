@@ -147,6 +147,27 @@ class IssueTemplateConfig(BaseModel):
     )
 
 
+class PRCodeTemplateConfig(BaseModel):
+    """PR/code generation template configuration."""
+    output_template: str = Field(
+        description="Jinja2 template for output content. "
+                    "Available variables: version, title, year, categories, all_notes, "
+                    "render_entry (function), render_release_notes (function). "
+                    "Same variables as release_output_template and doc_output_template."
+    )
+    output_path: str = Field(
+        description="File path template for output (supports {{version}}, {{major}}, {{minor}}, {{patch}} placeholders)"
+    )
+
+
+class PRCodeConfig(BaseModel):
+    """PR code generation configuration."""
+    templates: List[PRCodeTemplateConfig] = Field(
+        default_factory=list,
+        description="List of code generation templates. Each template generates a separate output file."
+    )
+
+
 class IssuePolicyConfig(BaseModel):
     """Issue extraction and consolidation policy configuration."""
     patterns: List[IssuePattern] = Field(
@@ -327,67 +348,6 @@ class ReleaseNoteConfig(BaseModel):
         ),
         description="Jinja2 template for each release note entry (used as sub-template in output_template)"
     )
-    release_output_template: Optional[str] = Field(
-        default=(
-            "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
-            "{% if breaking_with_desc|length > 0 %}\n"
-            "## 💥 Breaking Changes\n"
-            "\n"
-            "{% for note in breaking_with_desc %}\n"
-            "### {{ note.title }}\n"
-            "\n"
-            "{{ note.description }}\n"
-            "\n"
-            "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-            "\n"
-            "{% endfor %}\n"
-            "{% endif %}\n"
-            "\n"
-            "{% set migration_notes = all_notes|selectattr('migration_notes')|list %}\n"
-            "{% if migration_notes|length > 0 %}\n"
-            "## 🔄 Migrations\n"
-            "\n"
-            "{% for note in migration_notes %}\n"
-            "### {{ note.title }}\n"
-            "\n"
-            "{{ note.migration_notes }}\n"
-            "\n"
-            "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-            "\n"
-            "{% endfor %}\n"
-            "{% endif %}\n"
-            "\n"
-            "{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
-            "{% if non_breaking_with_desc|length > 0 %}\n"
-            "## 📝 Highlights\n"
-            "\n"
-            "{% for note in non_breaking_with_desc %}\n"
-            "### {{ note.title }}\n"
-            "\n"
-            "{{ note.description }}\n"
-            "\n"
-            "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-            "\n"
-            "{% endfor %}\n"
-            "{% endif %}\n"
-            "\n"
-            "## 📋 All Changes\n"
-            "\n"
-            "{% for category in categories %}\n"
-            "### {{ category.name }}\n"
-            "\n"
-            "{% for note in category.notes %}\n"
-            "{{ render_entry(note) }}\n"
-            "\n"
-            "{% endfor %}\n"
-            "{% endfor %}"
-        ),
-        description="Master Jinja2 template for GitHub release notes output. "
-                    "Available variables: version, title, categories (with 'alias' field), "
-                    "all_notes, render_entry (function to render entry_template). "
-                    "Note variables: title, url (prioritizes issue_url over pr_url), issue_url, pr_url, "
-                    "short_link (#1234), short_repo_link (owner/repo#1234), pr_numbers, authors, description, etc."
-    )
     doc_output_template: Optional[str] = Field(
         default=None,
         description="Jinja2 template for Docusaurus/documentation release notes output. "
@@ -475,14 +435,9 @@ class DatabaseConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output configuration for release notes."""
-    release_output_path: str = Field(
-        default="docs/releases/{version}.md",
-        description="File path template for GitHub release notes (supports {version}, {major}, {minor}, {patch})"
-    )
-    doc_output_path: Union[bool, Optional[str]] = Field(
-        default=None,
-        description="File path template for Docusaurus/documentation release notes (supports {version}, {major}, {minor}, {patch}). "
-                    "If set, doc_output_template must also be configured."
+    pr_code: PRCodeConfig = Field(
+        default_factory=PRCodeConfig,
+        description="PR code generation templates configuration"
     )
     draft_output_path: str = Field(
         default=".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md",
@@ -539,16 +494,6 @@ class Config(BaseModel):
     branch_policy: BranchPolicyConfig = Field(default_factory=BranchPolicyConfig)
     release_notes: ReleaseNoteConfig = Field(default_factory=ReleaseNoteConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
-
-    @model_validator(mode='after')
-    def validate_doc_output(self):
-        """Validate that doc_output_path requires doc_output_template."""
-        if self.output.doc_output_path and not self.release_notes.doc_output_template:
-            raise ValueError(
-                "doc_output_path is configured but doc_output_template is not set. "
-                "Both must be configured together for Docusaurus output."
-            )
-        return self
 
     @classmethod
     def from_file(cls, config_path: str, auto_upgrade: bool = False) -> "Config":

@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.5"  # Latest config version
+    CURRENT_VERSION = "1.6"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -246,6 +246,18 @@ class MigrationManager:
                 "  • Database: issues table → issues (auto-migrated)\n"
                 "  • CLI: query-issues command → query-issues\n"
                 "  • Automatic config migration preserves all your settings"
+            ),
+            ("1.5", "1.6"): (
+                "Version 1.6 refactors templates:\n"
+                "  • Removed output.release_output_path (no longer needed)\n"
+                "  • Removed release_notes.release_output_template (moved to code as default)\n"
+                "  • Introduced [[pr_code.templates]] array for flexible code generation\n"
+                "  • Each template has output_template and output_path properties\n"
+                "  • Migrates doc_output_template → pr_code.templates[0].output_template\n"
+                "  • Migrates doc_output_path → pr_code.templates[0].output_path\n"
+                "  • Supports multiple output files from single release generation\n"
+                "  • Same Jinja2 variables and functions available in templates\n"
+                "  • Automatic config migration preserves your doc template settings"
             ),
         }
 

@@ -17,7 +17,33 @@ title_template = "Release {{ version }}"
 # Simple entry template - not used in this layout since we render manually
 entry_template = "- {{ title }}"
 
+[[release_notes.categories]]
+name = "Features"
+labels = ["feature", "enhancement"]
+order = 1
+
+[[release_notes.categories]]
+name = "Bug Fixes"
+labels = ["bug", "fix"]
+order = 2
+
+[[release_notes.categories]]
+name = "Documentation"
+labels = ["docs"]
+order = 3
+
+[[release_notes.categories]]
+name = "Other"
+labels = []
+order = 99
+
+[output]
+download_media = true
+assets_path = "docs/releases/assets/{version}"
+
 # Detailed output template - each issue gets its own section
+[pr_code]
+[[pr_code.templates]]
 output_template = '''# {{ title }}
 
 {% for note in all_notes %}
@@ -48,28 +74,4 @@ This release includes {{ all_notes|length }} changes across the following catego
 {% for category in categories %}
 - **{{ category.name }}**: {{ category.notes|length }} change(s)
 {% endfor %}'''
-
-[[release_notes.categories]]
-name = "Features"
-labels = ["feature", "enhancement"]
-order = 1
-
-[[release_notes.categories]]
-name = "Bug Fixes"
-labels = ["bug", "fix"]
-order = 2
-
-[[release_notes.categories]]
-name = "Documentation"
-labels = ["docs"]
-order = 3
-
-[[release_notes.categories]]
-name = "Other"
-labels = []
-order = 99
-
-[output]
-output_path = "docs/releases/{version}.md"
-download_media = true
-assets_path = "docs/releases/assets/{version}"
+output_path = "docs/releases/{{version}}.md"

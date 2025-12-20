@@ -25,8 +25,35 @@ entry_template = '''- {{ title }}
   by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
   {% endif %}'''
 
+# Categories for grouping changes
+[[release_notes.categories]]
+name = "Features"
+labels = ["feature", "enhancement"]
+order = 1
+
+[[release_notes.categories]]
+name = "Bug Fixes"
+labels = ["bug", "fix"]
+order = 2
+
+[[release_notes.categories]]
+name = "Documentation"
+labels = ["docs"]
+order = 3
+
+[[release_notes.categories]]
+name = "Other"
+labels = []
+order = 99
+
+[output]
+download_media = true
+assets_path = "docs/releases/assets/{version}"
+
 # Output template - master template for entire release notes
 # Example 1: Custom layout with separate migrations section
+[pr_code]
+[[pr_code.templates]]
 output_template = '''# {{ title }}
 
 ## What's Changed
@@ -61,29 +88,4 @@ Thank you to all contributors:
 {% for author in all_authors %}
 - {{ author.mention }}{% if author.company %} ({{ author.company }}){% endif %}
 {% endfor %}'''
-
-# Categories for grouping changes
-[[release_notes.categories]]
-name = "Features"
-labels = ["feature", "enhancement"]
-order = 1
-
-[[release_notes.categories]]
-name = "Bug Fixes"
-labels = ["bug", "fix"]
-order = 2
-
-[[release_notes.categories]]
-name = "Documentation"
-labels = ["docs"]
-order = 3
-
-[[release_notes.categories]]
-name = "Other"
-labels = []
-order = 99
-
-[output]
-output_path = "docs/releases/{version}.md"
-download_media = true
-assets_path = "docs/releases/assets/{version}"
+output_path = "docs/releases/{{version}}.md"

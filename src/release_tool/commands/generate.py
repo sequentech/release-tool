@@ -666,174 +666,84 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 formatted_output = json.dumps(json_output, indent=2)
                 doc_formatted_output = None
             else:
-                # Determine release_output_path and doc_output_path
-                release_output_path = output
-                doc_output_path = None
+                # Determine output paths from pr_code templates or explicit output
+                output_paths = []
 
-                # If no explicit output provided, use config templates
-                if not release_output_path:
-                    # Build default draft path from config template
-                    template_context = {
-                        'code_repo': repo_name.replace('/', '-'),  # Sanitized for filesystem
-                        'issue_repo': _get_issues_repo(config),    # First issue_repos or code_repo
-                        'version': version,
-                        'major': str(target_version.major),
-                        'minor': str(target_version.minor),
-                        'patch': str(target_version.patch),
-                        'output_file_type': 'release'
-                    }
-                    try:
-                        release_output_path = render_template(config.output.draft_output_path, template_context)
-                    except TemplateError as e:
-                        console.print(f"[red]Error rendering draft_output_path template: {e}[/red]")
-                        sys.exit(1)
+                # Build template context for path rendering
+                template_context = {
+                    'code_repo': repo_name.replace('/', '-'),
+                    'issue_repo': _get_issues_repo(config),
+                    'version': version,
+                    'major': str(target_version.major),
+                    'minor': str(target_version.minor),
+                    'patch': str(target_version.patch),
+                }
 
-                    # Compute doc_output_path if configured (as a draft)
-                    if config.output.doc_output_path and config.release_notes.doc_output_template:
-                        # Use draft_output_path for doc draft as well, but with type='doc'
-                        template_context['output_file_type'] = 'doc'
-
+                # If explicit output provided, use that as single output
+                if output:
+                    output_paths.append(output)
+                # Otherwise, generate paths from pr_code templates
+                elif config.output.pr_code.templates:
+                    for template_config in config.output.pr_code.templates:
                         # Handle documentation_release_version_policy for RC versions
                         doc_policy = config.release_notes.documentation_release_version_policy
+                        path_context = template_context.copy()
+
                         if not target_version.is_final() and doc_policy == "include-rcs":
                             # Include RC suffix in doc filename for 'include-rcs' mode
-                            template_context['version'] = version  # Keep full version including RC
-                        # For 'final-only' mode, version stays as major.minor.patch (already set above)
+                            path_context['version'] = version
+                        # For 'final-only' mode, version stays as major.minor.patch (already set)
 
                         try:
-                            doc_output_path = render_template(config.output.draft_output_path, template_context)
+                            output_path = render_template(template_config.output_path, path_context)
+                            output_paths.append(output_path)
                         except TemplateError as e:
-                            console.print(f"[red]Error rendering draft_output_path template for docs: {e}[/red]")
+                            console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
                             sys.exit(1)
-                
-                # If explicit output provided, we use that for release notes.
-                # For docs, we use the configured doc_output_path (final path) as fallback?
-                # Or we skip doc generation?
-                # The previous behavior was to generate docs to doc_output_path.
-                elif config.output.doc_output_path and config.release_notes.doc_output_template:
-                    template_context = {
-                        'code_repo': repo_name.replace('/', '-'),
-                        'issue_repo': _get_issues_repo(config),
-                        'version': version,
-                        'major': str(target_version.major),
-                        'minor': str(target_version.minor),
-                        'patch': str(target_version.patch),
-                        'output_file_type': 'doc'
-                    }
 
-                    # Handle documentation_release_version_policy for RC versions
-                    doc_policy = config.release_notes.documentation_release_version_policy
-                    if not target_version.is_final() and doc_policy == "include-rcs":
-                        # Include RC suffix in doc filename for 'include-rcs' mode
-                        template_context['version'] = version  # Keep full version including RC
-                    # For 'final-only' mode, version uses major.minor.patch only (already set above)
-
-                    try:
-                        doc_output_path = render_template(config.output.doc_output_path, template_context)
-                    except TemplateError as e:
-                        console.print(f"[red]Error rendering doc_output_path template: {e}[/red]")
-                        sys.exit(1)
-
-                # Check if documentation needs different content generation
-                doc_grouped_notes = None
-                if (doc_output_path and
-                    not target_version.is_final() and
-                    config.release_notes.documentation_release_version_policy == "final-only"):
-                    # Generate documentation with comparison against previous final version
-                    if debug:
-                        console.print(f"[dim]Generating documentation with 'final-only' policy[/dim]")
-
-                    # Calculate doc-specific comparison version
-                    doc_comparison_version = find_comparison_version_for_docs(
-                        target_version,
-                        available_versions,
-                        policy="final-only"
-                    )
-
-                    if doc_comparison_version:
-                        if debug:
-                            console.print(f"[dim]Documentation comparing {doc_comparison_version.to_string()} → {version}[/dim]")
-
-                        # Re-fetch commits with doc comparison
-                        from_tag = git_ops._find_tag_for_version(doc_comparison_version)
-                        if from_tag:
-                            doc_commits = git_ops.get_commits_between_refs(from_tag, head_ref)
-
-                            # Convert git commits to models
-                            doc_commit_models = []
-                            for git_commit in doc_commits:
-                                commit_model = git_ops.commit_to_model(git_commit, repo_id)
-                                doc_commit_models.append(commit_model)
-
-                            # Build PR map for doc commits
-                            doc_pr_map = {}
-                            for commit in doc_commit_models:
-                                if commit.pr_number:
-                                    pr = db.get_pull_request(repo_id, commit.pr_number)
-                                    if pr:
-                                        doc_pr_map[commit.pr_number] = pr
-
-                            # Re-run consolidation for doc commits
-                            doc_consolidated_changes = consolidator.consolidate(doc_commit_models, doc_pr_map)
-                            consolidator.handle_missing_issues(doc_consolidated_changes)
-
-                            # Load issue information for doc (reuse same logic as main)
-                            for change in doc_consolidated_changes:
-                                if change.issue_key:
-                                    issue = db.get_issue_by_key(change.issue_key)
-                                    change.issue = issue
-
-                            # Filter by inclusion policy
-                            doc_consolidated_changes = _filter_by_inclusion_policy(
-                                doc_consolidated_changes,
-                                config,
-                                debug
-                            )
-
-                            # Generate doc release notes
-                            doc_release_notes = []
-                            for change in doc_consolidated_changes:
-                                note = note_generator.create_release_note(change, change.issue)
-                                doc_release_notes.append(note)
-
-                            # Group doc notes
-                            doc_grouped_notes = note_generator.group_by_category(doc_release_notes)
-
-                # Format markdown with media processing
-                if doc_grouped_notes:
-                    # Generate release notes separately from documentation
-                    formatted_output = note_generator.format_markdown(
-                        grouped_notes,
-                        version,
-                        release_output_path=release_output_path,
-                        doc_output_path=None  # Don't generate doc in this call
-                    )
-                    # Generate documentation with doc-specific notes
-                    doc_formatted_output = note_generator.format_markdown(
-                        doc_grouped_notes,
-                        version,
-                        release_output_path=None,  # Don't generate release in this call
-                        doc_output_path=doc_output_path
-                    )
-                    # Handle if format_markdown returns a tuple
-                    if isinstance(formatted_output, tuple):
-                        formatted_output = formatted_output[0]
-                    if isinstance(doc_formatted_output, tuple):
-                        doc_formatted_output = doc_formatted_output[1] if len(doc_formatted_output) > 1 else doc_formatted_output[0]
+                # Backward compatibility: support old doc_output_path config
+                elif config.release_notes.doc_output_template:
+                    # Old config with doc_output_template but no pr_code templates
+                    # Use draft_output_path as fallback
+                    console.print("[yellow]Warning: doc_output_template is deprecated. Please migrate to pr_code.templates[/yellow]")
+                    output_paths.append(None)  # Will use default behavior
                 else:
-                    # Standard behavior: generate both from same notes
-                    result = note_generator.format_markdown(
-                        grouped_notes,
-                        version,
-                        release_output_path=release_output_path,
-                        doc_output_path=doc_output_path
-                    )
-                    # Handle return value (tuple or single string)
-                    if isinstance(result, tuple):
-                        formatted_output, doc_formatted_output = result
-                    else:
-                        formatted_output = result
-                        doc_formatted_output = None
+                    # No templates configured, use default draft path
+                    output_paths.append(None)
+
+                # Format markdown with new pr_code templates system
+                result = note_generator.format_markdown(
+                    grouped_notes,
+                    version,
+                    output_paths=output_paths
+                )
+
+                # Handle different return formats
+                # New format: list of tuples [(content, path), ...] or single content string
+                # Old format: tuple (release_notes, doc_notes) or single string
+                formatted_outputs = []
+
+                if isinstance(result, list):
+                    # New format: list of tuples
+                    for item in result:
+                        if isinstance(item, tuple):
+                            content, path = item
+                            formatted_outputs.append({'content': content, 'path': path})
+                        else:
+                            formatted_outputs.append({'content': item, 'path': output_paths[0] if output_paths else None})
+                elif isinstance(result, tuple):
+                    # Old format: (release_notes, doc_notes)
+                    release_notes, doc_notes = result
+                    formatted_outputs.append({'content': release_notes, 'path': output_paths[0] if output_paths else None})
+                    if doc_notes:
+                        formatted_outputs.append({'content': doc_notes, 'path': output_paths[1] if len(output_paths) > 1 else None})
+                else:
+                    # Single string
+                    formatted_outputs.append({'content': result, 'path': output_paths[0] if output_paths else None})
+
+                # Backward compatibility variables for old code
+                formatted_output = formatted_outputs[0]['content'] if formatted_outputs else ""
+                doc_formatted_output = formatted_outputs[1]['content'] if len(formatted_outputs) > 1 else None
 
             # Output handling
             if dry_run:
@@ -850,22 +760,22 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(f"[yellow]{'='*80}[/yellow]\n")
                 console.print(f"[yellow]DRY RUN complete. No files were created.[/yellow]")
             else:
-                # Write release notes file
-                release_path_obj = Path(release_output_path)
-                release_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                release_path_obj.write_text(formatted_output)
-                console.print(f"[green]✓ Release notes written to:[/green]")
-                console.print(f"[green]  {release_path_obj.absolute()}[/green]")
+                # Write all output files
+                written_files = []
+                for output_data in formatted_outputs:
+                    if output_data['path'] and output_data['content']:
+                        output_path_obj = Path(output_data['path'])
+                        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                        output_path_obj.write_text(output_data['content'])
+                        written_files.append(output_path_obj.absolute())
+                        console.print(f"[green]✓ Release notes written to:[/green]")
+                        console.print(f"[green]  {output_path_obj.absolute()}[/green]")
 
-                # Write doc output file if configured
-                if doc_formatted_output and doc_output_path:
-                    doc_path_obj = Path(doc_output_path)
-                    doc_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    doc_path_obj.write_text(doc_formatted_output)
-                    console.print(f"[green]✓ Docusaurus release notes written to:[/green]")
-                    console.print(f"[green]  {doc_path_obj.absolute()}[/green]")
-
-                console.print(f"[blue]→ Review and edit the files, then use 'release-tool push {version} -f {release_output_path}' to upload to GitHub[/blue]")
+                if written_files:
+                    first_file = written_files[0]
+                    console.print(f"[blue]→ Review and edit the files, then use 'release-tool push {version} -f {first_file}' to upload to GitHub[/blue]")
+                else:
+                    console.print(f"[yellow]⚠ No output files were written. Configure pr_code.templates in your config.[/yellow]")
 
         finally:
             db.close()

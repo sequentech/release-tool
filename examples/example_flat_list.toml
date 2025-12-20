@@ -21,15 +21,6 @@ entry_template = '''- **{{ title }}**
   {% if authors %}by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
   {% if labels %}`{{ labels|join('` `') }}`{% endif %}'''
 
-# Flat list output - no category grouping
-output_template = '''# {{ title }}
-
-All changes in this release:
-
-{% for note in all_notes %}
-{{ render_entry(note) }}
-{% endfor %}'''
-
 [[release_notes.categories]]
 name = "Features"
 labels = ["feature"]
@@ -46,4 +37,15 @@ labels = []
 order = 99
 
 [output]
+
+# Flat list output - no category grouping
+[pr_code]
+[[pr_code.templates]]
+output_template = '''# {{ title }}
+
+All changes in this release:
+
+{% for note in all_notes %}
+{{ render_entry(note) }}
+{% endfor %}'''
 output_path = "CHANGELOG.md"

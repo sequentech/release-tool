@@ -353,6 +353,63 @@ class CommitConsolidator:
 class ReleaseNoteGenerator:
     """Generate release notes from consolidated changes."""
 
+    # Default template for base release notes content
+    # This was formerly release_output_template in ReleaseNoteConfig
+    DEFAULT_RELEASE_NOTES_TEMPLATE = (
+        "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
+        "{% if breaking_with_desc|length > 0 %}\n"
+        "## 💥 Breaking Changes\n"
+        "\n"
+        "{% for note in breaking_with_desc %}\n"
+        "### {{ note.title }}\n"
+        "\n"
+        "{{ note.description }}\n"
+        "\n"
+        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
+        "\n"
+        "{% endfor %}\n"
+        "{% endif %}\n"
+        "\n"
+        "{% set migration_notes = all_notes|selectattr('migration_notes')|list %}\n"
+        "{% if migration_notes|length > 0 %}\n"
+        "## 🔄 Migrations\n"
+        "\n"
+        "{% for note in migration_notes %}\n"
+        "### {{ note.title }}\n"
+        "\n"
+        "{{ note.migration_notes }}\n"
+        "\n"
+        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
+        "\n"
+        "{% endfor %}\n"
+        "{% endif %}\n"
+        "\n"
+        "{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
+        "{% if non_breaking_with_desc|length > 0 %}\n"
+        "## 📝 Highlights\n"
+        "\n"
+        "{% for note in non_breaking_with_desc %}\n"
+        "### {{ note.title }}\n"
+        "\n"
+        "{{ note.description }}\n"
+        "\n"
+        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
+        "\n"
+        "{% endfor %}\n"
+        "{% endif %}\n"
+        "\n"
+        "## 📋 All Changes\n"
+        "\n"
+        "{% for category in categories %}\n"
+        "### {{ category.name }}\n"
+        "\n"
+        "{% for note in category.notes %}\n"
+        "{{ render_entry(note) }}\n"
+        "\n"
+        "{% endfor %}\n"
+        "{% endfor %}"
+    )
+
     def __init__(self, config: Config):
         self.config = config
 
@@ -775,61 +832,212 @@ class ReleaseNoteGenerator:
         self,
         grouped_notes: Dict[str, List[ReleaseNote]],
         version: str,
-        release_output_path: Optional[str] = None,
-        doc_output_path: Optional[str] = None
+        output_paths: Optional[List[str]] = None
     ):
         """
-        Format release notes as markdown.
+        Format release notes as markdown using pr_code templates.
 
         Args:
             grouped_notes: Release notes grouped by category
             version: Version string
-            release_output_path: Optional GitHub release notes output file path (for media processing)
-            doc_output_path: Optional Docusaurus output file path (for media processing)
+            output_paths: Optional list of output file paths (for media processing)
 
         Returns:
-            If doc_output_template is configured: tuple of (release_notes, doc_notes)
-            Otherwise: single release notes string
+            List of tuples: [(content, output_path), ...]
+            For backward compatibility: if only one output, returns just the content string
         """
         from jinja2 import Template
         from .media_utils import MediaDownloader
 
-        # Initialize media downloader if enabled (use release_output_path for media)
-        media_downloader = None
-        if self.config.output.download_media and release_output_path:
-            media_downloader = MediaDownloader(
-                self.config.output.assets_path,
-                download_enabled=True
-            )
+        results = []
 
-        # If release_output_template is configured, use master template approach
-        if self.config.release_notes.release_output_template:
+        # Check if pr_code templates are configured
+        if self.config.output.pr_code.templates:
+            # Use pr_code templates
+            for i, template_config in enumerate(self.config.output.pr_code.templates):
+                # Get output path (from output_paths list or from template config)
+                output_path = None
+                if output_paths and i < len(output_paths):
+                    output_path = output_paths[i]
+
+                # Initialize media downloader if enabled
+                media_downloader = None
+                if self.config.output.download_media and output_path:
+                    media_downloader = MediaDownloader(
+                        self.config.output.assets_path,
+                        download_enabled=True
+                    )
+
+                # Render the template
+                content = self._format_with_pr_code_template(
+                    template_config.output_template,
+                    grouped_notes,
+                    version,
+                    output_path,
+                    media_downloader
+                )
+
+                results.append((content, output_path))
+
+        # Backward compatibility: support doc_output_template
+        elif self.config.release_notes.doc_output_template:
+            # Generate base release notes first
+            release_output_path = output_paths[0] if output_paths and len(output_paths) > 0 else None
+            doc_output_path = output_paths[1] if output_paths and len(output_paths) > 1 else None
+
+            media_downloader = None
+            if self.config.output.download_media and release_output_path:
+                media_downloader = MediaDownloader(
+                    self.config.output.assets_path,
+                    download_enabled=True
+                )
+
             release_notes = self._format_with_master_template(
                 grouped_notes, version, release_output_path, media_downloader
             )
-        else:
-            # Otherwise, use legacy approach for backward compatibility
-            release_notes = self._format_with_legacy_layout(
-                grouped_notes, version, release_output_path, media_downloader
-            )
 
-        # If doc_output_template is configured, generate Docusaurus version as well
-        if self.config.release_notes.doc_output_template:
-            # Create separate media downloader for doc output with correct paths
+            # Create doc notes with doc_output_template
             doc_media_downloader = None
             if self.config.output.download_media and doc_output_path:
                 doc_media_downloader = MediaDownloader(
                     self.config.output.assets_path,
                     download_enabled=True
                 )
-            
+
             doc_notes = self._format_with_doc_template(
                 grouped_notes, version, doc_output_path, doc_media_downloader, release_notes
             )
+
+            # Return legacy tuple format
             return (release_notes, doc_notes)
 
-        # Return just release notes if no doc template
-        return release_notes
+        else:
+            # No templates configured - return base release notes
+            output_path = output_paths[0] if output_paths and len(output_paths) > 0 else None
+            media_downloader = None
+            if self.config.output.download_media and output_path:
+                media_downloader = MediaDownloader(
+                    self.config.output.assets_path,
+                    download_enabled=True
+                )
+
+            release_notes = self._format_with_master_template(
+                grouped_notes, version, output_path, media_downloader
+            )
+            return release_notes
+
+        # Return list of tuples for new pr_code template approach
+        if len(results) == 1:
+            # Single result: return just content for backward compatibility
+            return results[0][0]
+        return results
+
+    def _format_with_pr_code_template(
+        self,
+        template_str: str,
+        grouped_notes: Dict[str, List[ReleaseNote]],
+        version: str,
+        output_path: Optional[str],
+        media_downloader
+    ) -> str:
+        """
+        Format using a pr_code template.
+
+        Args:
+            template_str: The Jinja2 template string
+            grouped_notes: Release notes grouped by category
+            version: Version string
+            output_path: Output file path (for media processing)
+            media_downloader: Media downloader instance
+
+        Returns:
+            Rendered template content
+        """
+        from jinja2 import Template
+
+        # Create entry template for sub-rendering
+        entry_template = Template(self.config.release_notes.entry_template)
+
+        # Create a render_entry function
+        def render_entry(note_dict: Dict[str, Any]) -> str:
+            """Render a single entry using the entry_template."""
+            rendered = entry_template.render(**note_dict)
+            return self._process_html_like_whitespace(rendered, preserve_br=False)
+
+        # Prepare all notes with processed data
+        categories_data = []
+        all_notes_data = []
+
+        for category_name in self.config.get_ordered_categories():
+            notes = grouped_notes.get(category_name, [])
+            if not notes:
+                continue
+
+            notes_data = []
+            for note in notes:
+                note_dict = self._prepare_note_for_template(
+                    note, version, output_path, media_downloader
+                )
+                notes_data.append(note_dict)
+                all_notes_data.append(note_dict)
+
+            # Find category config for alias
+            category_alias = None
+            for cat_config in self.config.release_notes.categories:
+                if cat_config.name == category_name:
+                    category_alias = cat_config.alias
+                    break
+
+            categories_data.append({
+                'name': category_name,
+                'alias': category_alias,
+                'notes': notes_data
+            })
+
+        # Validate that all notes were rendered
+        self._validate_all_notes_rendered(
+            grouped_notes,
+            len(all_notes_data),
+            context="pr_code template rendering"
+        )
+
+        # Render title
+        title_template = Template(self.config.release_notes.title_template)
+        title = title_template.render(version=version)
+
+        # Create render_release_notes function that renders the base release notes
+        def render_release_notes() -> str:
+            """Render the base release notes content using the default template."""
+            base_template = Template(self.DEFAULT_RELEASE_NOTES_TEMPLATE)
+            output = base_template.render(
+                version=version,
+                title=title,
+                categories=categories_data,
+                all_notes=all_notes_data,
+                render_entry=render_entry
+            )
+            return self._process_html_like_whitespace(output)
+
+        # Render the pr_code template
+        from datetime import datetime
+        pr_code_template = Template(template_str)
+        output = pr_code_template.render(
+            version=version,
+            title=title,
+            categories=categories_data,
+            all_notes=all_notes_data,
+            render_entry=render_entry,
+            render_release_notes=render_release_notes,
+            year=datetime.now().year
+        )
+
+        # Process HTML-like whitespace
+        output = self._process_html_like_whitespace(output)
+
+        # Replace &nbsp; markers with actual spaces (done at the very end)
+        output = output.replace('<NBSP_MARKER>', ' ')
+
+        return output
 
     def _format_with_master_template(
         self,
@@ -839,7 +1047,7 @@ class ReleaseNoteGenerator:
         media_downloader,
         preserve_br: bool = False
     ) -> str:
-        """Format using the master release_output_template."""
+        """Format using the DEFAULT_RELEASE_NOTES_TEMPLATE."""
         from jinja2 import Template
 
         # Create entry template for sub-rendering
@@ -892,9 +1100,9 @@ class ReleaseNoteGenerator:
         title_template = Template(self.config.release_notes.title_template)
         title = title_template.render(version=version)
 
-        # Render master template
+        # Render master template using DEFAULT_RELEASE_NOTES_TEMPLATE
         from datetime import datetime
-        master_template = Template(self.config.release_notes.release_output_template)
+        master_template = Template(self.DEFAULT_RELEASE_NOTES_TEMPLATE)
         output = master_template.render(
             version=version,
             title=title,
