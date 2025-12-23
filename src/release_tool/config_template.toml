@@ -742,22 +742,113 @@ order = 99
 alias = "other"
 
 # =============================================================================
+# Output Configuration
+# =============================================================================
+
+[output]
+# draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
+# This is where 'generate' command saves files by default (when --output not specified)
+# Files are saved here for review/editing before pushing to GitHub
+#
+# Available variables:
+#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
+#   - {{version}}: Full version string
+#   - {{major}}: Major version number
+#   - {{minor}}: Minor version number
+#   - {{patch}}: Patch version number
+#   - {{output_file_type}}: Type of output file ("release" or "doc")
+#
+# Examples:
+#   - ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
+#   - "drafts/{{major}}.{{minor}}.{{patch}}-{{output_file_type}}.md": Simple draft folder
+#   - "/tmp/releases/{{code_repo}}-{{version}}-{{output_file_type}}.md": Temporary location
+#
+# Default: ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
+
+# assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
+# Images and videos referenced in issue descriptions will be downloaded here
+# and references will be updated to use local paths in the release notes
+# This is useful for Docusaurus and other static site generators
+#
+# Available variables (same as output_path):
+#   - {{version}}: Full version string
+#   - {{major}}: Major version number
+#   - {{minor}}: Minor version number
+#   - {{patch}}: Patch version number
+#
+# Path must be relative to output_path for correct markdown references
+# Examples:
+#   - "docs/releases/assets/{{version}}": Organized by version
+#   - "static/img/releases/{{major}}.{{minor}}": Shared across patches
+#   - "assets/{{version}}": Simple structure
+#
+# Default: "docs/releases/assets/{{version}}"
+assets_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/assets"
+
+# download_media: Download images and videos from issue descriptions
+# When true: Downloads media files and updates references to local paths
+# When false: Keeps original URLs in release notes
+# Default: true
+# RECOMMENDED: true for static sites (Docusaurus), false for GitHub releases
+download_media = false
+
+# create_github_release: Automatically create a GitHub release
+# When true: Uploads release notes to GitHub Releases
+# When false: Only generates markdown (no upload)
+# Default: true
+# CLI override: --release / --no-release
+# SECURITY: Requires GitHub token with repo write permissions
+create_github_release = true
+
+# create_pr: Automatically create a PR with the release notes file
+# When true: Creates a PR to add/update the release notes file
+# When false: No PR is created
+# Requires: output_path to be configured
+# Default: true
+# CLI override: --pr / --no-pr
+create_pr = true
+
+# release_mode: Default release mode for GitHub releases
+# Options:
+#   - "draft": Releases are created as drafts (unpublished)
+#   - "published": Releases are published immediately
+# Default: "draft"
+# CLI override: --release-mode draft|published
+# Use case: Set to "draft" if you want to review releases before publishing
+release_mode = "draft"
+
+# prerelease: Mark GitHub releases as prereleases
+# Options:
+#   - "auto": Auto-detect from version (e.g., "1.0.0-rc.1" → prerelease, "1.0.0" → stable)
+#   - true: Always mark as prerelease
+#   - false: Always mark as stable/final
+# Default: "auto"
+# CLI override: --prerelease auto|true|false
+# Use cases:
+#   - "auto": Most flexible, automatically handles RCs and stable releases
+#   - true: If you typically create beta/RC releases and want to be explicit
+#   - false: For projects that only do stable releases
+prerelease = "auto"
+
+# create_issue: Whether to create a tracking issue for the release
+# When true, a GitHub issue will be created automatically and PR templates can use
+# {{issue_repo}}, {{issue_number}}, and {{issue_link}} variables
+# Default: true
+# Use case: Set to false if you don't want to track releases with GitHub issues
+create_issue = true
+
+# =============================================================================
 # PR Code Generation Templates
 # =============================================================================
 # Configure multiple code generation templates. Each template generates a separate
-# output file from the release notes data. This replaces the old doc_output_template
-# and doc_output_path configuration with a more flexible array-based system.
+# output file from the release notes data.
 #
-# Template structure:
-#   [[pr_code.templates]]
-#   output_template = "Jinja2 template string"
-#   output_path = "path/to/output.md"
-#
-# You can have multiple [[pr_code.templates]] entries to generate different outputs
+# You can have multiple [[output.pr_code.templates]] entries to generate different outputs
 # (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
 
-[pr_code]
-[[pr_code.templates]]
+[output.pr_code]
+[[output.pr_code.templates]]
 # output_template: Jinja2 template for the output file content
 # This is a POWERFUL template that gives you complete control over the output
 # structure. Use Jinja2 syntax including conditionals, loops, filters, and all
@@ -918,103 +1009,6 @@ SPDX-License-Identifier: AGPL-3.0-only
 #
 # Default example: Docusaurus versioned docs
 output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
-
-# =============================================================================
-# Release Notes Formatting and Content
-# =============================================================================
-
-[output]
-# draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
-# This is where 'generate' command saves files by default (when --output not specified)
-# Files are saved here for review/editing before pushing to GitHub
-#
-# Available variables:
-#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
-#   - {{version}}: Full version string
-#   - {{major}}: Major version number
-#   - {{minor}}: Minor version number
-#   - {{patch}}: Patch version number
-#   - {{output_file_type}}: Type of output file ("release" or "doc")
-#
-# Examples:
-#   - ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
-#   - "drafts/{{major}}.{{minor}}.{{patch}}-{{output_file_type}}.md": Simple draft folder
-#   - "/tmp/releases/{{code_repo}}-{{version}}-{{output_file_type}}.md": Temporary location
-#
-# Default: ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
-draft_output_path = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
-
-# assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
-# Images and videos referenced in issue descriptions will be downloaded here
-# and references will be updated to use local paths in the release notes
-# This is useful for Docusaurus and other static site generators
-#
-# Available variables (same as output_path):
-#   - {{version}}: Full version string
-#   - {{major}}: Major version number
-#   - {{minor}}: Minor version number
-#   - {{patch}}: Patch version number
-#
-# Path must be relative to output_path for correct markdown references
-# Examples:
-#   - "docs/releases/assets/{{version}}": Organized by version
-#   - "static/img/releases/{{major}}.{{minor}}": Shared across patches
-#   - "assets/{{version}}": Simple structure
-#
-# Default: "docs/releases/assets/{{version}}"
-assets_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/assets"
-
-# download_media: Download images and videos from issue descriptions
-# When true: Downloads media files and updates references to local paths
-# When false: Keeps original URLs in release notes
-# Default: true
-# RECOMMENDED: true for static sites (Docusaurus), false for GitHub releases
-download_media = false
-
-# create_github_release: Automatically create a GitHub release
-# When true: Uploads release notes to GitHub Releases
-# When false: Only generates markdown (no upload)
-# Default: true
-# CLI override: --release / --no-release
-# SECURITY: Requires GitHub token with repo write permissions
-create_github_release = true
-
-# create_pr: Automatically create a PR with the release notes file
-# When true: Creates a PR to add/update the release notes file
-# When false: No PR is created
-# Requires: output_path to be configured
-# Default: true
-# CLI override: --pr / --no-pr
-create_pr = true
-
-# release_mode: Default release mode for GitHub releases
-# Options:
-#   - "draft": Releases are created as drafts (unpublished)
-#   - "published": Releases are published immediately
-# Default: "draft"
-# CLI override: --release-mode draft|published
-# Use case: Set to "draft" if you want to review releases before publishing
-release_mode = "draft"
-
-# prerelease: Mark GitHub releases as prereleases
-# Options:
-#   - "auto": Auto-detect from version (e.g., "1.0.0-rc.1" → prerelease, "1.0.0" → stable)
-#   - true: Always mark as prerelease
-#   - false: Always mark as stable/final
-# Default: "auto"
-# CLI override: --prerelease auto|true|false
-# Use cases:
-#   - "auto": Most flexible, automatically handles RCs and stable releases
-#   - true: If you typically create beta/RC releases and want to be explicit
-#   - false: For projects that only do stable releases
-prerelease = "auto"
-
-# create_issue: Whether to create a tracking issue for the release
-# When true, a GitHub issue will be created automatically and PR templates can use
-# {{issue_repo}}, {{issue_number}}, and {{issue_link}} variables
-# Default: true
-# Use case: Set to false if you don't want to track releases with GitHub issues
-create_issue = true
 
 # =============================================================================
 # Release Tracking Issue Templates (for create_issue)

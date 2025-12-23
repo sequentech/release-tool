@@ -712,11 +712,11 @@ alias = "other"
 # Configure multiple code generation templates. Each template generates a separate
 # output file from the release notes data.
 #
-# You can have multiple [[pr_code.templates]] entries to generate different outputs
+# You can have multiple [[output.pr_code.templates]] entries to generate different outputs
 # (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
 
-[pr_code]
-[[pr_code.templates]]
+[output.pr_code]
+[[output.pr_code.templates]]
 # output_template: Jinja2 template for the output file content
 # This is a POWERFUL template that gives you complete control over the output
 # structure. Use Jinja2 syntax including conditionals, loops, filters, and all
