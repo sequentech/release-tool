@@ -1,4 +1,4 @@
-config_version = "1.5"
+config_version = "1.6"
 
 # =============================================================================
 # Release Tool Configuration
@@ -638,54 +638,6 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 
 {% endfor %}'''
 
-# doc_output_template: Jinja2 template for Docusaurus/documentation release notes
-# This optional template wraps the GitHub release notes with documentation-specific
-# formatting such as Docusaurus frontmatter. It provides an additional render function
-# to embed the GitHub release notes within the documentation format.
-#
-# WHEN TO USE:
-#   - You want to generate Docusaurus documentation alongside GitHub release notes
-#   - You need to add frontmatter (id, title, etc.) to the release notes
-#   - You want different formatting for documentation vs GitHub releases
-#
-# IMPORTANT: HTML-like behavior for whitespace (same as release_output_template)
-#   - Multiple spaces collapse to single space
-#   - Line breaks: Use <br> or <br/> for new lines in output
-#   - Non-breaking spaces: Use &nbsp; for explicit spaces that won't collapse
-#
-# Available variables (in addition to all release_output_template variables):
-#   - {{ version }}                 : Version string (e.g., "1.2.3")
-#   - {{ title }}                   : Rendered release title (from title_template)
-#   - {{ year }}                    : Current year (e.g., "2025")
-#   - {{ categories }}              : List of category dicts with 'name' and 'notes'
-#   - {{ all_notes }}               : Flat list of all note dicts
-#   - {{ render_entry(note) }}      : Function to render a note using entry_template
-#   - {{ render_release_notes() }}  : Function to render the GitHub release notes
-#
-# Template example for Docusaurus:
-#   doc_output_template = '''---
-#   id: release-{{version}}
-#   title: {{title}}
-#   ---
-#   <!--
-#   SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
-#   SPDX-License-Identifier: AGPL-3.0-only
-#   -->
-#   {{ render_release_notes() }}<br>'''
-#
-#  You can set it to None to disable it so that only GitHub release notes are generated
-doc_output_template = '''---
-id: release-{{version}}
-title: {{title}}
----
-<!--
-SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
-SPDX-License-Identifier: AGPL-3.0-only
--->
-# Release {{version}}
-
-{{ render_release_notes() }}<br>'''
-
 # documentation_release_version_policy: Policy for generating documentation files for release candidates
 #
 # This controls how documentation files are generated when working with release candidates (RC versions).
@@ -790,13 +742,165 @@ order = 99
 alias = "other"
 
 # =============================================================================
-# Release Notes Formatting and Content
+# PR Code Generation Templates
 # =============================================================================
+# Configure multiple code generation templates. Each template generates a separate
+# output file from the release notes data. This replaces the old doc_output_template
+# and doc_output_path configuration with a more flexible array-based system.
+#
+# Template structure:
+#   [[pr_code.templates]]
+#   output_template = "Jinja2 template string"
+#   output_path = "path/to/output.md"
+#
+# You can have multiple [[pr_code.templates]] entries to generate different outputs
+# (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
 
-[output]
-# release_output_path: Path template for GitHub release notes file (Jinja2 syntax)
-# This file will be created/updated when using the generate command
-# Used for creating GitHub releases via the push command
+[pr_code]
+[[pr_code.templates]]
+# output_template: Jinja2 template for the output file content
+# This is a POWERFUL template that gives you complete control over the output
+# structure. Use Jinja2 syntax including conditionals, loops, filters, and all
+# available variables.
+#
+# WHEN TO USE:
+#   - Generate Docusaurus documentation with frontmatter
+#   - Create custom changelog formats
+#   - Generate multiple output files from the same release data
+#   - Wrap release notes with additional metadata or formatting
+#
+# IMPORTANT: HTML-like behavior for whitespace
+#   - Multiple spaces/tabs collapse to single space (like HTML)
+#   - Line breaks: Use <br> or <br/> for explicit line breaks in output
+#   - Non-breaking spaces: Use &nbsp; for spaces that won't collapse
+#   - This allows multi-line templates for readability while controlling output
+#
+# Available variables:
+#   - {{ version }}                 : Version string (e.g., "1.2.3")
+#   - {{ major }}                   : Major version number (e.g., "1")
+#   - {{ minor }}                   : Minor version number (e.g., "2")
+#   - {{ patch }}                   : Patch version number (e.g., "3")
+#   - {{ title }}                   : Rendered release title (from title_template)
+#   - {{ year }}                    : Current year (e.g., "2025")
+#   - {{ categories }}              : List of category dicts with 'name', 'alias', 'notes'
+#   - {{ all_notes }}               : Flat list of all note dicts (across categories)
+#   - {{ render_entry(note) }}      : Function to render a note using entry_template
+#   - {{ render_release_notes() }}  : Function to render the default GitHub release notes
+#
+# Each note dict in all_notes or category.notes contains:
+#   - title, url (prioritizes issue_url over pr_url), issue_url, pr_url
+#   - short_link (#123), short_repo_link (meta#123)
+#   - pr_numbers, commit_shas, labels, issue_key, category
+#   - description, migration_notes (processed, may be None)
+#   - authors (list of author dicts with all fields)
+#
+# Template examples:
+#
+#   1. Docusaurus with frontmatter (DEFAULT - wraps GitHub release notes):
+#      output_template = '''---
+#      id: release-{{version}}
+#      title: {{title}}
+#      ---
+#      <!--
+#      SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
+#      SPDX-License-Identifier: AGPL-3.0-only
+#      -->
+#      # Release {{version}}
+#
+#      {{ render_release_notes() }}<br>'''
+#
+#   2. Simple CHANGELOG (just release notes):
+#      output_template = '''{{ render_release_notes() }}'''
+#
+#   3. Custom category-based layout:
+#      output_template = '''# {{ title }}
+#
+#      {% for category in categories %}
+#      ## {{ category.name }}
+#      {% for note in category.notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#      {% endfor %}'''
+#
+#   4. Flat list without categories:
+#      output_template = '''# {{ title }}
+#
+#      {% for note in all_notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}'''
+#
+#   5. Custom layout with migrations section:
+#      output_template = '''# {{ title }}
+#
+#      ## Changes
+#      {% for note in all_notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#
+#      ## Migration Notes
+#      {% for note in all_notes %}
+#      {% if note.migration_notes %}
+#      ### {{ note.title }}
+#      {{ note.migration_notes }}
+#      {% endif %}
+#      {% endfor %}'''
+#
+#   6. Grouped by issue with full descriptions:
+#      output_template = '''# {{ title }}
+#
+#      {% for note in all_notes %}
+#      ## {{ note.title }}
+#      {% if note.description %}
+#      {{ note.description }}
+#      {% endif %}
+#      {% if note.url %}
+#      **Pull Request:** [#{{ note.pr_numbers[0] }}]({{ note.url }})
+#      {% endif %}
+#      {% if note.authors %}
+#      **Authors:** {% for author in note.authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
+#      {% endif %}
+#      {% if note.migration_notes %}
+#      **Migration:** {{ note.migration_notes }}
+#      {% endif %}
+#      {% endfor %}'''
+#
+#   7. Custom grouping with manual entry rendering:
+#      output_template = '''# {{ title }}
+#
+#      ## Features & Fixes
+#      {% for category in categories %}
+#      {% if category.name in ["Features", "Bug Fixes"] %}
+#      ### {{ category.name }}
+#      {% for note in category.notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#      {% endif %}
+#      {% endfor %}
+#
+#      ## Other Changes
+#      {% for category in categories %}
+#      {% if category.name not in ["Features", "Bug Fixes"] %}
+#      {% for note in category.notes %}
+#      - {{ note.title }}{% if note.url %} ([#{{ note.pr_numbers[0] }}]({{ note.url }})){% endif %}
+#      {% endfor %}
+#      {% endif %}
+#      {% endfor %}'''
+#
+# Default: Docusaurus template with frontmatter and default release notes
+output_template = '''---
+id: release-{{version}}
+title: {{title}}
+---
+<!--
+SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+# Release {{version}}
+
+{{ render_release_notes() }}<br>'''
+
+# output_path: Path template for the output file (Jinja2 syntax)
+# This file will be created/updated when using the generate and push commands.
 #
 # Available variables for path substitution:
 #   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
@@ -805,33 +909,21 @@ alias = "other"
 #   - {{patch}}: Patch version number only (e.g., "3")
 #
 # Path template examples:
-#   - "CHANGELOG.md": Single changelog file (appends/overwrites)
+#   - "CHANGELOG.md": Single changelog file (overwrites)
 #   - "docs/releases/{{version}}.md": Separate file per version
+#   - "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md": Organized by version
 #   - "releases/{{major}}.{{minor}}/{{patch}}.md": Organized by major.minor
 #   - "docs/{{major}}.x.md": One file per major version
 #   - "website/releases/v{{version}}.md": With prefix
 #
-# Default: "docs/releases/{{version}}.md"
-release_output_path = "docs/releases/{{version}}.md"
+# Default example: Docusaurus versioned docs
+output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
 
-# doc_output_path: Path template for Docusaurus/documentation release notes file (Jinja2 syntax)
-# This file will be created alongside the GitHub release notes when doc_output_template is configured
-# Used for generating documentation that can be committed to your docs site
-#
-# Available variables for path substitution (same as release_output_path):
-#   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
-#   - {{major}}: Major version number only (e.g., "1")
-#   - {{minor}}: Minor version number only (e.g., "2")
-#   - {{patch}}: Patch version number only (e.g., "3")
-#
-# Path template examples:
-#   - "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
-#   - "website/docs/releases/{{version}}.md"
-#   - "docs/releases/v{{major}}.{{minor}}.{{patch}}.md"
-#
-# You can set it to false or not set it to disable it so that only GitHub release notes are generated
-doc_output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
+# =============================================================================
+# Release Notes Formatting and Content
+# =============================================================================
 
+[output]
 # draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
 # This is where 'generate' command saves files by default (when --output not specified)
 # Files are saved here for review/editing before pushing to GitHub

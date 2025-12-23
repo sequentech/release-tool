@@ -466,6 +466,152 @@ entry_template = '''- {{ title }}{% if url and short_repo_link %} ([{{ short_rep
   &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
   {% endif %}'''
 
+# release_output_template: MASTER Jinja2 template for GitHub release notes output
+# This is an ADVANCED feature that gives you complete control over the release
+# notes structure. When set, this template replaces the default category-based
+# layout and lets you design your own custom format.
+#
+# WHEN TO USE:
+#   - You want a custom layout (e.g., flat list, grouped by type, etc.)
+#   - You need to iterate over migrations or descriptions across all issues
+#   - You want full control over the output structure
+#
+# IMPORTANT: HTML-like behavior for whitespace (same as entry_template)
+#   - Multiple spaces collapse to single space
+#   - Line breaks: Use <br> or <br/> for new lines in output
+#   - Non-breaking spaces: Use &nbsp; for explicit spaces that won't collapse
+#
+# Available variables:
+#   - {{ version }}      : Version string (e.g., "1.2.3")
+#   - {{ title }}        : Rendered release title (from title_template)
+#   - {{ year }}         : Current year (e.g., "2025")
+#   - {{ categories }}   : List of category dicts with 'name' and 'notes'
+#   - {{ all_notes }}    : Flat list of all note dicts (across categories)
+#   - {{ render_entry(note) }}: Function to render a note using entry_template
+#
+# Each note dict contains:
+#   - title, url (prioritizes issue_url over pr_url), issue_url, pr_url
+#   - short_link (#123), short_repo_link (meta#123)
+#   - pr_numbers, commit_shas, labels, issue_key, category
+#   - description, migration_notes (processed, may be None)
+#   - authors (list of author dicts with all fields)
+#
+# Template examples:
+#
+#   1. Default category-based layout (equivalent to not setting output_template):
+#      output_template = '''# {{ title }}
+#
+#      {% for category in categories %}
+#      ## {{ category.name }}
+#      {% for note in category.notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#      {% endfor %}'''
+#
+#   2. Flat list without categories:
+#      output_template = '''# {{ title }}
+#
+#      {% for note in all_notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}'''
+#
+#   3. Custom layout with migrations section:
+#      output_template = '''# {{ title }}
+#
+#      ## Changes
+#      {% for note in all_notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#
+#      ## Migration Notes
+#      {% for note in all_notes %}
+#      {% if note.migration_notes %}
+#      ### {{ note.title }}
+#      {{ note.migration_notes }}
+#      {% endif %}
+#      {% endfor %}'''
+#
+#   4. Grouped by issue with full descriptions:
+#      output_template = '''# {{ title }}
+#
+#      {% for note in all_notes %}
+#      ## {{ note.title }}
+#      {% if note.description %}
+#      {{ note.description }}
+#      {% endif %}
+#      {% if note.url %}
+#      **Pull Request:** [#{{ note.pr_numbers[0] }}]({{ note.url }})
+#      {% endif %}
+#      {% if note.authors %}
+#      **Authors:** {% for author in note.authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
+#      {% endif %}
+#      {% if note.migration_notes %}
+#      **Migration:** {{ note.migration_notes }}
+#      {% endif %}
+#      {% endfor %}'''
+#
+#   5. Custom grouping with manual entry rendering:
+#      output_template = '''# {{ title }}
+#
+#      ## Features & Fixes
+#      {% for category in categories %}
+#      {% if category.name in ["Features", "Bug Fixes"] %}
+#      ### {{ category.name }}
+#      {% for note in category.notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#      {% endif %}
+#      {% endfor %}
+#
+#      ## Other Changes
+#      {% for category in categories %}
+#      {% if category.name not in ["Features", "Bug Fixes"] %}
+#      {% for note in category.notes %}
+#      - {{ note.title }}{% if note.url %} ([#{{ note.pr_numbers[0] }}]({{ note.url }})){% endif %}
+#      {% endfor %}
+#      {% endif %}
+#      {% endfor %}'''
+#
+# Default: Comprehensive template with breaking changes, migrations, descriptions, and categorized changes
+release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
+{% if breaking_with_desc|length > 0 %}
+<br>## 💥 Breaking Changes
+{% for note in breaking_with_desc %}
+<br>### {{ note.title }}
+{{ note.description }}
+{% if note.url %}See {{ note.url }} for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+{% set migration_notes = all_notes|selectattr('migration_notes')|list %}
+{% if migration_notes|length > 0 %}
+<br>## 🔄 Migrations<br>
+{% for note in migration_notes %}
+<br>### {{ note.title }}<br>
+{{ note.migration_notes }}
+{% if note.url and note.short_repo_link %}See [{{ note.short_repo_link }}]({{ note.url }}) for details.{% elif note.url %}See {{ note.url }} for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
+{% if non_breaking_with_desc|length > 0 %}
+<br>## 📝 Highlights<br>
+{% for note in non_breaking_with_desc %}
+<br>### {{ note.title }}
+{{ note.description }}
+{% if note.url and note.short_repo_link %}See [{{ note.short_repo_link }}]({{ note.url }}) for details.{% elif note.url %}See {{ note.url }} for details.{% endif %}
+
+{% endfor %}
+{% endif %}
+<br>## 📋 All Changes
+{% for category in categories %}
+<br>### {{ category.name }}
+{% for note in category.notes %}
+{% if loop.first %}<br>{% endif %}{{ render_entry(note) }}<br>
+{% endfor %}
+
+{% endfor %}'''
+
 # documentation_release_version_policy: Policy for generating documentation files for release candidates
 #
 # This controls how documentation files are generated when working with release candidates (RC versions).
@@ -561,35 +707,84 @@ order = 99
 alias = "other"
 
 # =============================================================================
-# Release Notes Formatting and Content
-# =============================================================================
-
-[output]
-
-# =============================================================================
 # PR Code Generation Templates
 # =============================================================================
 # Configure multiple code generation templates. Each template generates a separate
 # output file from the release notes data.
+#
+# You can have multiple [[pr_code.templates]] entries to generate different outputs
+# (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
 
-# Template structure:
-#   [[pr_code.templates]]
-#   output_template = "Jinja2 template string"
-#   output_path = "path/to/output.md"
-#
-# Available variables (same for all templates):
-#   - {{ version }}: Full version string (e.g., "1.2.3")
-#   - {{ major }}, {{ minor }}, {{ patch }}: Version components
-#   - {{ title }}: Rendered release title
-#   - {{ year }}: Current year (e.g., "2025")
-#   - {{ categories }}: List of category dicts with 'name', 'alias', 'notes'
-#   - {{ all_notes }}: Flat list of all note dicts
-#   - {{ render_entry(note) }}: Function to render a note using entry_template
-#   - {{ render_release_notes() }}: Function to render base release notes
-#
-# Example 1: Docusaurus documentation
 [pr_code]
 [[pr_code.templates]]
+# output_template: Jinja2 template for the output file content
+# This is a POWERFUL template that gives you complete control over the output
+# structure. Use Jinja2 syntax including conditionals, loops, filters, and all
+# available variables.
+#
+# WHEN TO USE:
+#   - Generate Docusaurus documentation with frontmatter
+#   - Create custom changelog formats
+#   - Generate multiple output files from the same release data
+#   - Wrap release notes with additional metadata or formatting
+#
+# IMPORTANT: HTML-like behavior for whitespace
+#   - Multiple spaces/tabs collapse to single space (like HTML)
+#   - Line breaks: Use <br> or <br/> for explicit line breaks in output
+#   - Non-breaking spaces: Use &nbsp; for spaces that won't collapse
+#   - This allows multi-line templates for readability while controlling output
+#
+# Available variables:
+#   - {{ version }}                 : Version string (e.g., "1.2.3")
+#   - {{ major }}                   : Major version number (e.g., "1")
+#   - {{ minor }}                   : Minor version number (e.g., "2")
+#   - {{ patch }}                   : Patch version number (e.g., "3")
+#   - {{ title }}                   : Rendered release title (from title_template)
+#   - {{ year }}                    : Current year (e.g., "2025")
+#   - {{ categories }}              : List of category dicts with 'name', 'alias', 'notes'
+#   - {{ all_notes }}               : Flat list of all note dicts (across categories)
+#   - {{ render_entry(note) }}      : Function to render a note using entry_template
+#   - {{ render_release_notes() }}  : Function to render the default GitHub release notes
+#
+# Each note dict in all_notes or category.notes contains:
+#   - title, url (prioritizes issue_url over pr_url), issue_url, pr_url
+#   - short_link (#123), short_repo_link (meta#123)
+#   - pr_numbers, commit_shas, labels, issue_key, category
+#   - description, migration_notes (processed, may be None)
+#   - authors (list of author dicts with all fields)
+#
+# Template examples:
+#
+#   1. Docusaurus with frontmatter (DEFAULT - wraps GitHub release notes):
+#      output_template = '''---
+#      id: release-{{version}}
+#      title: {{title}}
+#      ---
+#      # Release {{version}}
+#
+#      {{ render_release_notes() }}<br>'''
+#
+#   2. Simple CHANGELOG (just release notes):
+#      output_template = '''{{ render_release_notes() }}'''
+#
+#   3. Custom category-based layout:
+#      output_template = '''# {{ title }}
+#
+#      {% for category in categories %}
+#      ## {{ category.name }}
+#      {% for note in category.notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}
+#      {% endfor %}'''
+#
+#   4. Flat list without categories:
+#      output_template = '''# {{ title }}
+#
+#      {% for note in all_notes %}
+#      {{ render_entry(note) }}
+#      {% endfor %}'''
+#
+# Default: Docusaurus template with frontmatter and default release notes
 output_template = '''---
 id: release-{{version}}
 title: {{title}}
@@ -601,13 +796,29 @@ SPDX-License-Identifier: AGPL-3.0-only
 # Release {{version}}
 
 {{ render_release_notes() }}<br>'''
+
+# output_path: Path template for the output file (Jinja2 syntax)
+# This file will be created/updated when using the generate and push commands.
+#
+# Available variables for path substitution:
+#   - {{version}}: Full version string (e.g., "1.2.3", "2.0.0-rc.1")
+#   - {{major}}: Major version number only (e.g., "1")
+#   - {{minor}}: Minor version number only (e.g., "2")
+#   - {{patch}}: Patch version number only (e.g., "3")
+#
+# Path template examples:
+#   - "CHANGELOG.md": Single changelog file (overwrites)
+#   - "docs/releases/{{version}}.md": Separate file per version
+#   - "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md": Organized by version
+#
+# Default example: Docusaurus versioned docs
 output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release-{{major}}.{{minor}}.{{patch}}.md"
 
-# Example 2: You can add more templates for different outputs
-# [[pr_code.templates]]
-# output_template = '''{{ render_release_notes() }}'''
-# output_path = "CHANGELOG.md"
+# =============================================================================
+# Release Notes Formatting and Content
+# =============================================================================
 
+[output]
 # draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
 # This is where 'generate' command saves files by default (when --output not specified)
 # Files are saved here for review/editing before push to GitHub
