@@ -13,7 +13,7 @@ from release_tool.models import ReleaseNote, Author
 
 @pytest.fixture
 def test_config_with_release_output_template():
-    """Create a test configuration with release_output_template."""
+    """Create a test configuration with pr_code templates."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -26,15 +26,24 @@ def test_config_with_release_output_template():
                 {"name": "Features", "labels": ["feature"], "order": 1},
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
                 {"name": "Documentation", "labels": ["docs"], "order": 3},
-            ],
-            "release_output_template": """# {{ title }}
+            ]
+        },
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
 
 {% for category in categories %}
 ## {{ category.name }}
 {% for note in category.notes %}
 {{ render_entry(note) }}
 {% endfor %}
-{% endfor %}"""
+{% endfor %}""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
         }
     }
     return Config.from_dict(config_dict)
@@ -55,12 +64,21 @@ def test_config_flat_list():
                 {"name": "Features", "labels": ["feature"], "order": 1},
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
                 {"name": "Documentation", "labels": ["docs"], "order": 3},
-            ],
-            "release_output_template": """# {{ title }}
+            ]
+        },
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
 
 {% for note in all_notes %}
 {{ render_entry(note) }}
-{% endfor %}"""
+{% endfor %}""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
         }
     }
     return Config.from_dict(config_dict)
@@ -80,8 +98,13 @@ def test_config_with_migrations():
             "categories": [
                 {"name": "Features", "labels": ["feature"], "order": 1},
                 {"name": "Bug Fixes", "labels": ["bug"], "order": 2},
-            ],
-            "release_output_template": """# {{ title }}
+            ]
+        },
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
 
 ## Changes
 {% for note in all_notes %}
@@ -94,7 +117,11 @@ def test_config_with_migrations():
 ### {{ note.title }}
 {{ note.migration_notes }}
 {% endif %}
-{% endfor %}"""
+{% endfor %}""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
         }
     }
     return Config.from_dict(config_dict)
@@ -259,7 +286,7 @@ def test_render_entry_includes_all_fields():
 
 
 def test_html_whitespace_processing_in_release_output_template():
-    """Test that HTML-like whitespace processing works in release_output_template."""
+    """Test that HTML-like whitespace processing works in pr_code templates."""
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -267,11 +294,18 @@ def test_html_whitespace_processing_in_release_output_template():
         "github": {
             "token": "test_token"
         },
-        "release_notes": {
-            "release_output_template": """# {{ title }}
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
 
 Test with    multiple   spaces
-and<br>line break"""
+and<br>line break""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
         }
     }
     config = Config.from_dict(config_dict)
@@ -296,12 +330,19 @@ def test_nbsp_entity_preservation():
         "github": {
             "token": "test_token"
         },
-        "release_notes": {
-            "release_output_template": """# {{ title }}
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
 
 Test&nbsp;&nbsp;two&nbsp;spaces
 Normal    spaces   collapse
-Mixed:&nbsp;&nbsp;preserved    and   collapsed"""
+Mixed:&nbsp;&nbsp;preserved    and   collapsed""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
         }
     }
     config = Config.from_dict(config_dict)

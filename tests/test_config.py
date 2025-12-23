@@ -43,7 +43,7 @@ tag_prefix = "release-"
 """
     config_file.write_text(config_content)
 
-    config = Config.from_file(str(config_file))
+    config = Config.from_file(str(config_file), auto_upgrade=True)
     assert config.repository.code_repo == "owner/repo"
     assert config.version_policy.tag_prefix == "release-"
 

@@ -194,8 +194,14 @@ def test_debug_mode_shows_docusaurus_preview(test_config, test_notes_file, tmp_p
     doc_file = tmp_path / "doc_release.md"
     doc_file.write_text("---\nid: release-1.0.0\n---\n# Release 1.0.0\n\nDocusaurus notes")
 
-    # Configure doc_output_path
-    test_config.output.doc_output_path = str(doc_file)
+    # Configure pr_code templates with doc template
+    from release_tool.config import PRCodeConfig, PRCodeTemplateConfig
+    test_config.output.pr_code = PRCodeConfig(templates=[
+        PRCodeTemplateConfig(
+            output_template="---\nid: release-{{version}}\n---\n{{ render_release_notes() }}",
+            output_path=str(doc_file)
+        )
+    ])
 
     runner = CliRunner()
 
@@ -317,8 +323,14 @@ def test_docusaurus_file_detection_in_dry_run(test_config, test_notes_file, tmp_
     doc_file = tmp_path / "doc_release.md"
     doc_file.write_text("Docusaurus content")
 
-    # Configure doc_output_path
-    test_config.output.doc_output_path = str(doc_file)
+    # Configure pr_code templates with doc template
+    from release_tool.config import PRCodeConfig, PRCodeTemplateConfig
+    test_config.output.pr_code = PRCodeConfig(templates=[
+        PRCodeTemplateConfig(
+            output_template="---\nid: release-{{version}}\n---\n{{ render_release_notes() }}",
+            output_path=str(doc_file)
+        )
+    ])
 
     runner = CliRunner()
 

@@ -500,7 +500,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
 
         # Handle tri-state prerelease: "auto", "true", "false"
         prerelease_value = prerelease if prerelease is not None else config.output.prerelease
-        doc_output_enabled = config.output.doc_output_path not in [False, None]
+        # Check if pr_code templates are configured (replaces doc_output_path check)
+        doc_output_enabled = bool(config.output.pr_code.templates)
 
         # Convert string values to appropriate types
         if isinstance(prerelease_value, str):
@@ -1156,22 +1157,21 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     pr_body = render_template(config.output.pr_templates.body_template, template_context)
                     
                     # Determine which file(s) to include in the PR
-                    # If Docusaurus output is enabled, we prioritize it and suppress the default release output
-                    # to avoid double commits and unwanted files.
+                    # If pr_code templates are configured, use the first template's output path
                     additional_files = {}
-                    
-                    if doc_output_enabled and doc_notes_content:
-                         # Use Docusaurus file as the primary file
-                         pr_file_path = render_template(config.output.doc_output_path, template_context)
-                         pr_content = doc_notes_content
+
+                    if doc_output_enabled and config.output.pr_code.templates:
+                         # Use first pr_code template as the primary file
+                         pr_file_path = render_template(config.output.pr_code.templates[0].output_path, template_context)
+                         pr_content = doc_notes_content if doc_notes_content else release_notes
                          if debug:
-                             console.print(f"[dim]Using Docusaurus output as primary PR file: {pr_file_path}[/dim]")
+                             console.print(f"[dim]Using pr_code template output as primary PR file: {pr_file_path}[/dim]")
                     else:
-                         # Use default release output
-                         pr_file_path = render_template(config.output.release_output_path, template_context)
+                         # No templates configured - skip PR file
+                         pr_file_path = None
                          pr_content = release_notes
                          if debug:
-                             console.print(f"[dim]Using standard release output as primary PR file: {pr_file_path}[/dim]")
+                             console.print(f"[dim]No pr_code templates configured, skipping PR file[/dim]")
                     
                 except TemplateError as e:
                     console.print(f"[red]Error rendering PR template: {e}[/red]")
@@ -1249,9 +1249,9 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                 'patch': str(target_version.patch)
             }
             try:
-                doc_path = render_template(config.output.doc_output_path, template_context)
+                doc_path = render_template(config.output.pr_code.templates[0].output_path, template_context)
             except TemplateError as e:
-                console.print(f"[red]Error rendering doc_output_path template: {e}[/red]")
+                console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
                 if debug:
                     raise
                 sys.exit(1)
@@ -1260,8 +1260,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
             if debug:
                 console.print("\n[bold cyan]Debug Mode: Documentation Release Notes[/bold cyan]")
                 console.print("[dim]" + "=" * 60 + "[/dim]")
-                console.print(f"[dim]Doc template configured:[/dim] {config.release_notes.doc_output_template is not None}")
-                console.print(f"[dim]Doc path template:[/dim] {config.output.doc_output_path}")
+                console.print(f"[dim]Doc template configured:[/dim] {bool(config.output.pr_code.templates)}")
+                console.print(f"[dim]Doc path template:[/dim] {config.output.pr_code.templates[0].output_path if config.output.pr_code.templates else 'None'}")
                 console.print(f"[dim]Resolved final path:[/dim] {doc_path}")
                 console.print(f"[dim]Draft source path:[/dim] {doc_notes_path if doc_notes_path else 'None'}")
                 console.print(f"[dim]Draft content found:[/dim] {doc_notes_content is not None}")
