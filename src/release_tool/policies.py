@@ -879,6 +879,31 @@ class ReleaseNoteGenerator:
 
                 results.append((content, output_path))
 
+            # Check if there's an additional output_path for draft file (added by generate.py)
+            # This happens when pr_code.templates is configured but we also need a draft file
+            num_templates = len(self.config.output.pr_code.templates)
+            if output_paths and len(output_paths) > num_templates:
+                # Generate draft file using standard release notes template
+                draft_path = output_paths[num_templates]  # The extra path is the draft
+
+                # Initialize media downloader if enabled
+                draft_media_downloader = None
+                if self.config.output.download_media and draft_path:
+                    draft_media_downloader = MediaDownloader(
+                        self.config.output.assets_path,
+                        download_enabled=True
+                    )
+
+                # Generate standard release notes for draft
+                draft_content = self._format_with_master_template(
+                    grouped_notes,
+                    version,
+                    draft_path,
+                    draft_media_downloader
+                )
+
+                results.append((draft_content, draft_path))
+
         # Backward compatibility: support doc_output_template
         elif self.config.release_notes.doc_output_template:
             # Generate base release notes first
