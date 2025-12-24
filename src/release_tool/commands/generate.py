@@ -701,6 +701,17 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                             console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
                             sys.exit(1)
 
+                    # ALWAYS write draft file in addition to pr_code templates
+                    # This allows release-bot and other tools to find the generated files
+                    try:
+                        draft_context = template_context.copy()
+                        draft_context['output_file_type'] = 'release'
+                        draft_path = render_template(config.output.draft_output_path, draft_context)
+                        output_paths.append(draft_path)
+                    except TemplateError as e:
+                        console.print(f"[red]Error rendering draft_output_path: {e}[/red]")
+                        sys.exit(1)
+
                 # Backward compatibility: support old doc_output_path config
                 elif config.release_notes.doc_output_template:
                     # Old config with doc_output_template but no pr_code templates
