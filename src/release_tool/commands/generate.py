@@ -447,210 +447,249 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             elif should_create_branch:
                 console.print(f"[yellow]→ Branch creation disabled in config[/yellow]")
 
-            # Determine comparison version and get commits
-            from_ver = SemanticVersion.parse(from_version) if from_version else None
+            # Helper function to generate notes for a specific comparison policy
+            def generate_notes_for_policy(policy: str, explicit_from_ver: Optional[SemanticVersion] = None):
+                """Generate release notes using the specified version comparison policy."""
+                # Determine comparison version
+                from_ver = explicit_from_ver
 
-            if not from_ver:
-                # Calculate from_ver respecting detect_mode
-                available_versions = git_ops.get_version_tags()
-                
-                if detect_mode == 'published':
-                    # Filter out drafts
-                    filtered_versions = []
-                    for v in available_versions:
-                        release = db.get_release(repo_id, v.to_string())
-                        if release and release.is_draft:
-                            continue
-                        filtered_versions.append(v)
-                    available_versions = filtered_versions
-                elif detect_mode == 'all':
-                    # Add releases from DB that might be missing from local tags
-                    # This ensures we detect previous RCs even if tags aren't fetched yet
-                    try:
-                        db_releases = db.get_all_releases(repo_id)
-                        for release in db_releases:
-                            try:
-                                v = SemanticVersion.parse(release.version)
-                                if v not in available_versions:
-                                    available_versions.append(v)
-                            except ValueError:
+                if not from_ver:
+                    # Calculate from_ver respecting detect_mode
+                    available_versions = git_ops.get_version_tags()
+
+                    if detect_mode == 'published':
+                        # Filter out drafts
+                        filtered_versions = []
+                        for v in available_versions:
+                            release = db.get_release(repo_id, v.to_string())
+                            if release and release.is_draft:
                                 continue
-                        available_versions.sort()
-                    except Exception as e:
-                        console.print(f"[yellow]Warning: Could not fetch releases from DB: {e}[/yellow]")
-                
-                from_ver = find_comparison_version(target_version, available_versions)
-
-            # Determine head_ref for commit range
-            # If we are creating a new branch, the head is the source branch
-            # If we are using an existing branch, the head is that branch
-            if should_create_branch:
-                head_ref = source_branch
-            else:
-                # For existing branches, always use the release branch
-                head_ref = release_branch
-                
-                # Ensure we can access the branch - fetch if it exists remotely but not locally
-                if not git_ops.branch_exists(head_ref) and git_ops.branch_exists(head_ref, remote=True):
-                    if not dry_run:
+                            filtered_versions.append(v)
+                        available_versions = filtered_versions
+                    elif detect_mode == 'all':
+                        # Add releases from DB that might be missing from local tags
                         try:
-                            # Fetch the remote branch
-                            git_ops.repo.git.fetch('origin', f"{head_ref}:{head_ref}")
-                            console.print(f"[dim]Fetched {head_ref} from remote[/dim]")
+                            db_releases = db.get_all_releases(repo_id)
+                            for release in db_releases:
+                                try:
+                                    v = SemanticVersion.parse(release.version)
+                                    if v not in available_versions:
+                                        available_versions.append(v)
+                                except ValueError:
+                                    continue
+                            available_versions.sort()
                         except Exception as e:
-                            # If fetch fails, use origin/ prefix
-                            console.print(f"[yellow]Could not fetch {head_ref}, using origin/{head_ref}: {e}[/yellow]")
+                            console.print(f"[yellow]Warning: Could not fetch releases from DB: {e}[/yellow]")
+
+                    # Use the provided policy to determine comparison version
+                    from_ver = find_comparison_version_for_docs(
+                        target_version,
+                        available_versions,
+                        policy=policy
+                    )
+
+                # Determine head_ref for commit range
+                if should_create_branch:
+                    head_ref = source_branch
+                else:
+                    head_ref = release_branch
+
+                    # Ensure we can access the branch
+                    if not git_ops.branch_exists(head_ref) and git_ops.branch_exists(head_ref, remote=True):
+                        if not dry_run:
+                            try:
+                                git_ops.repo.git.fetch('origin', f"{head_ref}:{head_ref}")
+                                console.print(f"[dim]Fetched {head_ref} from remote[/dim]")
+                            except Exception as e:
+                                console.print(f"[yellow]Could not fetch {head_ref}, using origin/{head_ref}: {e}[/yellow]")
+                                head_ref = f"origin/{head_ref}"
+                        else:
                             head_ref = f"origin/{head_ref}"
-                    else:
-                        # In dry-run, just use origin/ prefix
-                        head_ref = f"origin/{head_ref}"
 
-            comparison_version, commits = get_release_commit_range(
-                git_ops,
-                target_version,
-                from_ver,
-                head_ref=head_ref
-            )
+                # Get commits for this comparison
+                comparison_version, commits = get_release_commit_range(
+                    git_ops,
+                    target_version,
+                    from_ver,
+                    head_ref=head_ref
+                )
 
-            if comparison_version:
-                console.print(f"[blue]Comparing {comparison_version.to_string()} → {version}[/blue]")
+                if comparison_version:
+                    console.print(f"[blue]Policy '{policy}': Comparing {comparison_version.to_string()} → {version}[/blue]")
 
-                # Check for version gaps
-                gap_checker = VersionGapChecker(config)
-                gap_checker.check_gap(comparison_version.to_string(), version)
-            else:
-                console.print(f"[blue]Generating notes for all commits up to {version}[/blue]")
+                    # Check for version gaps
+                    gap_checker = VersionGapChecker(config)
+                    gap_checker.check_gap(comparison_version.to_string(), version)
+                else:
+                    console.print(f"[blue]Policy '{policy}': Generating notes for all commits up to {version}[/blue]")
 
-            console.print(f"[blue]Found {len(commits)} commits[/blue]")
+                console.print(f"[blue]Found {len(commits)} commits for policy '{policy}'[/blue]")
 
-            # Convert git commits to our models and store them
-            commit_models = []
-            for git_commit in commits:
-                commit_model = git_ops.commit_to_model(git_commit, repo_id)
-                db.upsert_commit(commit_model)
-                commit_models.append(commit_model)
+                # Convert git commits to models
+                commit_models = []
+                for git_commit in commits:
+                    commit_model = git_ops.commit_to_model(git_commit, repo_id)
+                    db.upsert_commit(commit_model)
+                    commit_models.append(commit_model)
 
-            # Build PR map
-            pr_map = {}
-            for commit in commit_models:
-                if commit.pr_number:
-                    pr = db.get_pull_request(repo_id, commit.pr_number)
-                    if pr:
-                        pr_map[commit.pr_number] = pr
+                # Build PR map
+                pr_map = {}
+                for commit in commit_models:
+                    if commit.pr_number:
+                        pr = db.get_pull_request(repo_id, commit.pr_number)
+                        if pr:
+                            pr_map[commit.pr_number] = pr
 
-            # Extract issues and consolidate
-            extractor = IssueExtractor(config, debug=debug)
-            consolidator = CommitConsolidator(config, extractor, debug=debug)
-            consolidated_changes = consolidator.consolidate(commit_models, pr_map)
+                # Extract issues and consolidate
+                extractor = IssueExtractor(config, debug=debug)
+                consolidator = CommitConsolidator(config, extractor, debug=debug)
+                consolidated_changes = consolidator.consolidate(commit_models, pr_map)
 
-            console.print(f"[blue]Consolidated into {len(consolidated_changes)} changes[/blue]")
+                console.print(f"[blue]Consolidated into {len(consolidated_changes)} changes[/blue]")
 
-            # Handle missing issues
-            consolidator.handle_missing_issues(consolidated_changes)
+                # Handle missing issues
+                consolidator.handle_missing_issues(consolidated_changes)
 
-            # Load issue information from database (offline) with partial detection
-            # Issues must be pulled first using: release-tool pull
-            partial_matches: List[PartialIssueMatch] = []
-            resolved_issue_keys: Set[str] = set()  # Track successfully resolved issues
+                # Load issue information from database
+                partial_matches: List[PartialIssueMatch] = []
+                resolved_issue_keys: Set[str] = set()
 
-            # Get expected issue repository IDs
-            expected_repos = config.get_issue_repos()
-            expected_repo_ids = []
-            for issue_repo_name in expected_repos:
-                repo = db.get_repository(issue_repo_name)
-                if repo:
-                    expected_repo_ids.append(repo.id)
+                # Get expected issue repository IDs
+                expected_repos = config.get_issue_repos()
+                expected_repo_ids = []
+                for issue_repo_name in expected_repos:
+                    repo = db.get_repository(issue_repo_name)
+                    if repo:
+                        expected_repo_ids.append(repo.id)
 
-            for change in consolidated_changes:
-                if change.issue_key:
-                    # Query issue from database across all repos
-                    issue = db.get_issue_by_key(change.issue_key)
+                for change in consolidated_changes:
+                    if change.issue_key:
+                        issue = db.get_issue_by_key(change.issue_key)
 
-                    if not issue:
-                        # NOT FOUND - create partial match
-                        extraction_source = _get_extraction_source(change)
-                        partial = PartialIssueMatch(
-                            issue_key=change.issue_key,
-                            extracted_from=extraction_source,
-                            match_type="not_found",
-                            potential_reasons={
-                                PartialIssueReason.OLDER_THAN_CUTOFF,
-                                PartialIssueReason.TYPO,
-                                PartialIssueReason.PULL_NOT_RUN
-                            }
-                        )
-                        partial_matches.append(partial)
+                        if not issue:
+                            extraction_source = _get_extraction_source(change)
+                            partial = PartialIssueMatch(
+                                issue_key=change.issue_key,
+                                extracted_from=extraction_source,
+                                match_type="not_found",
+                                potential_reasons={
+                                    PartialIssueReason.OLDER_THAN_CUTOFF,
+                                    PartialIssueReason.TYPO,
+                                    PartialIssueReason.PULL_NOT_RUN
+                                }
+                            )
+                            partial_matches.append(partial)
 
-                        if debug:
-                            console.print(f"\n[yellow]⚠️  Issue {change.issue_key} not found in DB[/yellow]")
+                            if debug:
+                                console.print(f"\n[yellow]⚠️  Issue {change.issue_key} not found in DB[/yellow]")
 
-                    elif issue.repo_id not in expected_repo_ids:
-                        # DIFFERENT REPO - create partial match
-                        found_repo = db.get_repository_by_id(issue.repo_id)
-                        extraction_source = _get_extraction_source(change)
-                        partial = PartialIssueMatch(
-                            issue_key=change.issue_key,
-                            extracted_from=extraction_source,
-                            match_type="different_repo",
-                            found_in_repo=found_repo.full_name if found_repo else "unknown",
-                            issue_url=issue.url,
-                            potential_reasons={
-                                PartialIssueReason.REPO_CONFIG_MISMATCH,
-                                PartialIssueReason.WRONG_ISSUE_REPOS
-                            }
-                        )
-                        partial_matches.append(partial)
+                        elif issue.repo_id not in expected_repo_ids:
+                            found_repo = db.get_repository_by_id(issue.repo_id)
+                            extraction_source = _get_extraction_source(change)
+                            partial = PartialIssueMatch(
+                                issue_key=change.issue_key,
+                                extracted_from=extraction_source,
+                                match_type="different_repo",
+                                found_in_repo=found_repo.full_name if found_repo else "unknown",
+                                issue_url=issue.url,
+                                potential_reasons={
+                                    PartialIssueReason.REPO_CONFIG_MISMATCH,
+                                    PartialIssueReason.WRONG_ISSUE_REPOS
+                                }
+                            )
+                            partial_matches.append(partial)
 
-                        if debug:
-                            console.print(f"\n[yellow]⚠️  Issue {change.issue_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
+                            if debug:
+                                console.print(f"\n[yellow]⚠️  Issue {change.issue_key} in different repo: {found_repo.full_name if found_repo else 'unknown'}[/yellow]")
 
-                    else:
-                        # Found in correct repo - mark as resolved
-                        resolved_issue_keys.add(change.issue_key)
-                        if debug:
-                            console.print(f"\n[dim]📋 Found issue in DB: #{issue.number} - {issue.title}[/dim]")
+                        else:
+                            resolved_issue_keys.add(change.issue_key)
+                            if debug:
+                                console.print(f"\n[dim]📋 Found issue in DB: #{issue.number} - {issue.title}[/dim]")
 
-                    change.issue = issue
+                        change.issue = issue
 
-            # Apply partial issue policy (with resolved/unresolved tracking)
-            _handle_partial_issues(partial_matches, resolved_issue_keys, config, debug)
+                # Apply partial issue policy
+                _handle_partial_issues(partial_matches, resolved_issue_keys, config, debug)
 
-            # Check for inter-release duplicate issues
-            consolidated_changes = _check_inter_release_duplicates(
-                consolidated_changes,
-                target_version,
-                db,
-                repo_id,
-                config,
-                debug
-            )
+                # Check for inter-release duplicate issues
+                consolidated_changes = _check_inter_release_duplicates(
+                    consolidated_changes,
+                    target_version,
+                    db,
+                    repo_id,
+                    config,
+                    debug
+                )
 
-            # Filter by inclusion policy
-            consolidated_changes = _filter_by_inclusion_policy(
-                consolidated_changes,
-                config,
-                debug
-            )
+                # Filter by inclusion policy
+                consolidated_changes = _filter_by_inclusion_policy(
+                    consolidated_changes,
+                    config,
+                    debug
+                )
 
-            # Generate release notes
-            note_generator = ReleaseNoteGenerator(config)
-            release_notes = []
-            for change in consolidated_changes:
-                note = note_generator.create_release_note(change, change.issue)
-                release_notes.append(note)
+                # Generate release notes
+                note_generator = ReleaseNoteGenerator(config)
+                release_notes = []
+                for change in consolidated_changes:
+                    note = note_generator.create_release_note(change, change.issue)
+                    release_notes.append(note)
 
-            # Group and format
-            grouped_notes = note_generator.group_by_category(release_notes)
+                # Group and format
+                grouped_notes = note_generator.group_by_category(release_notes)
+
+                return grouped_notes, comparison_version, commits
+
+            # Parse explicit from_version if provided
+            explicit_from_ver = SemanticVersion.parse(from_version) if from_version else None
+
+            # Group templates by their release_version_policy to optimize note generation
+            # Templates with the same policy can share the same generated notes
+            from collections import defaultdict
+            templates_by_policy = defaultdict(list)
+
+            if config.output.pr_code.templates:
+                for idx, template_config in enumerate(config.output.pr_code.templates):
+                    templates_by_policy[template_config.release_version_policy].append((idx, template_config))
+
+            # Generate notes for each unique policy
+            notes_by_policy = {}
+            for policy, template_list in templates_by_policy.items():
+                console.print(f"\n[bold cyan]Generating notes with policy: {policy}[/bold cyan]")
+                grouped_notes, comparison_version, commits = generate_notes_for_policy(policy, explicit_from_ver)
+                notes_by_policy[policy] = {
+                    'grouped_notes': grouped_notes,
+                    'comparison_version': comparison_version,
+                    'commits': commits,
+                    'templates': template_list
+                }
+
+            # For GitHub releases (no pr_code templates), use standard comparison
+            if not config.output.pr_code.templates:
+                console.print(f"\n[bold cyan]Generating notes for GitHub release[/bold cyan]")
+                # Use standard comparison for GitHub releases
+                grouped_notes, comparison_version, commits = generate_notes_for_policy("include-rcs", explicit_from_ver)
 
             # Format output based on format option
             if format == 'json':
                 import json
+                # For JSON format, use the first policy's notes (or standard if no templates)
+                if config.output.pr_code.templates:
+                    first_policy = list(notes_by_policy.keys())[0]
+                    policy_data = notes_by_policy[first_policy]
+                    grouped_notes = policy_data['grouped_notes']
+                    comparison_version = policy_data['comparison_version']
+                    commits = policy_data['commits']
+                else:
+                    # grouped_notes, comparison_version, commits already set above
+                    pass
+
                 # Convert to JSON
                 json_output = {
                     'version': version,
                     'from_version': comparison_version.to_string() if comparison_version else None,
                     'num_commits': len(commits),
-                    'num_changes': len(consolidated_changes),
                     'categories': {}
                 }
                 for category, notes in grouped_notes.items():
@@ -666,9 +705,6 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 formatted_output = json.dumps(json_output, indent=2)
                 doc_formatted_output = None
             else:
-                # Determine output paths from pr_code templates or explicit output
-                output_paths = []
-
                 # Build template context for path rendering
                 template_context = {
                     'code_repo': repo_name.replace('/', '-'),
@@ -679,78 +715,135 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     'patch': str(target_version.patch),
                 }
 
-                # If explicit output provided, use that as single output
+                formatted_outputs = []
+
+                # If explicit output provided, use the first policy's notes (or standard if no templates)
                 if output:
-                    output_paths.append(output)
-                # Otherwise, generate paths from pr_code templates
+                    if config.output.pr_code.templates:
+                        first_policy = list(notes_by_policy.keys())[0]
+                        policy_data = notes_by_policy[first_policy]
+                        grouped_notes = policy_data['grouped_notes']
+                    else:
+                        # grouped_notes already set from standard comparison above
+                        pass
+
+                    note_generator = ReleaseNoteGenerator(config)
+                    result = note_generator.format_markdown(
+                        grouped_notes,
+                        version,
+                        output_paths=[output]
+                    )
+
+                    if isinstance(result, list):
+                        for item in result:
+                            if isinstance(item, tuple):
+                                content, path = item
+                                formatted_outputs.append({'content': content, 'path': path})
+                            else:
+                                formatted_outputs.append({'content': item, 'path': output})
+                    else:
+                        formatted_outputs.append({'content': result, 'path': output})
+
+                # Process each pr_code template with its own policy's notes
                 elif config.output.pr_code.templates:
-                    for template_config in config.output.pr_code.templates:
-                        # Handle documentation_release_version_policy for RC versions
-                        doc_policy = config.release_notes.documentation_release_version_policy
+                    for idx, template_config in enumerate(config.output.pr_code.templates):
+                        template_policy = template_config.release_version_policy
                         path_context = template_context.copy()
 
-                        if not target_version.is_final() and doc_policy == "include-rcs":
-                            # Include RC suffix in doc filename for 'include-rcs' mode
+                        # Adjust version in path for include-rcs mode
+                        if not target_version.is_final() and template_policy == "include-rcs":
                             path_context['version'] = version
-                        # For 'final-only' mode, version stays as major.minor.patch (already set)
 
+                        # Get grouped_notes for this template's policy
+                        policy_data = notes_by_policy[template_policy]
+                        grouped_notes = policy_data['grouped_notes']
+
+                        # Render output path
                         try:
                             output_path = render_template(template_config.output_path, path_context)
-                            output_paths.append(output_path)
                         except TemplateError as e:
                             console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
                             sys.exit(1)
 
+                        # Format markdown for this template using its policy's notes
+                        note_generator = ReleaseNoteGenerator(config)
+                        result = note_generator.format_markdown(
+                            grouped_notes,
+                            version,
+                            output_paths=[output_path]
+                        )
+
+                        if isinstance(result, list) and len(result) > 0:
+                            item = result[0]
+                            if isinstance(item, tuple):
+                                content, _ = item
+                                formatted_outputs.append({'content': content, 'path': output_path})
+                            else:
+                                formatted_outputs.append({'content': item, 'path': output_path})
+                        else:
+                            formatted_outputs.append({'content': result, 'path': output_path})
+
                     # ALWAYS write draft file in addition to pr_code templates
-                    # This allows release-bot and other tools to find the generated files
+                    # Use the first template's policy for draft file
                     try:
                         draft_context = template_context.copy()
                         draft_context['output_file_type'] = 'release'
                         draft_path = render_template(config.output.draft_output_path, draft_context)
-                        output_paths.append(draft_path)
+
+                        # Use first template's policy notes for draft
+                        first_policy = list(notes_by_policy.keys())[0]
+                        policy_data = notes_by_policy[first_policy]
+                        draft_grouped_notes = policy_data['grouped_notes']
+
+                        note_generator = ReleaseNoteGenerator(config)
+                        draft_result = note_generator.format_markdown(
+                            draft_grouped_notes,
+                            version,
+                            output_paths=[draft_path]
+                        )
+
+                        if isinstance(draft_result, list) and len(draft_result) > 0:
+                            item = draft_result[0]
+                            if isinstance(item, tuple):
+                                content, _ = item
+                                formatted_outputs.append({'content': content, 'path': draft_path})
+                            else:
+                                formatted_outputs.append({'content': item, 'path': draft_path})
+                        else:
+                            formatted_outputs.append({'content': draft_result, 'path': draft_path})
+
                     except TemplateError as e:
                         console.print(f"[red]Error rendering draft_output_path: {e}[/red]")
                         sys.exit(1)
 
                 # Backward compatibility: support old doc_output_path config
                 elif config.release_notes.doc_output_template:
-                    # Old config with doc_output_template but no pr_code templates
-                    # Use draft_output_path as fallback
                     console.print("[yellow]Warning: doc_output_template is deprecated. Please migrate to pr_code.templates[/yellow]")
-                    output_paths.append(None)  # Will use default behavior
+                    note_generator = ReleaseNoteGenerator(config)
+                    result = note_generator.format_markdown(
+                        grouped_notes,
+                        version,
+                        output_paths=[None]
+                    )
+                    if isinstance(result, list):
+                        for item in result:
+                            formatted_outputs.append({'content': item, 'path': None})
+                    else:
+                        formatted_outputs.append({'content': result, 'path': None})
+
                 else:
-                    # No templates configured, use default draft path
-                    output_paths.append(None)
-
-                # Format markdown with new pr_code templates system
-                result = note_generator.format_markdown(
-                    grouped_notes,
-                    version,
-                    output_paths=output_paths
-                )
-
-                # Handle different return formats
-                # New format: list of tuples [(content, path), ...] or single content string
-                # Old format: tuple (release_notes, doc_notes) or single string
-                formatted_outputs = []
-
-                if isinstance(result, list):
-                    # New format: list of tuples
-                    for item in result:
-                        if isinstance(item, tuple):
-                            content, path = item
-                            formatted_outputs.append({'content': content, 'path': path})
-                        else:
-                            formatted_outputs.append({'content': item, 'path': output_paths[0] if output_paths else None})
-                elif isinstance(result, tuple):
-                    # Old format: (release_notes, doc_notes)
-                    release_notes, doc_notes = result
-                    formatted_outputs.append({'content': release_notes, 'path': output_paths[0] if output_paths else None})
-                    if doc_notes:
-                        formatted_outputs.append({'content': doc_notes, 'path': output_paths[1] if len(output_paths) > 1 else None})
-                else:
-                    # Single string
-                    formatted_outputs.append({'content': result, 'path': output_paths[0] if output_paths else None})
+                    # No templates configured, just format with standard notes
+                    note_generator = ReleaseNoteGenerator(config)
+                    result = note_generator.format_markdown(
+                        grouped_notes,
+                        version,
+                        output_paths=[None]
+                    )
+                    if isinstance(result, list):
+                        for item in result:
+                            formatted_outputs.append({'content': item, 'path': None})
+                    else:
+                        formatted_outputs.append({'content': result, 'path': None})
 
                 # Backward compatibility variables for old code
                 formatted_output = formatted_outputs[0]['content'] if formatted_outputs else ""

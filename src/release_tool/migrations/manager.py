@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.6"  # Latest config version
+    CURRENT_VERSION = "1.7"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -258,6 +258,16 @@ class MigrationManager:
                 "  • Supports multiple output files from single release generation\n"
                 "  • Same Jinja2 variables and functions available in templates\n"
                 "  • Automatic config migration preserves your doc template settings"
+            ),
+            ("1.6", "1.7"): (
+                "Version 1.7 moves version policy to templates:\n"
+                "  • Moved documentation_release_version_policy from [release_notes] to [[pr_code.templates]]\n"
+                "  • Renamed documentation_release_version_policy → release_version_policy\n"
+                "  • Each pr_code template now has its own release_version_policy setting\n"
+                "  • Controls RC version comparison (final-only vs include-rcs) per template\n"
+                "  • GitHub releases always use standard version comparison (unaffected)\n"
+                "  • Default value: 'final-only' (same behavior as before)\n"
+                "  • Automatic config migration preserves your policy setting"
             ),
         }
 

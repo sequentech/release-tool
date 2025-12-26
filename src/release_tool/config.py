@@ -158,6 +158,14 @@ class PRCodeTemplateConfig(BaseModel):
     output_path: str = Field(
         description="File path template for output (supports {{version}}, {{major}}, {{minor}}, {{patch}} placeholders)"
     )
+    release_version_policy: Literal["final-only", "include-rcs"] = Field(
+        default="final-only",
+        description="Policy for documentation file generation with release candidates. "
+                    "'final-only': RC documentation files use final version name (e.g., 11.0.0.md for 11.0.0-rc.1) "
+                    "and content compares against previous final version. "
+                    "'include-rcs': RC documentation files include RC suffix (e.g., 11.0.0-rc.1.md) "
+                    "and use standard version comparison. Only affects output_path in this template."
+    )
 
 
 class PRCodeConfig(BaseModel):
@@ -355,14 +363,6 @@ class ReleaseNoteConfig(BaseModel):
                     "Available variables: version, title, categories, all_notes, render_entry, "
                     "render_release_notes (function to render release_output_template). "
                     "Example: '---\\nid: release-{{version}}\\ntitle: {{title}}\\n---\\n{{ render_release_notes() }}'"
-    )
-    documentation_release_version_policy: Literal["final-only", "include-rcs"] = Field(
-        default="final-only",
-        description="Policy for documentation file generation with release candidates. "
-                    "'final-only': RC documentation files use final version name (e.g., 11.0.0.md for 11.0.0-rc.1) "
-                    "and content compares against previous final version. "
-                    "'include-rcs': RC documentation files include RC suffix (e.g., 11.0.0-rc.1.md) "
-                    "and use standard version comparison. Only affects doc_output_path, not release_output_path."
     )
 
 

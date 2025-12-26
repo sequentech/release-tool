@@ -474,14 +474,14 @@ def find_comparison_version_for_docs(
     """
     Find the appropriate version to compare against for documentation generation.
 
-    This function implements the documentation_release_version_policy behavior:
+    This function implements the release_version_policy behavior (per pr_code template):
     - 'final-only': RCs compare against previous final version (not other RCs)
     - 'include-rcs': Uses standard comparison logic
 
     Args:
         target_version: The version being generated
         available_versions: List of available versions
-        policy: Documentation release version policy ('final-only' or 'include-rcs')
+        policy: Release version policy ('final-only' or 'include-rcs')
 
     Returns:
         Version to compare against, or None if no suitable version found
