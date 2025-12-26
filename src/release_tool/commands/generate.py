@@ -670,6 +670,18 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     'templates': template_list
                 }
 
+            # Ensure INCLUDE_RCS notes are generated for draft file (GitHub releases)
+            # if not already present from pr_code templates
+            if config.output.pr_code.templates and ReleaseVersionPolicy.INCLUDE_RCS not in notes_by_policy:
+                console.print(f"\n[bold cyan]Generating notes with policy: {ReleaseVersionPolicy.INCLUDE_RCS} (for draft file)[/bold cyan]")
+                grouped_notes, comparison_version, commits = generate_notes_for_policy(ReleaseVersionPolicy.INCLUDE_RCS, explicit_from_ver)
+                notes_by_policy[ReleaseVersionPolicy.INCLUDE_RCS] = {
+                    'grouped_notes': grouped_notes,
+                    'comparison_version': comparison_version,
+                    'commits': commits,
+                    'templates': []
+                }
+
             # For GitHub releases (no pr_code templates), use standard comparison
             if not config.output.pr_code.templates:
                 console.print(f"\n[bold cyan]Generating notes for GitHub release[/bold cyan]")
@@ -793,15 +805,14 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
                     # ALWAYS write draft file in addition to pr_code templates
                     # Draft file uses DEFAULT_RELEASE_NOTES_TEMPLATE for GitHub releases
-                    # Use the first template's policy for draft file
+                    # Use INCLUDE_RCS policy for draft file (matching behavior when no pr_code templates)
                     try:
                         draft_context = template_context.copy()
                         draft_context['output_file_type'] = 'release'
                         draft_path = render_template(config.output.draft_output_path, draft_context)
 
-                        # Use first template's policy notes for draft
-                        first_policy = list(notes_by_policy.keys())[0]
-                        policy_data = notes_by_policy[first_policy]
+                        # Use INCLUDE_RCS policy notes for draft (for GitHub releases)
+                        policy_data = notes_by_policy[ReleaseVersionPolicy.INCLUDE_RCS]
                         draft_grouped_notes = policy_data['grouped_notes']
 
                         # Initialize media downloader if enabled
