@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 from git import Repo, Commit as GitCommit
-from .models import Commit, SemanticVersion
+from .models import Commit, SemanticVersion, VersionType
 from .template_utils import render_template, TemplateError
 from .config import ReleaseVersionPolicy
 
@@ -509,7 +509,7 @@ def find_comparison_version_for_docs(
 
     # For 'final-only' mode:
     # Both RCs and final versions compare against previous final version
-    if target_type == target_version.get_type().RELEASE_CANDIDATE or target_version.is_final():
+    if target_type == VersionType.RELEASE_CANDIDATE or target_version.is_final():
         # Find the previous final version
         final_versions = [v for v in earlier_versions if v.is_final()]
         if final_versions:
