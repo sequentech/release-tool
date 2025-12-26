@@ -28,6 +28,64 @@ class IssueExtractionStrategy(str, Enum):
     PR_TITLE = "pr_title"
 
 
+class ReleaseVersionPolicy(str, Enum):
+    """Release version policy for documentation generation."""
+    FINAL_ONLY = "final-only"
+    INCLUDE_RCS = "include-rcs"
+
+
+class CloneMethod(str, Enum):
+    """Repository clone method."""
+    HTTPS = "https"
+    SSH = "ssh"
+    AUTO = "auto"
+
+
+class ReleaseMode(str, Enum):
+    """GitHub release mode."""
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
+class PrereleaseMode(str, Enum):
+    """Prerelease detection mode."""
+    AUTO = "auto"
+
+
+class InclusionType(str, Enum):
+    """Release notes inclusion types."""
+    ISSUES = "issues"
+    PULL_REQUESTS = "pull-requests"
+    COMMITS = "commits"
+
+
+class DetectMode(str, Enum):
+    """Version detection mode."""
+    ALL = "all"
+    PUBLISHED = "published"
+
+
+class OutputFormat(str, Enum):
+    """Output format for release notes."""
+    MARKDOWN = "markdown"
+    JSON = "json"
+
+
+class VersionBumpType(str, Enum):
+    """Version bump type."""
+    MAJOR = "major"
+    MINOR = "minor"
+    PATCH = "patch"
+    RC = "rc"
+
+
+class ForceMode(str, Enum):
+    """Force mode for overwriting releases."""
+    NONE = "none"
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
 class IssuePattern(BaseModel):
     """A issue extraction pattern with its associated strategy."""
     order: int
@@ -158,8 +216,8 @@ class PRCodeTemplateConfig(BaseModel):
     output_path: str = Field(
         description="File path template for output (supports {{version}}, {{major}}, {{minor}}, {{patch}} placeholders)"
     )
-    release_version_policy: Literal["final-only", "include-rcs"] = Field(
-        default="final-only",
+    release_version_policy: ReleaseVersionPolicy = Field(
+        default=ReleaseVersionPolicy.FINAL_ONLY,
         description="Policy for documentation file generation with release candidates. "
                     "'final-only': RC documentation files use final version name (e.g., 11.0.0.md for 11.0.0-rc.1) "
                     "and content compares against previous final version. "
@@ -241,22 +299,10 @@ class IssuePolicyConfig(BaseModel):
         default=r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)',
         description="Regex to extract migration notes from issue body"
     )
-    release_notes_inclusion_policy: List[str] = Field(
-        default_factory=lambda: ["issues", "pull-requests"],
+    release_notes_inclusion_policy: List[InclusionType] = Field(
+        default_factory=lambda: [InclusionType.ISSUES, InclusionType.PULL_REQUESTS],
         description="Types of changes to include in release notes: 'issues', 'pull-requests', 'commits'"
     )
-
-    @model_validator(mode='after')
-    def validate_inclusion_policy(self):
-        """Validate release_notes_inclusion_policy values."""
-        valid_values = {"issues", "pull-requests", "commits"}
-        for value in self.release_notes_inclusion_policy:
-            if value not in valid_values:
-                raise ValueError(
-                    f"Invalid value in release_notes_inclusion_policy: '{value}'. "
-                    f"Must be one of {valid_values}"
-                )
-        return self
 
 
 class VersionPolicyConfig(BaseModel):
@@ -384,8 +430,8 @@ class PullConfig(BaseModel):
         default=None,
         description="Local path to clone code repository. Defaults to .release_tool_cache/{repo_name}"
     )
-    clone_method: Literal["https", "ssh", "auto"] = Field(
-        default="auto",
+    clone_method: CloneMethod = Field(
+        default=CloneMethod.AUTO,
         description="Method for cloning repositories: 'https' (with token), 'ssh' (git@github.com), or 'auto' (try https first, fallback to ssh)"
     )
     clone_url_template: Optional[str] = Field(
@@ -459,12 +505,12 @@ class OutputConfig(BaseModel):
         default=False,
         description="Whether to create a PR with release notes"
     )
-    release_mode: Literal["draft", "published"] = Field(
-        default="draft",
+    release_mode: ReleaseMode = Field(
+        default=ReleaseMode.DRAFT,
         description="Default release mode: 'draft' or 'published'"
     )
-    prerelease: Union[bool, Literal["auto"]] = Field(
-        default="auto",
+    prerelease: Union[bool, PrereleaseMode] = Field(
+        default=PrereleaseMode.AUTO,
         description="Mark GitHub releases as prereleases. Options: 'auto' (detect from version), true, false"
     )
     create_issue: bool = Field(

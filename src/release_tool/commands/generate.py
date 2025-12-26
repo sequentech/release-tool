@@ -8,7 +8,7 @@ from typing import Optional, List, Set
 from collections import defaultdict
 from rich.console import Console
 
-from ..config import Config, PolicyAction
+from ..config import Config, PolicyAction, DetectMode, OutputFormat, VersionBumpType, InclusionType, ReleaseVersionPolicy
 from ..db import Database
 from ..github_utils import GitHubClient
 from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy, find_comparison_version, find_comparison_version_for_docs
@@ -43,9 +43,9 @@ def _get_issues_repo(config: Config) -> str:
 @click.option('--repo-path', type=click.Path(exists=True), help='Path to local git repository (defaults to pulled repo)')
 @click.option('--output', '-o', type=click.Path(), help='Output file for release notes')
 @click.option('--dry-run', is_flag=True, help='Show what would be generated without creating files')
-@click.option('--new', type=click.Choice(['major', 'minor', 'patch', 'rc'], case_sensitive=False), help='Auto-bump version')
-@click.option('--detect-mode', type=click.Choice(['all', 'published'], case_sensitive=False), default='published', help='Detection mode for existing releases (default: published)')
-@click.option('--format', type=click.Choice(['markdown', 'json'], case_sensitive=False), default='markdown', help='Output format (default: markdown)')
+@click.option('--new', type=click.Choice([e.value for e in VersionBumpType], case_sensitive=False), help='Auto-bump version')
+@click.option('--detect-mode', type=click.Choice([e.value for e in DetectMode], case_sensitive=False), default=DetectMode.PUBLISHED.value, help='Detection mode for existing releases (default: published)')
+@click.option('--format', type=click.Choice([e.value for e in OutputFormat], case_sensitive=False), default=OutputFormat.MARKDOWN.value, help='Output format (default: markdown)')
 @click.pass_context
 def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path: Optional[str],
              output: Optional[str], dry_run: bool, new: Optional[str], detect_mode: str,
@@ -75,6 +75,10 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
     """
     # Get debug flag from global context
     debug = ctx.obj.get('debug', False)
+
+    # Convert string parameters to Enums for type safety
+    detect_mode_enum = DetectMode(detect_mode)
+    format_enum = OutputFormat(format)
 
     if not version and not new:
         console.print("[red]Error: VERSION argument or --new option is required[/red]")
@@ -209,7 +213,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 # Step 2: Optionally check git tags (only if repo exists locally)
                 # Only check git if detect_mode is 'all' or if we failed to check DB
                 # If detect_mode is 'published', we should rely on DB because git tags don't have draft status
-                if (detect_mode == 'all' or not checked_db):
+                if (detect_mode_enum == DetectMode.ALL or not checked_db):
                     try:
                         repo_path = cfg.get_code_repo_path()
                         from pathlib import Path
@@ -323,7 +327,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 latest_tag = None
                 for tag in all_tags:
                     # Check if this tag is a draft in DB if detect_mode is published
-                    if detect_mode == 'published':
+                    if detect_mode_enum == DetectMode.PUBLISHED:
                         release = db.get_release(repo_id, tag.to_string())
                         if release and release.is_draft:
                             continue
@@ -374,7 +378,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                                 v.patch == base_version.patch and
                                 v.prerelease and v.prerelease.startswith('rc.')):
                                 
-                                if detect_mode == 'published':
+                                if detect_mode_enum == DetectMode.PUBLISHED:
                                     release = db.get_release(repo_id, v.to_string())
                                     if release and release.is_draft:
                                         continue
@@ -457,7 +461,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     # Calculate from_ver respecting detect_mode
                     available_versions = git_ops.get_version_tags()
 
-                    if detect_mode == 'published':
+                    if detect_mode_enum == DetectMode.PUBLISHED:
                         # Filter out drafts
                         filtered_versions = []
                         for v in available_versions:
@@ -466,7 +470,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                                 continue
                             filtered_versions.append(v)
                         available_versions = filtered_versions
-                    elif detect_mode == 'all':
+                    elif detect_mode_enum == DetectMode.ALL:
                         # Add releases from DB that might be missing from local tags
                         try:
                             db_releases = db.get_all_releases(repo_id)
@@ -672,7 +676,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 grouped_notes, comparison_version, commits = generate_notes_for_policy("include-rcs", explicit_from_ver)
 
             # Format output based on format option
-            if format == 'json':
+            if format_enum == OutputFormat.JSON:
                 import json
                 # For JSON format, use the first policy's notes (or standard if no templates)
                 if config.output.pr_code.templates:
@@ -751,7 +755,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         path_context = template_context.copy()
 
                         # Adjust version in path for include-rcs mode
-                        if not target_version.is_final() and template_policy == "include-rcs":
+                        if not target_version.is_final() and template_policy == ReleaseVersionPolicy.INCLUDE_RCS:
                             path_context['version'] = version
 
                         # Get grouped_notes for this template's policy
@@ -1092,11 +1096,11 @@ def _filter_by_inclusion_policy(
         include = False
 
         # Check if change type is in policy
-        if change.type == "issue" and "issues" in policy:
+        if change.type == "issue" and InclusionType.ISSUES in policy:
             include = True
-        elif change.type == "pr" and "pull-requests" in policy:
+        elif change.type == "pr" and InclusionType.PULL_REQUESTS in policy:
             include = True
-        elif change.type == "commit" and "commits" in policy:
+        elif change.type == "commit" and InclusionType.COMMITS in policy:
             include = True
 
         if include:

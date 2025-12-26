@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 from git import Repo, Commit as GitCommit
 from .models import Commit, SemanticVersion
 from .template_utils import render_template, TemplateError
+from .config import ReleaseVersionPolicy
 
 
 class GitOperations:
@@ -469,7 +470,7 @@ def find_comparison_version(
 def find_comparison_version_for_docs(
     target_version: SemanticVersion,
     available_versions: List[SemanticVersion],
-    policy: str = "final-only"
+    policy: ReleaseVersionPolicy = ReleaseVersionPolicy.FINAL_ONLY
 ) -> Optional[SemanticVersion]:
     """
     Find the appropriate version to compare against for documentation generation.
@@ -503,7 +504,7 @@ def find_comparison_version_for_docs(
     earlier_versions = sorted(earlier_versions, reverse=True)
 
     # For 'include-rcs' mode, use standard comparison logic
-    if policy == "include-rcs":
+    if policy == ReleaseVersionPolicy.INCLUDE_RCS:
         return find_comparison_version(target_version, available_versions)
 
     # For 'final-only' mode:
