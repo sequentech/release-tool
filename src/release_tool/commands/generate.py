@@ -453,7 +453,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 console.print(f"[yellow]→ Branch creation disabled in config[/yellow]")
 
             # Helper function to generate notes for a specific comparison policy
-            def generate_notes_for_policy(policy: str, explicit_from_ver: Optional[SemanticVersion] = None):
+            def generate_notes_for_policy(policy: ReleaseVersionPolicy, explicit_from_ver: Optional[SemanticVersion] = None):
                 """Generate release notes using the specified version comparison policy."""
                 # Determine comparison version
                 from_ver = explicit_from_ver
@@ -686,7 +686,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             if not config.output.pr_code.templates:
                 console.print(f"\n[bold cyan]Generating notes for GitHub release[/bold cyan]")
                 # Use standard comparison for GitHub releases
-                grouped_notes, comparison_version, commits = generate_notes_for_policy("include-rcs", explicit_from_ver)
+                grouped_notes, comparison_version, commits = generate_notes_for_policy(ReleaseVersionPolicy.INCLUDE_RCS, explicit_from_ver)
 
             # Format output based on format option
             if format_enum == OutputFormat.JSON:
