@@ -22,6 +22,7 @@ from ..policies import (
     PartialIssueMatch,
     PartialIssueReason
 )
+from ..media_utils import MediaDownloader
 
 console = Console()
 
@@ -750,6 +751,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
                 # Process each pr_code template with its own policy's notes
                 elif config.output.pr_code.templates:
+                    note_generator = ReleaseNoteGenerator(config)
+
                     for idx, template_config in enumerate(config.output.pr_code.templates):
                         template_policy = template_config.release_version_policy
                         path_context = template_context.copy()
@@ -769,25 +772,27 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                             console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
                             sys.exit(1)
 
-                        # Format markdown for this template using its policy's notes
-                        note_generator = ReleaseNoteGenerator(config)
-                        result = note_generator.format_markdown(
+                        # Initialize media downloader if enabled
+                        media_downloader = None
+                        if config.output.download_media and output_path:
+                            media_downloader = MediaDownloader(
+                                config.output.assets_path,
+                                download_enabled=True
+                            )
+
+                        # Format using pr_code template directly
+                        content = note_generator._format_with_pr_code_template(
+                            template_config.output_template,
                             grouped_notes,
                             version,
-                            output_paths=[output_path]
+                            output_path,
+                            media_downloader
                         )
 
-                        if isinstance(result, list) and len(result) > 0:
-                            item = result[0]
-                            if isinstance(item, tuple):
-                                content, _ = item
-                                formatted_outputs.append({'content': content, 'path': output_path})
-                            else:
-                                formatted_outputs.append({'content': item, 'path': output_path})
-                        else:
-                            formatted_outputs.append({'content': result, 'path': output_path})
+                        formatted_outputs.append({'content': content, 'path': output_path})
 
                     # ALWAYS write draft file in addition to pr_code templates
+                    # Draft file uses DEFAULT_RELEASE_NOTES_TEMPLATE for GitHub releases
                     # Use the first template's policy for draft file
                     try:
                         draft_context = template_context.copy()
@@ -799,22 +804,23 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         policy_data = notes_by_policy[first_policy]
                         draft_grouped_notes = policy_data['grouped_notes']
 
-                        note_generator = ReleaseNoteGenerator(config)
-                        draft_result = note_generator.format_markdown(
+                        # Initialize media downloader if enabled
+                        draft_media_downloader = None
+                        if config.output.download_media and draft_path:
+                            draft_media_downloader = MediaDownloader(
+                                config.output.assets_path,
+                                download_enabled=True
+                            )
+
+                        # Format using DEFAULT_RELEASE_NOTES_TEMPLATE directly (for GitHub releases)
+                        draft_content = note_generator._format_with_master_template(
                             draft_grouped_notes,
                             version,
-                            output_paths=[draft_path]
+                            draft_path,
+                            draft_media_downloader
                         )
 
-                        if isinstance(draft_result, list) and len(draft_result) > 0:
-                            item = draft_result[0]
-                            if isinstance(item, tuple):
-                                content, _ = item
-                                formatted_outputs.append({'content': content, 'path': draft_path})
-                            else:
-                                formatted_outputs.append({'content': item, 'path': draft_path})
-                        else:
-                            formatted_outputs.append({'content': draft_result, 'path': draft_path})
+                        formatted_outputs.append({'content': draft_content, 'path': draft_path})
 
                     except TemplateError as e:
                         console.print(f"[red]Error rendering draft_output_path: {e}[/red]")
