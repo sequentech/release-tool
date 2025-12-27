@@ -370,7 +370,14 @@ class TestE2EGenerateEdgeCases:
 
         config_dict = create_test_config(
             code_repo="test/repo",
-            pr_code_templates=[pr_code_template]
+            pr_code_templates=[pr_code_template],
+            database={"path": db.db_path},
+            branch_policy={
+                "create_branches": False,
+                "default_branch": "main",
+                "release_branch_template": "main",
+                "branch_from_previous_release": False
+            }
         )
 
         config = Config.from_dict(config_dict)
@@ -420,7 +427,14 @@ class TestE2EGenerateEdgeCases:
 
         config_dict = create_test_config(
             code_repo="test/repo",
-            pr_code_templates=[pr_code_template]
+            pr_code_templates=[pr_code_template],
+            database={"path": db.db_path},
+            branch_policy={
+                "create_branches": False,
+                "default_branch": "main",
+                "release_branch_template": "main",
+                "branch_from_previous_release": False
+            }
         )
 
         config = Config.from_dict(config_dict)
