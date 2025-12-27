@@ -4,7 +4,7 @@
 
 """Helper functions for creating test configurations."""
 
-import toml
+import tomli_w
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -130,5 +130,5 @@ def write_config_file(path: Path, config_dict: Dict[str, Any]) -> None:
         config_dict: Configuration dictionary
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w') as f:
-        toml.dump(config_dict, f)
+    with open(path, 'wb') as f:
+        tomli_w.dump(config_dict, f)
