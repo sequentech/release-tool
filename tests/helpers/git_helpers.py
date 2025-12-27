@@ -34,6 +34,19 @@ def init_git_repo(path: Path) -> Repo:
         # Disable GPG signing for tags and commits in test repos
         config.set_value('tag', 'gpgSign', 'false')
         config.set_value('commit', 'gpgSign', 'false')
+        # Set initial branch name to 'main' for consistency across git versions
+        config.set_value('init', 'defaultBranch', 'main')
+
+    # Create initial commit to establish the 'main' branch
+    # (branch doesn't exist until first commit)
+    initial_file = path / '.gitkeep'
+    initial_file.write_text('')
+    repo.index.add(['.gitkeep'])
+    repo.index.commit('Initial commit')
+
+    # Ensure we're on 'main' branch (rename if needed)
+    if repo.active_branch.name != 'main':
+        repo.active_branch.rename('main')
 
     return repo
 
@@ -247,9 +260,8 @@ class GitScenario:
             'branches': []
         }
 
-        # Initial commit
-        self.add_commit("Initial commit")
-        self.advance_time(days=1)
+        # Note: Initial commit already created by init_git_repo()
+        # Skip creating another one to avoid duplication
 
         # v1.0.0 release (2 PRs)
         pr1 = 101
