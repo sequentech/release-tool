@@ -2210,6 +2210,180 @@ class GitHubClient:
             console.print(f"[red]Error closing issue #{issue_number}: {e}[/red]")
             return False
 
+    def close_pull_request(
+        self,
+        repo_full_name: str,
+        pr_number: int,
+        comment: Optional[str] = None
+    ) -> bool:
+        """
+        Close a pull request.
+
+        This method is idempotent - if the PR is already closed, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            pr_number: PR number to close
+            comment: Optional comment to add before closing
+
+        Returns:
+            True if successful (or already closed), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            pr = repo.get_pull(pr_number)
+
+            # Check if already closed or merged (idempotent)
+            if pr.state == "closed":
+                console.print(f"[dim]PR #{pr_number} is already closed, skipping[/dim]")
+                return True
+
+            # Add comment if provided
+            if comment:
+                pr.create_issue_comment(comment)
+
+            # Close the PR
+            pr.edit(state="closed")
+            console.print(f"[green]✓ Closed PR #{pr_number}: {pr.title}[/green]")
+            return True
+
+        except GithubException as e:
+            console.print(f"[red]Error closing PR #{pr_number}: {e}[/red]")
+            return False
+
+    def delete_branch(
+        self,
+        repo_full_name: str,
+        branch_name: str
+    ) -> bool:
+        """
+        Delete a branch from the remote repository.
+
+        This method is idempotent - if the branch doesn't exist, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            branch_name: Branch name to delete (without "refs/heads/" prefix)
+
+        Returns:
+            True if successful (or branch doesn't exist), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            try:
+                ref = repo.get_git_ref(f"heads/{branch_name}")
+                ref.delete()
+                console.print(f"[green]✓ Deleted branch '{branch_name}'[/green]")
+                return True
+            except GithubException as e:
+                if e.status == 404:
+                    # Branch doesn't exist - idempotent success
+                    console.print(f"[dim]Branch '{branch_name}' not found, skipping deletion[/dim]")
+                    return True
+                raise
+
+        except GithubException as e:
+            console.print(f"[red]Error deleting branch '{branch_name}': {e}[/red]")
+            return False
+
+    def delete_tag(
+        self,
+        repo_full_name: str,
+        tag_name: str
+    ) -> bool:
+        """
+        Delete a git tag from the remote repository.
+
+        This method is idempotent - if the tag doesn't exist, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            tag_name: Tag name to delete (e.g., "v1.2.3")
+
+        Returns:
+            True if successful (or tag doesn't exist), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            try:
+                # Remove "v" prefix or "refs/tags/" prefix if present
+                clean_tag = tag_name.lstrip('v')
+                if tag_name.startswith('refs/tags/'):
+                    clean_tag = tag_name.replace('refs/tags/', '')
+                elif not tag_name.startswith('v'):
+                    clean_tag = tag_name
+
+                # Try with original name first, then cleaned name
+                tag_names_to_try = [tag_name, clean_tag, f"v{clean_tag}"]
+
+                deleted = False
+                for name in tag_names_to_try:
+                    try:
+                        ref = repo.get_git_ref(f"tags/{name}")
+                        ref.delete()
+                        console.print(f"[green]✓ Deleted tag '{name}'[/green]")
+                        deleted = True
+                        break
+                    except GithubException as e:
+                        if e.status != 404:
+                            raise
+                        continue
+
+                if not deleted:
+                    # Tag doesn't exist - idempotent success
+                    console.print(f"[dim]Tag '{tag_name}' not found, skipping deletion[/dim]")
+
+                return True
+
+            except GithubException as e:
+                if e.status == 404:
+                    console.print(f"[dim]Tag '{tag_name}' not found, skipping deletion[/dim]")
+                    return True
+                raise
+
+        except GithubException as e:
+            console.print(f"[red]Error deleting tag '{tag_name}': {e}[/red]")
+            return False
+
+    def delete_release(
+        self,
+        repo_full_name: str,
+        tag_name: str
+    ) -> bool:
+        """
+        Delete a GitHub release.
+
+        This method is idempotent - if the release doesn't exist, it returns True.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            tag_name: Tag name of the release to delete (e.g., "v1.2.3")
+
+        Returns:
+            True if successful (or release doesn't exist), False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+
+            try:
+                release = repo.get_release(tag_name)
+                release_name = release.title or tag_name
+                release.delete_release()
+                console.print(f"[green]✓ Deleted GitHub release '{release_name}' ({tag_name})[/green]")
+                return True
+            except GithubException as e:
+                if e.status == 404:
+                    # Release doesn't exist - idempotent success
+                    console.print(f"[dim]Release '{tag_name}' not found, skipping deletion[/dim]")
+                    return True
+                raise
+
+        except GithubException as e:
+            console.print(f"[red]Error deleting release '{tag_name}': {e}[/red]")
+            return False
+
     def find_prs_referencing_issue(
         self,
         repo_full_name: str,

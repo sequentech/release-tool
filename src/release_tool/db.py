@@ -457,6 +457,73 @@ class Database:
 
         return prs
 
+    def find_prs_for_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Find PRs associated with an issue using best-effort search in database.
+
+        Searches for:
+        - PRs where body contains issue number references (#123)
+        - PRs where title contains issue number
+
+        Args:
+            repo_full_name: Repository full name (owner/repo)
+            issue_number: Issue number to search for
+            limit: Maximum number of results (default: 10)
+
+        Returns:
+            List of dictionaries with PR info (number, title, url, state, merged_at, head_branch)
+        """
+        # Get repo_id
+        repo = self.get_repository(repo_full_name)
+        if not repo:
+            return []
+
+        # Search for PRs containing the issue number in body or title
+        # Pattern: #123, #{issue_number}, etc.
+        import re
+
+        # Get all PRs for this repo (optimize by limiting to recent ones)
+        self.cursor.execute(
+            """SELECT number, title, body, url, state, merged_at, head_branch
+               FROM pull_requests
+               WHERE repo_id=?
+               ORDER BY merged_at DESC, number DESC
+               LIMIT ?""",
+            (repo.id, limit * 10)  # Get more than needed for filtering
+        )
+
+        rows = self.cursor.fetchall()
+        matches = []
+
+        for row in rows:
+            pr_data = dict(row)
+            body = pr_data.get('body') or ''
+            title = pr_data.get('title') or ''
+
+            # Check if issue number appears in body or title
+            # Patterns: #N, closes #N, fixes #N, resolves #N, etc.
+            pattern = rf'#\s*{issue_number}\b'
+
+            if re.search(pattern, body, re.IGNORECASE) or re.search(pattern, title, re.IGNORECASE):
+                matches.append({
+                    'number': pr_data['number'],
+                    'title': pr_data['title'],
+                    'url': pr_data['url'],
+                    'state': pr_data['state'],
+                    'merged_at': pr_data.get('merged_at'),
+                    'head_branch': pr_data.get('head_branch')
+                })
+
+                if len(matches) >= limit:
+                    break
+
+        return matches
+
     # Commit operations
     def upsert_commit(self, commit: Commit) -> None:
         """Insert or update a commit."""
