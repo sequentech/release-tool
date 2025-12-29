@@ -1217,39 +1217,84 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     branch_name = render_template(config.output.pr_templates.branch_template, template_context)
                     pr_title = render_template(config.output.pr_templates.title_template, template_context)
                     pr_body = render_template(config.output.pr_templates.body_template, template_context)
-                    
+
                     # Determine which file(s) to include in the PR
-                    # If pr_code templates are configured, use the code-0 file (first template)
+                    # If pr_code templates are configured, commit ALL code-N files to their output_path
                     additional_files = {}
+                    pr_file_path = None
+                    pr_content = None
 
                     if doc_output_enabled and config.output.pr_code.templates:
-                         # Use code-0 file if already found from auto-detection
-                         if doc_notes_path and doc_notes_content:
-                             pr_file_path = str(doc_notes_path)
-                             pr_content = doc_notes_content
-                             if debug:
-                                 console.print(f"[dim]Using auto-detected code-0 file for PR: {pr_file_path}[/dim]")
-                         else:
-                             # Render draft_output_path with code-0 for first pr_code template
-                             pr_template_context = {
-                                 'code_repo': config.repository.code_repo.replace('/', '-'),
-                                 'version': version,
-                                 'major': str(target_version.major),
-                                 'minor': str(target_version.minor),
-                                 'patch': str(target_version.patch),
-                                 'output_file_type': 'code-0'
-                             }
-                             pr_file_path = render_template(config.output.draft_output_path, pr_template_context)
-                             pr_content = release_notes  # Fallback to release notes if no code file found
-                             if debug:
-                                 console.print(f"[dim]Rendered code-0 path for PR: {pr_file_path}[/dim]")
+                        # For each pr_code template, find its draft file and map it to its output_path
+                        for idx, pr_code_template in enumerate(config.output.pr_code.templates):
+                            # Build context for rendering paths
+                            path_template_context = {
+                                'code_repo': config.repository.code_repo.replace('/', '-'),
+                                'version': version,
+                                'major': str(target_version.major),
+                                'minor': str(target_version.minor),
+                                'patch': str(target_version.patch),
+                                'output_file_type': f'code-{idx}'
+                            }
+
+                            # Determine the draft file path (where we READ from)
+                            draft_file_path = render_template(config.output.draft_output_path, path_template_context)
+
+                            # Determine the output path (where we COMMIT to)
+                            commit_file_path = render_template(pr_code_template.output_path, path_template_context)
+
+                            # Try to read content from draft file or from matching_drafts
+                            content = None
+
+                            # Check if we already have this content from auto-detection
+                            if matching_drafts:
+                                code_candidates = [d for d in matching_drafts if f"-code-{idx}" in d.stem]
+                                if code_candidates:
+                                    content = code_candidates[0].read_text()
+                                    if debug:
+                                        console.print(f"[dim]Auto-detected code-{idx} draft: {code_candidates[0]}[/dim]")
+
+                            # If not found in auto-detection, try reading from rendered draft path
+                            if not content:
+                                draft_path_obj = Path(draft_file_path)
+                                if draft_path_obj.exists():
+                                    content = draft_path_obj.read_text()
+                                    if debug:
+                                        console.print(f"[dim]Found code-{idx} draft at: {draft_file_path}[/dim]")
+
+                            # If we have content, add to PR
+                            if content:
+                                if idx == 0:
+                                    # First template becomes the primary PR file
+                                    pr_file_path = commit_file_path
+                                    pr_content = content
+                                    if debug:
+                                        console.print(f"[dim]Primary PR file (code-0):[/dim]")
+                                        console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
+                                        console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
+                                else:
+                                    # Additional templates go into additional_files
+                                    additional_files[commit_file_path] = content
+                                    if debug:
+                                        console.print(f"[dim]Additional PR file (code-{idx}):[/dim]")
+                                        console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
+                                        console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
+                            elif debug:
+                                console.print(f"[dim]No draft found for code-{idx} at {draft_file_path}[/dim]")
+
+                        # Fallback if no pr_code files found
+                        if not pr_file_path:
+                            pr_file_path = None
+                            pr_content = release_notes
+                            if debug:
+                                console.print(f"[dim]No pr_code draft files found, PR will have no file attachments[/dim]")
                     else:
                          # No templates configured - skip PR file
                          pr_file_path = None
                          pr_content = release_notes
                          if debug:
                              console.print(f"[dim]No pr_code templates configured, skipping PR file[/dim]")
-                    
+
                 except TemplateError as e:
                     console.print(f"[red]Error rendering PR template: {e}[/red]")
                     if debug:
@@ -1262,10 +1307,12 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     console.print(f"[dim]Branch name:[/dim] {branch_name}")
                     console.print(f"[dim]PR title:[/dim] {pr_title}")
                     console.print(f"[dim]Target branch:[/dim] {target_branch}")
-                    console.print(f"[dim]Primary file path:[/dim] {pr_file_path}")
+                    if pr_file_path:
+                        console.print(f"[dim]Primary file (will be committed to):[/dim] {pr_file_path}")
                     if additional_files:
+                        console.print(f"[dim]Additional files (will be committed to):[/dim]")
                         for path in additional_files:
-                            console.print(f"[dim]Additional file:[/dim] {path}")
+                            console.print(f"[dim]  - {path}[/dim]")
                     console.print(f"\n[dim]PR body:[/dim]")
                     console.print(f"[dim]{pr_body}[/dim]")
                     console.print("[dim]" + "=" * 60 + "[/dim]\n")
@@ -1275,10 +1322,12 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     console.print(f"[yellow]  Branch: {branch_name}[/yellow]")
                     console.print(f"[yellow]  Title: {pr_title}[/yellow]")
                     console.print(f"[yellow]  Target: {target_branch}[/yellow]")
-                    console.print(f"[yellow]  Primary file:[/yellow] {pr_file_path}")
+                    if pr_file_path:
+                        console.print(f"[yellow]  Primary file (will be committed to): {pr_file_path}[/yellow]")
                     if additional_files:
+                        console.print(f"[yellow]  Additional files (will be committed to):[/yellow]")
                         for path in additional_files:
-                            console.print(f"[yellow]  Additional file:[/yellow] {path}")
+                            console.print(f"[yellow]    - {path}[/yellow]")
                     console.print(f"\n[yellow]PR body:[/yellow]")
                     console.print(f"[dim]{pr_body}[/dim]\n")
                 else:

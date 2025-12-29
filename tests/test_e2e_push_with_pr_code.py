@@ -201,27 +201,29 @@ class TestE2EPushWithPrCodeTemplates:
         self, git_scenario, populated_db, mock_github_api, tmp_path
     ):
         """
-        Test that push command auto-detects correct files for different purposes.
+        Test that push command auto-detects correct files and commits to correct output_path.
 
         Verifies:
         - Release file used for GitHub release
-        - Code-0 file used for PR creation
+        - Code-0 file committed to output_path from first pr_code template
+        - Code-1 file committed to output_path from second pr_code template
+        - Each template uses its own configured output_path, not draft_output_path
         """
         # Setup: Create git history
         scenario_data = git_scenario.create_release_scenario_rc_sequence()
         repo_path = Path(git_scenario.repo.working_dir)
         db, repo_id, test_data = populated_db
 
-        # Create two pr_code templates
+        # Create two pr_code templates with DIFFERENT output_path values
         pr_code_template_0 = create_pr_code_template(
             output_template="# Code 0 Template\n\nFor PR",
-            output_path="IGNORED.md",
+            output_path="docs/releases/{{version}}-primary.md",  # Different from draft_output_path
             release_version_policy="final-only"
         )
 
         pr_code_template_1 = create_pr_code_template(
-            output_template="# Code 1 Template\n\nNot used in PR",
-            output_path="IGNORED.md",
+            output_template="# Code 1 Template\n\nSecondary file",
+            output_path="docs/changelog/{{version}}-secondary.md",  # Different from both draft and code-0
             release_version_policy="include-rcs"
         )
 
@@ -293,3 +295,22 @@ class TestE2EPushWithPrCodeTemplates:
 
         # Verify it mentions PR creation or shows PR details
         assert "Pull request" in output or "pull request" in output.lower() or "branch" in output.lower(), "Should mention PR or branch"
+
+        # CRITICAL: Verify the output paths are correct (from template config, not draft_output_path)
+        # The primary file should be committed to the output_path from template 0
+        assert "docs/releases/1.1.0-rc.4-primary.md" in output, \
+            f"Should show code-0 output_path from config, not draft path. Output:\n{output}"
+
+        # The additional file should be committed to the output_path from template 1
+        assert "docs/changelog/1.1.0-rc.4-secondary.md" in output, \
+            f"Should show code-1 output_path from config, not draft path. Output:\n{output}"
+
+        # Verify it DOESN'T use draft paths for commit destinations
+        # (draft paths are only for reading, not committing)
+        if "will be committed to" in output:
+            # Check that draft paths are NOT in the "will be committed to" sections
+            lines = output.split('\n')
+            commit_lines = [line for line in lines if 'will be committed to' in line]
+            for line in commit_lines:
+                assert str(tmp_path / "drafts") not in line, \
+                    f"Should not commit to draft path. Found: {line}"
