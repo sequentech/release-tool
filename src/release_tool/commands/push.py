@@ -273,8 +273,35 @@ def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -
                                .replace("{{patch}}", "*")\
                                .replace("{{output_file_type}}", "*")
 
-    # Use glob on the current directory to find all matching files
-    draft_files = list(Path('.').glob(glob_pattern))
+    # Use glob from the appropriate base path
+    # If pattern is absolute, use its parent directory; otherwise use current directory
+    glob_path = Path(glob_pattern)
+    if glob_path.is_absolute():
+        # Find the first wildcard position to determine the base path
+        parts = glob_path.parts
+        base_parts = []
+        pattern_parts = []
+        found_wildcard = False
+
+        for part in parts:
+            if '*' in part or found_wildcard:
+                found_wildcard = True
+                pattern_parts.append(part)
+            else:
+                base_parts.append(part)
+
+        if base_parts:
+            base_path = Path(*base_parts)
+            relative_pattern = str(Path(*pattern_parts)) if pattern_parts else "*"
+        else:
+            # Pattern starts with wildcard, use root
+            base_path = Path('/')
+            relative_pattern = str(Path(*parts[1:]))
+
+        draft_files = list(base_path.glob(relative_pattern))
+    else:
+        # Relative path, use current directory
+        draft_files = list(Path('.').glob(glob_pattern))
 
     # Sort by modification time desc (newest first)
     draft_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
@@ -308,22 +335,29 @@ def _display_draft_releases(draft_files: list[Path], title: str = "Draft Release
     for file_path in draft_files:
         # Extract repo name
         repo_name = file_path.parent.name
-        
+
         # Extract version from filename
         # Filename format: version-type.md or version.md
         filename = file_path.stem
-        
+
         # Simple heuristic to strip suffix if present
         version_str = filename
         content_type = "Release"
-        
+
         if filename.endswith("-doc"):
             version_str = filename[:-4]
             content_type = "Doc"
         elif filename.endswith("-release"):
             version_str = filename[:-8]
             content_type = "Release"
-            
+        elif "-code-" in filename:
+            # Handle code-N format (e.g., "1.0.0-code-0" -> version="1.0.0", type="Code 0")
+            parts = filename.rsplit("-code-", 1)
+            if len(parts) == 2:
+                version_str = parts[0]
+                code_num = parts[1]
+                content_type = f"Code {code_num}"
+
         grouped_drafts[(repo_name, version_str)].append({
             'path': file_path,
             'content_type': content_type,
@@ -423,6 +457,11 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                 version_str = filename[:-4]
             elif filename.endswith("-release"):
                 version_str = filename[:-8]
+            elif "-code-" in filename:
+                # Handle code-N format (e.g., "1.0.0-code-0")
+                parts = filename.rsplit("-code-", 1)
+                if len(parts) == 2:
+                    version_str = parts[0]
 
             console.print(f"\n[yellow]Tip: Push a release with:[/yellow]")
             console.print(f"[dim]  release-tool push {version_str}[/dim]")
@@ -620,7 +659,12 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                         example_version = filename[:-4]
                     elif filename.endswith("-release"):
                         example_version = filename[:-8]
-                    
+                    elif "-code-" in filename:
+                        # Handle code-N format (e.g., "1.0.0-code-0")
+                        parts = filename.rsplit("-code-", 1)
+                        if len(parts) == 2:
+                            example_version = parts[0]
+
                     console.print(f"\n[yellow]Tip: Use an existing draft or generate new notes:[/yellow]")
                     console.print(f"[dim]  release-tool push {example_version}[/dim]")
                     console.print(f"[dim]  release-tool generate {version}[/dim]")
@@ -629,11 +673,12 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     console.print(f"[dim]  release-tool generate {version}[/dim]")
                 sys.exit(1)
             else:
-                # Multiple matches found. Separate release and doc drafts
-                release_candidates = [d for d in matching_drafts if "doc" not in d.name.lower()]
-                doc_candidates = [d for d in matching_drafts if "doc" in d.name.lower()]
-                
-                # Handle release notes
+                # Multiple matches found. Separate into release, doc, and code drafts
+                release_candidates = [d for d in matching_drafts if "-release" in d.stem]
+                doc_candidates = [d for d in matching_drafts if "-doc" in d.stem]
+                code_candidates = [d for d in matching_drafts if "-code-" in d.stem]
+
+                # Handle release notes (for GitHub release)
                 if len(release_candidates) == 1:
                      notes_path = release_candidates[0]
                      release_notes = notes_path.read_text()
@@ -642,20 +687,28 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                      else:
                         console.print(f"[blue]Auto-found release notes from {notes_path}[/blue]")
                 elif len(release_candidates) == 0:
-                    # If we have doc drafts but no release drafts, that might be an issue if we expected release notes
-                    # But maybe the user only wants to publish docs? 
-                    # For now, let's assume we need release notes.
-                    console.print(f"[red]Error: No release notes draft found for version {version}[/red]")
-                    if doc_candidates:
-                        console.print(f"[dim](Found {len(doc_candidates)} doc drafts, but need release notes)[/dim]")
-                    sys.exit(1)
+                    # No explicit release file - this is expected if only code templates are configured
+                    # For backward compatibility, also check if there are any non-code, non-doc files
+                    other_candidates = [d for d in matching_drafts if d not in doc_candidates and d not in code_candidates]
+                    if len(other_candidates) == 1:
+                        notes_path = other_candidates[0]
+                        release_notes = notes_path.read_text()
+                        if debug:
+                            console.print(f"[dim]Selected non-code/doc candidate as release notes:[/dim] {notes_path}")
+                    elif create_release:
+                        # User wants to create GitHub release but no release file found
+                        console.print(f"[red]Error: No GitHub release draft found for version {version}[/red]")
+                        if code_candidates or doc_candidates:
+                            console.print(f"[dim](Found {len(code_candidates)} code and {len(doc_candidates)} doc drafts)[/dim]")
+                            console.print(f"[yellow]Tip: Code/doc drafts found but no GitHub release draft (-release)[/yellow]")
+                        sys.exit(1)
                 else:
                     # Ambiguous release notes
                     console.print(f"[red]Error: Multiple release note drafts found for version {version}[/red]")
                     _display_draft_releases(release_candidates, title="Ambiguous Release Drafts")
                     sys.exit(1)
 
-                # Handle doc notes
+                # Handle doc notes (deprecated - will be replaced by code-N files)
                 if len(doc_candidates) == 1:
                     doc_notes_path = doc_candidates[0]
                     doc_notes_content = doc_notes_path.read_text()
@@ -666,6 +719,15 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                         console.print(f"[yellow]Warning: Multiple doc drafts found, ignoring:[/yellow]")
                         for d in doc_candidates:
                             console.print(f"  - {d}")
+
+                # Handle code notes (for PR creation) - use code-0 if available
+                if len(code_candidates) >= 1:
+                    # Sort to get code-0 first
+                    code_candidates_sorted = sorted(code_candidates, key=lambda p: p.stem)
+                    doc_notes_path = code_candidates_sorted[0]  # Use code-0 for PR
+                    doc_notes_content = doc_notes_path.read_text()
+                    if debug:
+                        console.print(f"[dim]Selected code candidate for PR:[/dim] {doc_notes_path}")
 
         if debug:
             # Show full release notes in debug mode
@@ -1157,15 +1219,30 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     pr_body = render_template(config.output.pr_templates.body_template, template_context)
                     
                     # Determine which file(s) to include in the PR
-                    # If pr_code templates are configured, use the first template's output path
+                    # If pr_code templates are configured, use the code-0 file (first template)
                     additional_files = {}
 
                     if doc_output_enabled and config.output.pr_code.templates:
-                         # Use first pr_code template as the primary file
-                         pr_file_path = render_template(config.output.pr_code.templates[0].output_path, template_context)
-                         pr_content = doc_notes_content if doc_notes_content else release_notes
-                         if debug:
-                             console.print(f"[dim]Using pr_code template output as primary PR file: {pr_file_path}[/dim]")
+                         # Use code-0 file if already found from auto-detection
+                         if doc_notes_path and doc_notes_content:
+                             pr_file_path = str(doc_notes_path)
+                             pr_content = doc_notes_content
+                             if debug:
+                                 console.print(f"[dim]Using auto-detected code-0 file for PR: {pr_file_path}[/dim]")
+                         else:
+                             # Render draft_output_path with code-0 for first pr_code template
+                             pr_template_context = {
+                                 'code_repo': config.repository.code_repo.replace('/', '-'),
+                                 'version': version,
+                                 'major': str(target_version.major),
+                                 'minor': str(target_version.minor),
+                                 'patch': str(target_version.patch),
+                                 'output_file_type': 'code-0'
+                             }
+                             pr_file_path = render_template(config.output.draft_output_path, pr_template_context)
+                             pr_content = release_notes  # Fallback to release notes if no code file found
+                             if debug:
+                                 console.print(f"[dim]Rendered code-0 path for PR: {pr_file_path}[/dim]")
                     else:
                          # No templates configured - skip PR file
                          pr_file_path = None
@@ -1242,16 +1319,18 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
 
         # Handle Docusaurus file if configured (only if PR creation didn't handle it)
         if doc_output_enabled and not create_pr:
-            template_context = {
+            template_context_doc = {
+                'code_repo': config.repository.code_repo.replace('/', '-'),
                 'version': version,
                 'major': str(target_version.major),
                 'minor': str(target_version.minor),
-                'patch': str(target_version.patch)
+                'patch': str(target_version.patch),
+                'output_file_type': 'code-0'  # First pr_code template
             }
             try:
-                doc_path = render_template(config.output.pr_code.templates[0].output_path, template_context)
+                doc_path = render_template(config.output.draft_output_path, template_context_doc)
             except TemplateError as e:
-                console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
+                console.print(f"[red]Error rendering draft_output_path for code-0: {e}[/red]")
                 if debug:
                     raise
                 sys.exit(1)
@@ -1261,8 +1340,8 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                 console.print("\n[bold cyan]Debug Mode: Documentation Release Notes[/bold cyan]")
                 console.print("[dim]" + "=" * 60 + "[/dim]")
                 console.print(f"[dim]Doc template configured:[/dim] {bool(config.output.pr_code.templates)}")
-                console.print(f"[dim]Doc path template:[/dim] {config.output.pr_code.templates[0].output_path if config.output.pr_code.templates else 'None'}")
-                console.print(f"[dim]Resolved final path:[/dim] {doc_path}")
+                console.print(f"[dim]Draft output path template:[/dim] {config.output.draft_output_path}")
+                console.print(f"[dim]Resolved code-0 path:[/dim] {doc_path}")
                 console.print(f"[dim]Draft source path:[/dim] {doc_notes_path if doc_notes_path else 'None'}")
                 console.print(f"[dim]Draft content found:[/dim] {doc_notes_content is not None}")
 

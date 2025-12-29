@@ -773,15 +773,19 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         if not target_version.is_final() and template_policy == ReleaseVersionPolicy.INCLUDE_RCS:
                             path_context['version'] = version
 
+                        # Set output_file_type for pr_code templates: code-0, code-1, etc.
+                        path_context['output_file_type'] = f'code-{idx}'
+
                         # Get grouped_notes for this template's policy
                         policy_data = notes_by_policy[template_policy]
                         grouped_notes = policy_data['grouped_notes']
 
-                        # Render output path
+                        # Render output path using draft_output_path (not template_config.output_path)
+                        # This ensures all drafts are in one predictable location
                         try:
-                            output_path = render_template(template_config.output_path, path_context)
+                            output_path = render_template(config.output.draft_output_path, path_context)
                         except TemplateError as e:
-                            console.print(f"[red]Error rendering pr_code template output_path: {e}[/red]")
+                            console.print(f"[red]Error rendering draft_output_path for pr_code template #{idx}: {e}[/red]")
                             sys.exit(1)
 
                         # Initialize media downloader if enabled

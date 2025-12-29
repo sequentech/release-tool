@@ -53,7 +53,7 @@ class TestE2EGeneratePolicyFinalOnly:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[pr_code_template],
-            draft_output_path=str(tmp_path / "draft" / "{{version}}.md"),
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             # Point to the test database
             database={"path": db.db_path},
             # Configure branch policy to use main branch (not release branches)
@@ -81,12 +81,12 @@ class TestE2EGeneratePolicyFinalOnly:
         # Should succeed
         assert result.exit_code == 0, f"Generate failed: {result.output}"
 
-        # Read generated files
-        pr_code_file = tmp_path / "releases" / "1.1.0-rc.4.md"
-        draft_file = tmp_path / "draft" / "1.1.0-rc.4.md"
+        # Read generated files (now all in draft_output_path with different output_file_type)
+        pr_code_file = tmp_path / "draft" / "1.1.0-rc.4-code-0.md"  # pr_code template
+        draft_file = tmp_path / "draft" / "1.1.0-rc.4-release.md"  # GitHub release
 
-        assert pr_code_file.exists(), "pr_code file was not created"
-        assert draft_file.exists(), "draft file was not created"
+        assert pr_code_file.exists(), f"pr_code file was not created at {pr_code_file}"
+        assert draft_file.exists(), f"draft file was not created at {draft_file}"
 
         pr_code_content = pr_code_file.read_text()
         draft_content = draft_file.read_text()
@@ -152,7 +152,7 @@ class TestE2EGeneratePolicyFinalOnly:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[pr_code_template],
-            draft_output_path=str(tmp_path / "draft" / "{{version}}.md"),
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             database={"path": db.db_path},
             branch_policy={
                 "create_branches": False,
@@ -177,9 +177,9 @@ class TestE2EGeneratePolicyFinalOnly:
 
         assert result.exit_code == 0, f"Generate failed: {result.output}"
 
-        # Read generated file
-        pr_code_file = tmp_path / "releases" / "1.1.0-rc.4.md"
-        assert pr_code_file.exists()
+        # Read generated file (now in draft_output_path with code-0 suffix)
+        pr_code_file = tmp_path / "draft" / "1.1.0-rc.4-code-0.md"
+        assert pr_code_file.exists(), f"pr_code file not found at {pr_code_file}"
 
         pr_code_content = pr_code_file.read_text()
         pr_code_parsed = parse_markdown_output(pr_code_content)
@@ -221,7 +221,7 @@ class TestE2EGeneratePolicyFinalOnly:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[template_final_only, template_include_rcs],
-            draft_output_path=str(tmp_path / "draft" / "{{version}}.md"),
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             database={"path": db.db_path},
             branch_policy={
                 "create_branches": False,
@@ -246,14 +246,14 @@ class TestE2EGeneratePolicyFinalOnly:
 
         assert result.exit_code == 0, f"Generate failed: {result.output}"
 
-        # Read both template outputs
-        final_only_file = tmp_path / "final_only" / "1.1.0-rc.4.md"
-        include_rcs_file = tmp_path / "include_rcs" / "1.1.0-rc.4.md"
-        draft_file = tmp_path / "draft" / "1.1.0-rc.4.md"
+        # Read both template outputs (now all in draft_output_path with code-N suffix)
+        final_only_file = tmp_path / "draft" / "1.1.0-rc.4-code-0.md"  # First template
+        include_rcs_file = tmp_path / "draft" / "1.1.0-rc.4-code-1.md"  # Second template
+        draft_file = tmp_path / "draft" / "1.1.0-rc.4-release.md"  # GitHub release
 
-        assert final_only_file.exists()
-        assert include_rcs_file.exists()
-        assert draft_file.exists()
+        assert final_only_file.exists(), f"final-only file not found at {final_only_file}"
+        assert include_rcs_file.exists(), f"include-rcs file not found at {include_rcs_file}"
+        assert draft_file.exists(), f"draft file not found at {draft_file}"
 
         final_only_parsed = parse_markdown_output(final_only_file.read_text())
         include_rcs_parsed = parse_markdown_output(include_rcs_file.read_text())
@@ -300,7 +300,7 @@ class TestE2EGeneratePolicyFinalOnly:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[pr_code_template],
-            draft_output_path=str(tmp_path / "draft" / "{{version}}.md"),
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             database={"path": db.db_path},
             branch_policy={
                 "create_branches": False,
@@ -325,9 +325,9 @@ class TestE2EGeneratePolicyFinalOnly:
 
         assert result.exit_code == 0, f"Generate failed: {result.output}"
 
-        # Read generated file
-        pr_code_file = tmp_path / "releases" / "1.1.0.md"
-        assert pr_code_file.exists()
+        # Read generated file (now in draft_output_path with code-0 suffix)
+        pr_code_file = tmp_path / "draft" / "1.1.0-code-0.md"
+        assert pr_code_file.exists(), f"pr_code file not found at {pr_code_file}"
 
         pr_code_parsed = parse_markdown_output(pr_code_file.read_text())
 
@@ -371,6 +371,7 @@ class TestE2EGenerateEdgeCases:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[pr_code_template],
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             database={"path": db.db_path},
             branch_policy={
                 "create_branches": False,
@@ -395,8 +396,8 @@ class TestE2EGenerateEdgeCases:
 
         assert result.exit_code == 0
 
-        # Verify output
-        pr_code_file = tmp_path / "releases" / "1.1.0-rc.1.md"
+        # Verify output (now in draft_output_path with code-0 suffix)
+        pr_code_file = tmp_path / "draft" / "1.1.0-rc.1-code-0.md"
         pr_code_parsed = parse_markdown_output(pr_code_file.read_text())
 
         # Should have 2 PRs from rc.1
@@ -428,6 +429,7 @@ class TestE2EGenerateEdgeCases:
         config_dict = create_test_config(
             code_repo="test/repo",
             pr_code_templates=[pr_code_template],
+            draft_output_path=str(tmp_path / "draft" / "{{version}}-{{output_file_type}}.md"),
             database={"path": db.db_path},
             branch_policy={
                 "create_branches": False,
@@ -452,8 +454,8 @@ class TestE2EGenerateEdgeCases:
 
         assert result.exit_code == 0
 
-        # Verify output includes all commits
-        pr_code_file = tmp_path / "releases" / "1.0.0-rc.1.md"
+        # Verify output includes all commits (now in draft_output_path with code-0 suffix)
+        pr_code_file = tmp_path / "draft" / "1.0.0-rc.1-code-0.md"
         pr_code_parsed = parse_markdown_output(pr_code_file.read_text())
 
         assert set(pr_code_parsed['pr_numbers']) == {101, 102}
