@@ -461,10 +461,9 @@ title_template = "Release {{ version }}"
 # The whitespace will collapse, <br> tags create line breaks
 # Uses author.mention which gives @username if available, otherwise falls back to name
 # Uses short_repo_link for concise display (e.g., "meta#123" instead of full URL)
-entry_template = '''- {{ title }}{% if url and short_repo_link %} ([{{ short_repo_link }}]({{ url }})){% elif url %} ([link]({{ url }})){% endif %}<br>
+entry_template = '''- {{ title }}{% if url and short_repo_link %} ([{{ short_repo_link }}]({{ url }})){% elif url %} ([link]({{ url }})){% endif %}
   {% if authors %}
-  &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}
-  {% endif %}'''
+  &nbsp;&nbsp;by {% for author in authors %}{{ author.mention }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}'''
 
 # release_output_template: MASTER Jinja2 template for GitHub release notes output
 # This is an ADVANCED feature that gives you complete control over the release
@@ -585,9 +584,9 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 {% endif %}
 {% set migration_notes = all_notes|selectattr('migration_notes')|list %}
 {% if migration_notes|length > 0 %}
-<br>## 🔄 Migrations<br>
+<br>## 🔄 Migrations
 {% for note in migration_notes %}
-<br>### {{ note.title }}<br>
+<br>### {{ note.title }}
 {{ note.migration_notes }}
 {% if note.url and note.short_repo_link %}See [{{ note.short_repo_link }}]({{ note.url }}) for details.{% elif note.url %}See {{ note.url }} for details.{% endif %}
 
@@ -595,7 +594,7 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 {% endif %}
 {% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}
 {% if non_breaking_with_desc|length > 0 %}
-<br>## 📝 Highlights<br>
+<br>## 📝 Highlights
 {% for note in non_breaking_with_desc %}
 <br>### {{ note.title }}
 {{ note.description }}
@@ -609,7 +608,6 @@ release_output_template = '''{% set breaking_with_desc = all_notes|selectattr('c
 {% for note in category.notes %}
 {% if loop.first %}<br>{% endif %}{{ render_entry(note) }}<br>
 {% endfor %}
-
 {% endfor %}'''
 
 # =============================================================================
@@ -741,7 +739,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 -->
 # Release {{version}}
 
-{{ render_release_notes() }}<br>'''
+{{ render_release_notes() }}'''
 
 # output_path: Path template for the output file (Jinja2 syntax)
 # This file will be created/updated when using the generate and push commands.

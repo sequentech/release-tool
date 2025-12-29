@@ -353,62 +353,8 @@ class CommitConsolidator:
 class ReleaseNoteGenerator:
     """Generate release notes from consolidated changes."""
 
-    # Default template for base release notes content
-    # This was formerly release_output_template in ReleaseNoteConfig
-    DEFAULT_RELEASE_NOTES_TEMPLATE = (
-        "{% set breaking_with_desc = all_notes|selectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
-        "{% if breaking_with_desc|length > 0 %}\n"
-        "## 💥 Breaking Changes\n"
-        "\n"
-        "{% for note in breaking_with_desc %}\n"
-        "### {{ note.title }}\n"
-        "\n"
-        "{{ note.description }}\n"
-        "\n"
-        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-        "\n"
-        "{% endfor %}\n"
-        "{% endif %}\n"
-        "\n"
-        "{% set migration_notes = all_notes|selectattr('migration_notes')|list %}\n"
-        "{% if migration_notes|length > 0 %}\n"
-        "## 🔄 Migrations\n"
-        "\n"
-        "{% for note in migration_notes %}\n"
-        "### {{ note.title }}\n"
-        "\n"
-        "{{ note.migration_notes }}\n"
-        "\n"
-        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-        "\n"
-        "{% endfor %}\n"
-        "{% endif %}\n"
-        "\n"
-        "{% set non_breaking_with_desc = all_notes|rejectattr('category', 'equalto', '💥 Breaking Changes')|selectattr('description')|list %}\n"
-        "{% if non_breaking_with_desc|length > 0 %}\n"
-        "## 📝 Highlights\n"
-        "\n"
-        "{% for note in non_breaking_with_desc %}\n"
-        "### {{ note.title }}\n"
-        "\n"
-        "{{ note.description }}\n"
-        "\n"
-        "{% if note.url %}See {{ note.url }} for details.{% endif %}\n"
-        "\n"
-        "{% endfor %}\n"
-        "{% endif %}\n"
-        "\n"
-        "## 📋 All Changes\n"
-        "\n"
-        "{% for category in categories %}\n"
-        "### {{ category.name }}\n"
-        "\n"
-        "{% for note in category.notes %}\n"
-        "{{ render_entry(note) }}\n"
-        "\n"
-        "{% endfor %}\n"
-        "{% endfor %}"
-    )
+    # NOTE: release_output_template is now configured via config.release_notes.release_output_template
+    # This constant is kept for reference but is no longer used
 
     def __init__(self, config: Config):
         self.config = config
@@ -729,7 +675,7 @@ class ReleaseNoteGenerator:
 
         console.print("\n".join(msg_lines))
 
-    def _process_html_like_whitespace(self, text: str, preserve_br: bool = False) -> str:
+    def _process_html_like_whitespace(self, text: str, intermediate_pass: bool = False) -> str:
         """
         Process template output with HTML-like whitespace behavior.
 
@@ -745,8 +691,7 @@ class ReleaseNoteGenerator:
 
         # 2. Replace <br> and <br/> with newline markers
         # Use a unique marker that won't conflict with actual content
-        if not preserve_br:
-            processed = processed.replace('<br/>', '<BR_MARKER>').replace('<br>', '<BR_MARKER>')
+        processed = processed.replace('<br/>', '<BR_MARKER>').replace('<br>', '<BR_MARKER>')
 
         # 3. Collapse multiple spaces/tabs into single space (like HTML)
         processed = re.sub(r'[^\S\n]+', ' ', processed)
@@ -754,32 +699,15 @@ class ReleaseNoteGenerator:
         # 4. Strip leading/trailing whitespace from each line
         processed = '\n'.join(line.strip() for line in processed.split('\n'))
 
-        # 5. Remove empty lines (unless they came from <br> tags)
-        # Process line by line and handle BR_MARKER specially
-        lines_list = []
-        for line in processed.split('\n'):
-            # If line contains BR_MARKER, split it and add empty line after
-            if '<BR_MARKER>' in line:
-                parts = line.split('<BR_MARKER>')
-                for i, part in enumerate(parts):
-                    if part.strip():
-                        lines_list.append(part)
-                    # Add empty line after all BR_MARKER occurrences except the last part
-                    if i < len(parts) - 1:
-                        lines_list.append('')
-            elif line.strip():
-                lines_list.append(line)
-            elif preserve_br:
-                lines_list.append('')
+        # 5. collapse consecutive new lines into a single one
+        processed = re.sub(r'([ \t\n])[ \t\n]*', '\\1', processed)
 
-        result = '\n'.join(lines_list)
+        # 6. Replace markers if final pass
+        if not intermediate_pass:
+            processed = processed.replace('<NBSP_MARKER>', ' ').replace('<BR_MARKER>', '\n')
 
-        # Note: We don't replace <NBSP_MARKER> here because the output might be
-        # processed again (e.g., entry_template processed, then inserted into
-        # output_template which is also processed). Markers are replaced at the
-        # very end in the format_markdown methods.
-
-        return result
+        # import pdb; pdb.set_trace()
+        return processed
 
     def _prepare_note_for_template(
         self,
@@ -987,7 +915,7 @@ class ReleaseNoteGenerator:
         def render_entry(note_dict: Dict[str, Any]) -> str:
             """Render a single entry using the entry_template."""
             rendered = entry_template.render(**note_dict)
-            return self._process_html_like_whitespace(rendered, preserve_br=False)
+            return self._process_html_like_whitespace(rendered, intermediate_pass=True)
 
         # Prepare all notes with processed data
         categories_data = []
@@ -1032,8 +960,8 @@ class ReleaseNoteGenerator:
 
         # Create render_release_notes function that renders the base release notes
         def render_release_notes() -> str:
-            """Render the base release notes content using the default template."""
-            base_template = Template(self.DEFAULT_RELEASE_NOTES_TEMPLATE)
+            """Render the base release notes content using the configured template."""
+            base_template = Template(self.config.release_notes.release_output_template)
             output = base_template.render(
                 version=version,
                 title=title,
@@ -1041,7 +969,7 @@ class ReleaseNoteGenerator:
                 all_notes=all_notes_data,
                 render_entry=render_entry
             )
-            return self._process_html_like_whitespace(output)
+            return self._process_html_like_whitespace(output, intermediate_pass=True)
 
         # Render the pr_code template
         from datetime import datetime
@@ -1057,10 +985,7 @@ class ReleaseNoteGenerator:
         )
 
         # Process HTML-like whitespace
-        output = self._process_html_like_whitespace(output)
-
-        # Replace &nbsp; markers with actual spaces (done at the very end)
-        output = output.replace('<NBSP_MARKER>', ' ')
+        output = self._process_html_like_whitespace(output, intermediate_pass=False)
 
         return output
 
@@ -1070,9 +995,9 @@ class ReleaseNoteGenerator:
         version: str,
         output_path: Optional[str],
         media_downloader,
-        preserve_br: bool = False
+        intermediate_pass: bool = False
     ) -> str:
-        """Format using the DEFAULT_RELEASE_NOTES_TEMPLATE."""
+        """Format using the configured release_output_template."""
         from jinja2 import Template
 
         # Create entry template for sub-rendering
@@ -1082,7 +1007,7 @@ class ReleaseNoteGenerator:
         def render_entry(note_dict: Dict[str, Any]) -> str:
             """Render a single entry using the entry_template."""
             rendered = entry_template.render(**note_dict)
-            return self._process_html_like_whitespace(rendered, preserve_br=preserve_br)
+            return self._process_html_like_whitespace(rendered, intermediate_pass=True)
 
         # Prepare all notes with processed data
         categories_data = []
@@ -1125,9 +1050,9 @@ class ReleaseNoteGenerator:
         title_template = Template(self.config.release_notes.title_template)
         title = title_template.render(version=version)
 
-        # Render master template using DEFAULT_RELEASE_NOTES_TEMPLATE
+        # Render master template using configured release_output_template
         from datetime import datetime
-        master_template = Template(self.DEFAULT_RELEASE_NOTES_TEMPLATE)
+        master_template = Template(self.config.release_notes.release_output_template)
         output = master_template.render(
             version=version,
             title=title,
@@ -1137,11 +1062,9 @@ class ReleaseNoteGenerator:
             year=datetime.now().year
         )
 
-        # Process HTML-like whitespace
-        output = self._process_html_like_whitespace(output)
-
-        # Replace &nbsp; markers with actual spaces (done at the very end)
-        output = output.replace('<NBSP_MARKER>', ' ')
+        # Process HTML-like whitespace WITHOUT intermediate_pass
+        # This will convert <br> tags to proper newlines without extra blank lines
+        output = self._process_html_like_whitespace(output, intermediate_pass=False)
 
         return output
 
@@ -1163,14 +1086,14 @@ class ReleaseNoteGenerator:
         def render_entry(note_dict: Dict[str, Any]) -> str:
             """Render a single entry using the entry_template."""
             rendered = entry_template.render(**note_dict)
-            return self._process_html_like_whitespace(rendered)
+            return self._process_html_like_whitespace(rendered, intermediate_pass=True)
 
         # Create a render_release_notes function that returns the already-rendered release notes
         # wrapped in a marker to prevent re-processing
-        def render_release_notes(preserve_br: bool = True) -> str:
+        def render_release_notes() -> str:
             """Render the GitHub release notes (already computed)."""
             # Return the release notes wrapped in a marker to protect from re-processing
-            return '<RELEASE_NOTES_MARKER>'
+            return release_notes
 
         # Prepare all notes with processed data
         categories_data = []
@@ -1220,17 +1143,10 @@ class ReleaseNoteGenerator:
             year=datetime.now().year
         )
 
-        # Process HTML-like whitespace WITHOUT preserve_br
+        # Process HTML-like whitespace WITHOUT intermediate_pass
         # This will convert <br> tags to proper newlines without extra blank lines
-        output = self._process_html_like_whitespace(output, preserve_br=False)
+        output = self._process_html_like_whitespace(output, intermediate_pass=False)
         
-        # Replace the marker with the actual release notes AFTER processing
-        # This way the release notes won't be re-processed
-        output = output.replace('<RELEASE_NOTES_MARKER>', release_notes)
-
-        # Replace &nbsp; markers with actual spaces (done at the very end)
-        output = output.replace('<NBSP_MARKER>', ' ')
-
         return output
 
     def _format_with_legacy_layout(
@@ -1239,7 +1155,7 @@ class ReleaseNoteGenerator:
         version: str,
         output_path: Optional[str],
         media_downloader,
-        preserve_br: bool = False
+        intermediate_pass: bool = False
     ) -> str:
         """Format using the legacy category-based layout."""
         from jinja2 import Template
@@ -1277,7 +1193,7 @@ class ReleaseNoteGenerator:
                 )
 
                 rendered_entry = entry_template.render(**note_dict)
-                processed_entry = self._process_html_like_whitespace(rendered_entry, preserve_br=preserve_br)
+                processed_entry = self._process_html_like_whitespace(rendered_entry, intermediate_pass=True)
                 lines.append(processed_entry)
 
                 # Add description if present and not already in template

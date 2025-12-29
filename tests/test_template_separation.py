@@ -169,14 +169,57 @@ But<br>breaks<br>should<br>work""",
         None
     )
 
-    # <br> should create actual line breaks
-    assert "Line one\n\nLine two" in result
+    # <br> should create actual line breaks (single newline, not blank line)
+    assert "Line one\nLine two" in result
 
     # Multiple spaces should collapse
     assert "Multiple spaces should collapse" in result
 
-    # Multiple <br> tags should create multiple breaks
-    assert "But\n\nbreaks\n\nshould\n\nwork" in result
+    # Multiple <br> tags should create line breaks between each word
+    assert "But\nbreaks\nshould\nwork" in result
+
+
+def test_double_br_tags_create_blank_lines():
+    """Test that consecutive <br><br> tags create blank lines (paragraph breaks)."""
+    config_dict = {
+        "repository": {
+            "code_repo": "test/repo"
+        },
+        "github": {
+            "token": "test_token"
+        },
+        "output": {
+            "pr_code": {
+                "templates": [
+                    {
+                        "output_template": """# {{ title }}
+
+First paragraph<br><br>Second paragraph
+Line one<br><br><br>Line two with extra space""",
+                        "output_path": "test.md"
+                    }
+                ]
+            }
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    generator = ReleaseNoteGenerator(config)
+
+    pr_code_template = config.output.pr_code.templates[0]
+    result = generator._format_with_pr_code_template(
+        pr_code_template.output_template,
+        {},
+        "1.0.0",
+        "test.md",
+        None
+    )
+
+    # Double <br><br> should create blank line (paragraph break)
+    assert "First paragraph\n\nSecond paragraph" in result
+
+    # Triple <br><br><br> should create two blank lines
+    assert "Line one\n\n\nLine two with extra space" in result
 
 
 def test_br_tags_work_in_default_release_template():
