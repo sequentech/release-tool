@@ -279,7 +279,7 @@ def cancel(
             sys.exit(0)
 
         # Create GitHub client
-        github_client = GitHubClient(config.github.token)
+        github_client = GitHubClient(config)
 
         success_operations = []
         failed_operations = []

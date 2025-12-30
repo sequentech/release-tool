@@ -304,3 +304,42 @@ def test_resolve_version_from_issue(test_db):
 
     assert version == "1.2.3"
     assert issue_number == 1
+
+
+def test_github_client_initialized_correctly(test_config, test_db):
+    """Regression test: Ensure GitHubClient is initialized with config object, not token string."""
+    db, repo_id = test_db
+    runner = CliRunner()
+
+    # Create a draft release
+    release = Release(
+        repo_id=repo_id,
+        version="1.0.0",
+        tag_name="v1.0.0",
+        is_draft=True,
+        is_prerelease=False,
+        created_at=datetime.now()
+    )
+    db.upsert_release(release)
+
+    with patch('release_tool.commands.cancel.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_release.return_value = True
+        mock_client.delete_tag.return_value = True
+
+        result = runner.invoke(
+            cancel,
+            ['1.0.0'],
+            obj={'config': test_config, 'debug': False, 'assume_yes': True},
+            catch_exceptions=False
+        )
+
+        # Verify GitHubClient was called with config object (not token string)
+        mock_client_class.assert_called_once()
+        call_args = mock_client_class.call_args
+
+        # The first argument should be the config object
+        assert call_args[0][0] == test_config, "GitHubClient should be initialized with config object, not token string"
+
+    assert result.exit_code == 0
