@@ -1,12 +1,12 @@
 ---
-id: release-11.0.0-rc.3
-title: Release 11.0.0-rc.3
+id: release-11.0.0-rc.4
+title: Release 11.0.0-rc.4
 ---
 <!--
 SPDX-FileCopyrightText: 2025 Sequent Tech Inc <legal@sequentech.io>
 SPDX-License-Identifier: AGPL-3.0-only
 -->
-# Release 11.0.0-rc.3
+# Release 11.0.0-rc.4
 
 ## 📋 All Changes
 
