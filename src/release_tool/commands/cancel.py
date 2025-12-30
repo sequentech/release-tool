@@ -24,15 +24,90 @@ from rich.prompt import Confirm
 from ..config import Config
 from ..db import Database
 from ..github_utils import GitHubClient
-from ..models import SemanticVersion
+from ..models import SemanticVersion, PullRequest
+from ..policies import IssueExtractor
 
 console = Console()
+
+
+def find_pr_for_issue_using_patterns(
+    db: Database,
+    repo_id: int,
+    repo_full_name: str,
+    config: Config,
+    target_issue_number: int,
+    debug: bool = False
+) -> Optional[int]:
+    """
+    Find PR associated with an issue using issue_policy.patterns.
+
+    Uses IssueExtractor to match PRs against configured patterns:
+    - Branch name pattern (highest priority)
+    - PR body pattern
+    - PR title pattern
+
+    Args:
+        db: Database instance
+        repo_id: Repository ID
+        repo_full_name: Full repository name
+        config: Config instance with issue_policy.patterns
+        target_issue_number: Issue number to find PR for
+        debug: Enable debug output
+
+    Returns:
+        PR number if found, None otherwise
+    """
+    if debug:
+        console.print(f"[dim]Searching for PR matching issue #{target_issue_number} using pattern matching...[/dim]")
+
+    # Create issue extractor with configured patterns
+    extractor = IssueExtractor(config, debug=debug)
+
+    # Get all open PRs (use issue_number=0 to get all, not filter by issue)
+    all_prs = db.find_prs_for_issue(repo_full_name, issue_number=0, limit=100)
+
+    if debug:
+        console.print(f"[dim]Found {len(all_prs)} PRs to check[/dim]")
+
+    # Check each PR using pattern matching
+    for pr_dict in all_prs:
+        # Convert dict to PullRequest object for extractor
+        pr_obj = PullRequest(
+            repo_id=repo_id,
+            number=pr_dict.get('number'),
+            title=pr_dict.get('title', ''),
+            body=pr_dict.get('body', ''),
+            state=pr_dict.get('state', 'open'),
+            url=pr_dict.get('url', ''),
+            head_branch=pr_dict.get('head_branch', ''),
+            base_branch='',  # Not needed for extraction
+            merged_at=pr_dict.get('merged_at')
+        )
+
+        # Extract issue numbers using configured patterns
+        extracted_issues = extractor.extract_from_pr(pr_obj)
+
+        if debug:
+            console.print(f"[dim]PR #{pr_obj.number}: extracted issues = {extracted_issues}[/dim]")
+
+        # Check if target issue is in extracted issues
+        target_str = str(target_issue_number)
+        if target_str in extracted_issues:
+            if debug:
+                console.print(f"[dim]✓ Found matching PR #{pr_obj.number} for issue #{target_issue_number}[/dim]")
+            return pr_obj.number
+
+    if debug:
+        console.print(f"[dim]No PR found for issue #{target_issue_number}[/dim]")
+
+    return None
 
 
 def _resolve_version_pr_issue(
     db: Database,
     repo_id: int,
     repo_full_name: str,
+    config: Config,
     version: Optional[str],
     pr_number: Optional[int],
     issue_number: Optional[int],
@@ -41,10 +116,13 @@ def _resolve_version_pr_issue(
     """
     Auto-detect version, PR, and issue if not provided.
 
+    Uses pattern-based matching (issue_policy.patterns) to find PRs associated with issues.
+
     Args:
         db: Database instance
         repo_id: Repository ID
         repo_full_name: Full repository name
+        config: Config instance with issue_policy.patterns
         version: Optional version string
         pr_number: Optional PR number
         issue_number: Optional issue number
@@ -75,6 +153,12 @@ def _resolve_version_pr_issue(
                 issue_number = issue_assoc['issue_number']
                 if debug:
                     console.print(f"[dim]Found issue #{issue_number} from database[/dim]")
+
+        # If we found an issue but no PR, use pattern matching to find PR
+        if issue_number and not pr_number:
+            pr_number = find_pr_for_issue_using_patterns(
+                db, repo_id, repo_full_name, config, issue_number, debug
+            )
 
     # If PR provided but no version, try to extract from PR
     elif pr_number:
@@ -109,6 +193,12 @@ def _resolve_version_pr_issue(
                 version = match.group(1)
                 if debug:
                     console.print(f"[dim]Extracted version {version} from issue title[/dim]")
+
+        # If no PR found yet, use pattern matching to find PR for this issue
+        if not pr_number:
+            pr_number = find_pr_for_issue_using_patterns(
+                db, repo_id, repo_full_name, config, issue_number, debug
+            )
 
     return version, pr_number, issue_number
 
@@ -232,7 +322,7 @@ def cancel(
 
         # Auto-detect version, PR, and issue if not all provided
         version, pr_number, issue_number = _resolve_version_pr_issue(
-            db, repo_id, repo_full_name, version, pr, issue, debug
+            db, repo_id, repo_full_name, config, version, pr, issue, debug
         )
 
         # Require at least version or (PR and/or issue)

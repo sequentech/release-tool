@@ -467,14 +467,15 @@ class Database:
         Find PRs associated with an issue using best-effort search.
 
         Searches for PRs where body or title contains #issue_number using regex.
+        If issue_number is 0 or negative, returns all PRs (for pattern-based matching).
 
         Args:
             repo_full_name: Full repository name (owner/repo)
-            issue_number: Issue number to search for
+            issue_number: Issue number to search for (use 0 to get all PRs)
             limit: Maximum number of results to return
 
         Returns:
-            List of dicts with: number, title, url, state, merged_at, head_branch
+            List of dicts with: number, title, url, state, merged_at, head_branch, body
         """
         import re
 
@@ -496,8 +497,26 @@ class Database:
         )
         rows = self.cursor.fetchall()
 
+        # If issue_number is 0 or negative, return all PRs without filtering
+        if issue_number <= 0:
+            all_prs = []
+            for row in rows:
+                data = dict(row)
+                all_prs.append({
+                    'number': data.get('number'),
+                    'title': data.get('title', ''),
+                    'url': data.get('url'),
+                    'state': data.get('state'),
+                    'merged_at': data.get('merged_at'),
+                    'head_branch': data.get('head_branch'),
+                    'body': data.get('body', '')
+                })
+                if len(all_prs) >= limit:
+                    break
+            return all_prs
+
         # Search for issue references in PR title and body
-        pattern = rf'#\s*{issue_number}\b' if issue_number > 0 else r'#'
+        pattern = rf'#\s*{issue_number}\b'
         matching_prs = []
 
         for row in rows:

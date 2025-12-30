@@ -502,3 +502,167 @@ class TestE2ECancelEdgeCases:
         assert result.exit_code == 0
         # Should at least show the version
         assert '1.2.3-rc.1' in result.output
+
+
+class TestE2ECancelPatternMatching:
+    """Test cancel command with pattern-based PR detection."""
+
+    def test_cancel_detects_pr_from_branch_name(self, test_config, tmp_path):
+        """Test that cancel detects PR using branch name pattern (issue #64 scenario)."""
+        # Setup database
+        db = Database(test_config.database.path)
+        db.connect()
+
+        # Create repository
+        repo = Repository(
+            owner="sequentech",
+            name="meta",
+            full_name="sequentech/meta",
+            url="https://github.com/sequentech/meta"
+        )
+        repo_id = db.upsert_repository(repo)
+
+        # Create a draft release for v11.0.0-rc.4
+        release = Release(
+            repo_id=repo_id,
+            version="11.0.0-rc.4",
+            tag_name="v11.0.0-rc.4",
+            published_at=None,
+            created_at=datetime.now(),
+            is_draft=True,
+            is_prerelease=True,
+            url="https://github.com/sequentech/meta/releases/tag/v11.0.0-rc.4"
+        )
+        db.upsert_release(release)
+
+        # Create issue #64 for this release
+        issue = Issue(
+            repo_id=repo_id,
+            number=64,
+            key="64",
+            title="Release 11.0.0-rc.4",
+            body="Tracking issue for release 11.0.0-rc.4",
+            state="open",
+            url="https://github.com/sequentech/meta/issues/64"
+        )
+        db.upsert_issue(issue)
+
+        # Create a PR with branch name following the pattern: feat/meta-64/main
+        # This should be detected by the branch_name pattern: /(?P<repo>\\w+)-(?P<issue>\\d+)
+        pr = PullRequest(
+            repo_id=repo_id,
+            number=123,
+            title="Release notes for v11.0.0-rc.4",
+            body="Automated release notes",
+            state="open",
+            url="https://github.com/sequentech/meta/pull/123",
+            head_branch="feat/meta-64/main",  # Branch contains issue #64
+            base_branch="main"
+        )
+        db.upsert_pull_request(pr)
+
+        # Link issue to version
+        db.save_issue_association("sequentech/meta", "11.0.0-rc.4", 64, "https://github.com/sequentech/meta/issues/64")
+
+        db.close()
+
+        # Update config to use sequentech/meta repo
+        test_config.repository.code_repo = "sequentech/meta"
+
+        # Run cancel command with issue #64 in dry-run mode
+        runner = CliRunner()
+
+        with patch('release_tool.commands.cancel.GitHubClient') as mock_client_class:
+            result = runner.invoke(
+                cancel,
+                ['--issue', '64', '--dry-run'],
+                obj={'config': test_config, 'debug': False},
+                catch_exceptions=False
+            )
+
+        # Should not make API calls in dry-run
+        mock_client_class.assert_not_called()
+
+        # Should show that PR #123 will be closed
+        assert result.exit_code == 0
+        assert 'PR' in result.output or 'pull' in result.output.lower() or '#123' in result.output
+
+        # Should show version, release, and issue
+        assert '11.0.0-rc.4' in result.output
+        assert '#64' in result.output or 'issue' in result.output.lower()
+
+    def test_cancel_detects_pr_from_pr_body(self, test_config, tmp_path):
+        """Test that cancel detects PR using PR body pattern."""
+        # Setup database
+        db = Database(test_config.database.path)
+        db.connect()
+
+        # Create repository
+        repo = Repository(
+            owner="test",
+            name="repo",
+            full_name="test/repo",
+            url="https://github.com/test/repo"
+        )
+        repo_id = db.upsert_repository(repo)
+
+        # Create a draft release
+        release = Release(
+            repo_id=repo_id,
+            version="2.0.0-rc.1",
+            tag_name="v2.0.0-rc.1",
+            published_at=None,
+            created_at=datetime.now(),
+            is_draft=True,
+            is_prerelease=True,
+            url="https://github.com/test/repo/releases/tag/v2.0.0-rc.1"
+        )
+        db.upsert_release(release)
+
+        # Create issue #99
+        issue = Issue(
+            repo_id=repo_id,
+            number=99,
+            key="99",
+            title="Release 2.0.0-rc.1",
+            body="Tracking issue",
+            state="open",
+            url="https://github.com/test/repo/issues/99"
+        )
+        db.upsert_issue(issue)
+
+        # Create a PR with issue reference in body (not in branch name)
+        pr = PullRequest(
+            repo_id=repo_id,
+            number=200,
+            title="Release notes",
+            body="Parent issue: https://github.com/sequentech/meta/issues/99\n\nRelease notes",
+            state="open",
+            url="https://github.com/test/repo/pull/200",
+            head_branch="release-notes-branch",
+            base_branch="main"
+        )
+        db.upsert_pull_request(pr)
+
+        # Link issue to version
+        db.save_issue_association("test/repo", "2.0.0-rc.1", 99, "https://github.com/test/repo/issues/99")
+
+        db.close()
+
+        # Run cancel command with issue #99
+        runner = CliRunner()
+
+        with patch('release_tool.commands.cancel.GitHubClient') as mock_client_class:
+            result = runner.invoke(
+                cancel,
+                ['--issue', '99', '--dry-run'],
+                obj={'config': test_config, 'debug': False},
+                catch_exceptions=False
+            )
+
+        # Should not make API calls in dry-run
+        mock_client_class.assert_not_called()
+
+        # Should show that PR will be closed
+        assert result.exit_code == 0
+        assert 'PR' in result.output or '#200' in result.output or 'pull' in result.output.lower()
