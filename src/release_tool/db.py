@@ -457,6 +457,71 @@ class Database:
 
         return prs
 
+    def find_prs_for_issue(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Find PRs associated with an issue using best-effort search.
+
+        Searches for PRs where body or title contains #issue_number using regex.
+
+        Args:
+            repo_full_name: Full repository name (owner/repo)
+            issue_number: Issue number to search for
+            limit: Maximum number of results to return
+
+        Returns:
+            List of dicts with: number, title, url, state, merged_at, head_branch
+        """
+        import re
+
+        # Get repository
+        repo = self.get_repository(repo_full_name)
+        if not repo:
+            return []
+
+        repo_id = repo.id
+
+        # Get all PRs for the repo (or limit to recent ones)
+        self.cursor.execute(
+            """SELECT number, title, body, state, url, merged_at, head_branch
+               FROM pull_requests
+               WHERE repo_id=?
+               ORDER BY number DESC
+               LIMIT 1000""",  # Limit search to last 1000 PRs for performance
+            (repo_id,)
+        )
+        rows = self.cursor.fetchall()
+
+        # Search for issue references in PR title and body
+        pattern = rf'#\s*{issue_number}\b' if issue_number > 0 else r'#'
+        matching_prs = []
+
+        for row in rows:
+            data = dict(row)
+            title = data.get('title', '')
+            body = data.get('body', '')
+
+            # Check if pattern matches
+            if re.search(pattern, title) or re.search(pattern, body):
+                matching_prs.append({
+                    'number': data.get('number'),
+                    'title': title,
+                    'url': data.get('url'),
+                    'state': data.get('state'),
+                    'merged_at': data.get('merged_at'),
+                    'head_branch': data.get('head_branch'),
+                    'body': body
+                })
+
+                if len(matching_prs) >= limit:
+                    break
+
+        return matching_prs
+
     # Commit operations
     def upsert_commit(self, commit: Commit) -> None:
         """Insert or update a commit."""
@@ -828,6 +893,27 @@ class Database:
                 data['published_at'] = datetime.fromisoformat(data['published_at'])
             return Release(**data)
         return None
+
+    def delete_release(self, repo_id: int, version: str) -> bool:
+        """
+        Delete a release from the database.
+
+        Args:
+            repo_id: Repository ID
+            version: Version string
+
+        Returns:
+            True if release was deleted or didn't exist, False on error
+        """
+        try:
+            self.cursor.execute(
+                "DELETE FROM releases WHERE repo_id=? AND version=?",
+                (repo_id, version)
+            )
+            self.conn.commit()
+            return True
+        except Exception:
+            return False
 
     def get_all_releases(
         self,
