@@ -5,17 +5,18 @@
 """Cancel command for release-tool.
 
 This command cancels a release by:
-1. Closing the associated PR (if exists and not merged)
-2. Deleting the PR branch (if exists)
+1. Closing the associated PR (if provided or found)
+2. Deleting the PR branch
 3. Deleting the GitHub release
 4. Deleting the git tag
 5. Deleting database records
-6. Closing the related issue (if exists)
+6. Closing the related issue (if provided or found)
+
+All operations are idempotent and will succeed if resources don't exist.
 """
 
 import sys
 from typing import Optional, Tuple
-from pathlib import Path
 import click
 from rich.console import Console
 from rich.prompt import Confirm
@@ -28,470 +29,355 @@ from ..models import SemanticVersion
 console = Console()
 
 
-def _extract_version_from_text(text: str, debug: bool = False) -> Optional[str]:
-    """
-    Extract version string from text (issue title, PR title, etc).
-
-    Looks for patterns like:
-    - "Prepare Release 1.2.3"
-    - "Release 1.2.3-rc.0"
-    - "v1.2.3"
-
-    Args:
-        text: Text to search
-        debug: Enable debug output
-
-    Returns:
-        Version string if found, None otherwise
-    """
-    if not text:
-        return None
-
-    import re
-    # Pattern to match semantic versions (with optional 'v' prefix and prerelease)
-    patterns = [
-        r'v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:\.\d+)?)?)',  # Full version with optional prerelease
-        r'v?(\d+\.\d+\.\d+)',  # Simple version
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            version = match.group(1)
-            if debug:
-                console.print(f"[dim]  Extracted version '{version}' from text: {text[:80]}...[/dim]")
-            return version
-
-    return None
-
-
-def _find_pr_for_version(
-    github_client: GitHubClient,
-    db: Database,
-    repo_full_name: str,
-    version: str,
-    issue_number: Optional[int] = None,
-    debug: bool = False
-) -> Tuple[Optional[int], Optional[str]]:
-    """
-    Find the PR number and branch associated with a version.
-
-    Strategy:
-    1. If issue_number provided, find PRs referencing that issue
-    2. Search for PRs from release branches matching the version pattern
-    3. Search for PRs with version in title
-
-    Args:
-        github_client: GitHub client instance
-        db: Database instance
-        repo_full_name: Full repository name
-        version: Version string
-        issue_number: Optional issue number to search for PRs
-        debug: Enable debug output
-
-    Returns:
-        Tuple of (PR number, branch name) if found, (None, None) otherwise
-    """
-    pr_number = None
-    branch_name = None
-
-    if issue_number:
-        # Strategy 1: Find PRs that reference this issue in their body
-        if debug:
-            console.print(f"[dim]    Strategy 1: Searching PRs that reference issue #{issue_number}...[/dim]")
-
-        pr_numbers = github_client.find_prs_referencing_issue(
-            repo_full_name,
-            issue_number,
-            state="open",
-            quiet=True
-        )
-
-        if pr_numbers:
-            pr_number = pr_numbers[0]
-            if debug:
-                console.print(f"[dim]    Found open PR: #{pr_number}[/dim]")
-
-        # Also try closed PRs if no open ones found
-        if not pr_number:
-            pr_numbers = github_client.find_prs_referencing_issue(
-                repo_full_name,
-                issue_number,
-                state="closed",
-                quiet=True
-            )
-            if pr_numbers:
-                pr_number = pr_numbers[0]
-                if debug:
-                    console.print(f"[dim]    Found closed PR: #{pr_number}[/dim]")
-
-    # Strategy 2: Search for PRs by branch name or title
-    if not pr_number:
-        if debug:
-            console.print(f"[dim]    Strategy 2: Searching PRs by branch/title...[/dim]")
-
-        try:
-            repo = github_client.gh.get_repo(repo_full_name)
-            pulls = repo.get_pulls(state='all', sort='updated', direction='desc')
-
-            for pr in pulls[:50]:  # Check up to 50 most recent PRs
-                branch = pr.head.ref if pr.head else ""
-
-                # Check if version appears in branch name or title
-                if version in branch or version.replace('.', '') in branch.replace('.', ''):
-                    pr_number = pr.number
-                    branch_name = branch
-                    if debug:
-                        console.print(f"[dim]    ✓ Found PR #{pr_number} with branch: {branch}[/dim]")
-                    break
-
-                if version in pr.title:
-                    pr_number = pr.number
-                    branch_name = branch
-                    if debug:
-                        console.print(f"[dim]    ✓ Found PR #{pr_number} with matching title[/dim]")
-                    break
-
-        except Exception as e:
-            if debug:
-                console.print(f"[dim]    Warning: Error searching PRs: {e}[/dim]")
-
-    # Get branch name if we have PR but no branch
-    if pr_number and not branch_name:
-        try:
-            repo = github_client.gh.get_repo(repo_full_name)
-            pr = repo.get_pull(pr_number)
-            branch_name = pr.head.ref if pr.head else None
-        except Exception as e:
-            if debug:
-                console.print(f"[dim]    Warning: Could not get branch name for PR #{pr_number}: {e}[/dim]")
-
-    return pr_number, branch_name
-
-
 def _resolve_version_pr_issue(
-    config: Config,
-    github_client: GitHubClient,
     db: Database,
+    repo_id: int,
+    repo_full_name: str,
     version: Optional[str],
     pr_number: Optional[int],
     issue_number: Optional[int],
-    debug: bool
-) -> Tuple[Optional[str], Optional[int], Optional[str], Optional[int]]:
+    debug: bool = False
+) -> Tuple[Optional[str], Optional[int], Optional[int]]:
     """
-    Resolve version, PR, branch, and issue from provided arguments with auto-detection.
+    Auto-detect version, PR, and issue if not provided.
 
     Args:
-        config: Configuration object
-        github_client: GitHub client instance
         db: Database instance
-        version: Optional version
+        repo_id: Repository ID
+        repo_full_name: Full repository name
+        version: Optional version string
         pr_number: Optional PR number
         issue_number: Optional issue number
         debug: Enable debug output
 
     Returns:
-        Tuple of (version, pr_number, branch_name, issue_number) or (None, None, None, None) if resolution fails
+        Tuple of (version, pr_number, issue_number)
     """
-    repo_full_name = config.repository.code_repo
-
-    # Case 1: Issue number provided, try to get version from database
-    if issue_number and not version:
-        console.print(f"[cyan]Looking up version from issue #{issue_number}...[/cyan]")
+    # If version provided, try to find PR/issue from database
+    if version:
         if debug:
-            console.print(f"[dim]  Checking database for issue association...[/dim]")
+            console.print(f"[dim]Searching for PR and issue for version {version}...[/dim]")
 
-        issue_assoc = db.get_issue_association_by_issue(repo_full_name, issue_number)
-        if issue_assoc:
-            version = issue_assoc['version']
-            console.print(f"[green]  ✓ Found version {version} from database[/green]")
-        else:
-            if debug:
-                console.print(f"[dim]  No database association found[/dim]")
-                console.print(f"[dim]  Fetching issue from GitHub to parse title...[/dim]")
+        # Try to find PR by searching for PRs with version in title/branch
+        if not pr_number:
+            prs = db.find_prs_for_issue(repo_full_name, 0, limit=100)  # Get all PRs
+            for pr in prs:
+                if version in pr.get('title', '') or version in pr.get('body', ''):
+                    pr_number = pr.get('number')
+                    if debug:
+                        console.print(f"[dim]Found PR #{pr_number} from database[/dim]")
+                    break
 
-            # Try to extract from issue title
-            try:
-                repo = github_client.gh.get_repo(repo_full_name)
-                issue = repo.get_issue(issue_number)
-                version = _extract_version_from_text(issue.title, debug=debug)
-
-                if version:
-                    console.print(f"[green]  ✓ Extracted version {version} from issue title[/green]")
-                else:
-                    console.print(f"[red]Error: Could not extract version from issue #{issue_number}[/red]")
-                    return None, None, None, None
-            except Exception as e:
-                console.print(f"[red]Error fetching issue #{issue_number}: {e}[/red]")
-                return None, None, None, None
-
-    # Ensure we have a version
-    if not version:
-        console.print("[red]Error: Could not determine version[/red]")
-        console.print("[yellow]Please provide either:")
-        console.print("  - A version number (e.g., 1.2.3)")
-        console.print("  - An issue number with --issue[/yellow]")
-        return None, None, None, None
-
-    # Find PR and branch if not provided
-    branch_name = None
-    if not pr_number:
-        console.print(f"\n[cyan]Looking for PR associated with version {version}...[/cyan]")
-
-        # Get issue number if we have it
+        # Try to find issue from database associations
         if not issue_number:
-            if debug:
-                console.print(f"[dim]  Checking for issue association...[/dim]")
             issue_assoc = db.get_issue_association(repo_full_name, version)
-            if issue_assoc:
-                issue_number = issue_assoc.get('issue_number')
+            if issue_assoc and issue_assoc.get('issue_number'):
+                issue_number = issue_assoc['issue_number']
                 if debug:
-                    console.print(f"[dim]  Found issue #{issue_number}[/dim]")
+                    console.print(f"[dim]Found issue #{issue_number} from database[/dim]")
 
-        # Try to find PR
-        pr_number, branch_name = _find_pr_for_version(
-            github_client, db, repo_full_name, version, issue_number, debug=debug
-        )
-
-        if pr_number:
-            console.print(f"[green]  ✓ Found PR #{pr_number}[/green]")
-            if branch_name:
-                console.print(f"[dim]    Branch: {branch_name}[/dim]")
-        else:
-            console.print(f"[yellow]  No PR found (will skip PR cleanup)[/yellow]")
-
-    # Find issue if not provided
-    if not issue_number:
+    # If PR provided but no version, try to extract from PR
+    elif pr_number:
         if debug:
-            console.print(f"\n[dim]Looking for issue associated with version {version}...[/dim]")
-        issue_assoc = db.get_issue_association(repo_full_name, version)
-        if issue_assoc:
-            issue_number = issue_assoc.get('issue_number')
-            console.print(f"[green]  ✓ Found issue #{issue_number}[/green]")
-        else:
-            if debug:
-                console.print(f"[dim]  No issue association found (will skip issue close)[/dim]")
+            console.print(f"[dim]Searching for version from PR #{pr_number}...[/dim]")
 
-    return version, pr_number, branch_name, issue_number
+        # Try to get PR from database
+        pr = db.get_pull_request(repo_id, pr_number)
+        if pr:
+            # Try to extract version from PR title
+            import re
+            title = pr.title if hasattr(pr, 'title') else ''
+            match = re.search(r'v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:\.\d+)?)?)', title)
+            if match:
+                version = match.group(1)
+                if debug:
+                    console.print(f"[dim]Extracted version {version} from PR title[/dim]")
+
+    # If issue provided but no version, try to extract from issue
+    elif issue_number:
+        if debug:
+            console.print(f"[dim]Searching for version from issue #{issue_number}...[/dim]")
+
+        # Try to get issue from database
+        issue = db.get_issue(repo_id, issue_number)
+        if issue:
+            # Try to extract version from issue title
+            import re
+            title = issue.title if hasattr(issue, 'title') else ''
+            match = re.search(r'v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:\.\d+)?)?)', title)
+            if match:
+                version = match.group(1)
+                if debug:
+                    console.print(f"[dim]Extracted version {version} from issue title[/dim]")
+
+    return version, pr_number, issue_number
 
 
-@click.command()
-@click.argument('version', required=False)
-@click.option('--issue', type=int, help='Issue number associated with release')
-@click.option('--pr', type=int, help='PR number to close (auto-detected if not provided)')
-@click.option('--force', is_flag=True, help='Allow canceling published releases')
-@click.option('--dry-run', is_flag=True, help='Show what would be done without executing')
-@click.pass_context
-def cancel(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], force: bool, dry_run: bool):
+def _check_published_status(
+    db: Database,
+    repo_id: int,
+    version: str,
+    force: bool,
+    debug: bool = False
+) -> bool:
     """
-    Cancel a release by cleaning up all associated resources.
+    Check if release is published and handle accordingly.
+
+    Args:
+        db: Database instance
+        repo_id: Repository ID
+        version: Version string
+        force: Force flag
+        debug: Enable debug output
+
+    Returns:
+        True if should proceed, False if should block
+    """
+    # Get release from database
+    release = db.get_release(repo_id, version)
+    if not release:
+        if debug:
+            console.print(f"[dim]No release found in database for {version}[/dim]")
+        return True
+
+    # Check if published
+    if release.published_at:
+        if force:
+            console.print(f"[yellow]⚠ Warning: Release {version} is published. Proceeding due to --force flag.[/yellow]")
+            return True
+        else:
+            console.print(f"[red]Error: Release {version} is already published.[/red]")
+            console.print(f"[red]Use --force to cancel a published release.[/red]")
+            return False
+
+    return True
+
+
+@click.command(context_settings={'help_option_names': ['-h', '--help']})
+@click.argument('version', required=False)
+@click.option(
+    '--issue',
+    '-i',
+    type=int,
+    help='Issue number to close'
+)
+@click.option(
+    '--pr',
+    '-p',
+    type=int,
+    help='Pull request number to close'
+)
+@click.option(
+    '--force',
+    '-f',
+    is_flag=True,
+    help='Force cancel even if release is published'
+)
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    help='Show what would be deleted without actually deleting'
+)
+@click.pass_context
+def cancel(
+    ctx,
+    version: Optional[str],
+    issue: Optional[int],
+    pr: Optional[int],
+    force: bool,
+    dry_run: bool
+):
+    """
+    Cancel a release by deleting all associated resources.
 
     This command will:
-    1. Close the associated PR (if exists and not merged)
-    2. Delete the PR branch (if exists)
+    1. Close the associated PR (if exists)
+    2. Delete the PR branch
     3. Delete the GitHub release
     4. Delete the git tag
     5. Delete database records
-    6. Close the tracking issue (if exists)
+    6. Close the related issue (if exists)
 
-    VERSION can be a version number (e.g., 1.2.3) or omitted if --issue is provided.
-
-    SAFETY: By default, this command will NOT cancel published releases. Use --force to override.
+    All operations are idempotent and stop on first failure.
 
     Examples:
 
-        \b
-        # Cancel by version
-        release-tool cancel 1.2.3
+      release-tool cancel 1.2.3-rc.1              # Cancel draft release
 
-        \b
-        # Cancel from issue
-        release-tool cancel --issue 42
+      release-tool cancel 1.2.3 --force           # Cancel published release
 
-        \b
-        # Cancel published release (requires --force)
-        release-tool cancel 1.2.3 --force
+      release-tool cancel 1.2.3 --pr 42 --issue 1 # Cancel with specific PR and issue
 
-        \b
-        # Dry-run to preview
-        release-tool cancel 1.2.3 --dry-run
+      release-tool cancel 1.2.3 --dry-run         # Show what would be deleted
     """
     config: Config = ctx.obj['config']
-    debug: bool = ctx.obj.get('debug', False)
+    debug = ctx.obj.get('debug', False)
+    assume_yes = ctx.obj.get('assume_yes', False)
 
     repo_full_name = config.repository.code_repo
-    tag_prefix = config.version_policy.tag_prefix if hasattr(config, 'version_policy') else 'v'
 
-    # Initialize clients
-    github_client = GitHubClient(config)
-    db = Database()
+    # Connect to database
+    db = Database(config.database.path)
     db.connect()
 
     try:
-        # Resolve version, PR, branch, and issue
-        resolved_version, resolved_pr, resolved_branch, resolved_issue = _resolve_version_pr_issue(
-            config, github_client, db, version, pr, issue, debug
-        )
-
-        if not resolved_version:
+        # Get repository
+        repo = db.get_repository(repo_full_name)
+        if not repo:
+            console.print(f"[red]Error: Repository {repo_full_name} not found in database.[/red]")
+            console.print(f"[yellow]Run 'release-tool pull' first to initialize the database.[/yellow]")
             sys.exit(1)
 
-        # Check if release is published (safety check)
-        tag_name = f"{tag_prefix}{resolved_version}" if not resolved_version.startswith(tag_prefix) else resolved_version
+        repo_id = repo.id
 
-        try:
-            release = github_client.get_release_by_tag(repo_full_name, tag_name)
-            if release and not release.draft and not force:
-                console.print(f"\n[red]✗ Cannot cancel published release {resolved_version}[/red]")
-                console.print(f"[yellow]This release is already published and visible to users.[/yellow]")
-                console.print(f"[yellow]Use --force to cancel it anyway (not recommended).[/yellow]")
+        # Auto-detect version, PR, and issue if not all provided
+        version, pr_number, issue_number = _resolve_version_pr_issue(
+            db, repo_id, repo_full_name, version, pr, issue, debug
+        )
+
+        # Require at least version or (PR and/or issue)
+        if not version and not pr_number and not issue_number:
+            console.print("[red]Error: Must provide version, --pr, or --issue[/red]")
+            console.print("Run with --help for usage information")
+            sys.exit(1)
+
+        # If we have version, check if published
+        if version:
+            if not _check_published_status(db, repo_id, version, force, debug):
                 sys.exit(1)
-        except Exception:
-            # Release doesn't exist or error checking - continue
-            pass
 
-        console.print(f"\n[bold red]⚠️  Release Cancellation Plan for {resolved_version}[/bold red]")
-        console.print(f"  Repository: {repo_full_name}")
-        console.print(f"  Version: {resolved_version}")
-        console.print(f"  PR: #{resolved_pr}" if resolved_pr else "  PR: None found")
-        if resolved_branch:
-            console.print(f"  Branch: {resolved_branch}")
-        console.print(f"  Issue: #{resolved_issue}" if resolved_issue else "  Issue: None found")
+        # Add 'v' prefix to tag name if needed
+        tag_name = f"v{version}" if version and not version.startswith('v') else version
 
+        # Show what will be cancelled
         if dry_run:
-            console.print("\n[yellow]DRY RUN - No changes will be made[/yellow]")
+            console.print("[bold yellow]DRY RUN - No changes will be made[/bold yellow]")
+        else:
+            console.print(f"[bold]Cancelling release {version or '(auto-detect)'}[/bold]")
 
-        console.print("\n[bold]Operations to perform:[/bold]")
-        ops = []
-        if resolved_pr:
-            ops.append(f"  1. Close PR #{resolved_pr}")
-        if resolved_branch:
-            ops.append(f"  2. Delete branch '{resolved_branch}'")
-        ops.append(f"  3. Delete GitHub release '{tag_name}'")
-        ops.append(f"  4. Delete git tag '{tag_name}'")
-        ops.append(f"  5. Delete database records")
-        if resolved_issue:
-            ops.append(f"  6. Close issue #{resolved_issue}")
+        console.print("\n[bold]Will perform the following operations:[/bold]")
+        if pr_number:
+            console.print(f"  • Close PR #{pr_number} and delete branch")
+        if version:
+            console.print(f"  • Delete GitHub release for tag {tag_name}")
+            console.print(f"  • Delete git tag {tag_name}")
+            console.print(f"  • Delete database records for version {version}")
+        if issue_number:
+            console.print(f"  • Close issue #{issue_number}")
 
-        for op in ops:
-            console.print(op)
-
-        # Confirm in interactive mode
-        if not dry_run and not ctx.obj.get('auto', False) and not ctx.obj.get('assume_yes', False):
-            console.print()
-            if not Confirm.ask("[bold yellow]Are you sure you want to cancel this release?[/bold yellow]", default=False):
-                console.print("[yellow]Cancelled by user[/yellow]")
-                sys.exit(0)
-
-        # Execute cancellation operations (stop on first failure)
         console.print()
 
-        # Step 1: Close PR if exists
-        if resolved_pr:
-            console.print(f"[bold cyan]Step 1: Closing PR #{resolved_pr}[/bold cyan]")
-            if not dry_run:
-                success = github_client.close_pull_request(
-                    repo_full_name,
-                    resolved_pr,
-                    comment=f"Canceling release {resolved_version}."
-                )
-                if not success:
-                    console.print(f"[red]✗ Failed to close PR #{resolved_pr}. Aborting.[/red]")
-                    sys.exit(1)
+        # Confirm unless --dry-run, --assume-yes, or --auto
+        if not dry_run and not assume_yes and not ctx.obj.get('auto', False):
+            if not Confirm.ask("[yellow]Proceed with cancellation?[/yellow]"):
+                console.print("[yellow]Cancelled by user.[/yellow]")
+                sys.exit(0)
+
+        # Exit early if dry-run
+        if dry_run:
+            console.print("\n[dim]Dry run complete. Use without --dry-run to execute.[/dim]")
+            sys.exit(0)
+
+        # Create GitHub client
+        github_client = GitHubClient(config.github.token)
+
+        success_operations = []
+        failed_operations = []
+
+        # Operation 1: Close PR (if provided)
+        if pr_number:
+            console.print(f"\n[bold]Closing PR #{pr_number}...[/bold]")
+
+            # Get PR details to find branch name
+            pr_obj = github_client.get_pull_request(repo_full_name, pr_number)
+            branch_name = None
+
+            if pr_obj:
+                branch_name = pr_obj.head.ref
+                console.print(f"  PR branch: {branch_name}")
+
+            # Close the PR
+            comment = f"Closing PR as release {version or 'this release'} is being cancelled."
+            if github_client.close_pull_request(repo_full_name, pr_number, comment):
+                console.print(f"  ✓ Closed PR #{pr_number}")
+                success_operations.append(f"Close PR #{pr_number}")
             else:
-                console.print(f"[dim]Would close PR #{resolved_pr}[/dim]")
-        else:
-            console.print("[dim]Step 1: No PR to close (skipping)[/dim]")
+                console.print(f"  [red]✗ Failed to close PR #{pr_number}[/red]")
+                failed_operations.append(f"Close PR #{pr_number}")
+                console.print("[red]Stopping due to failure.[/red]")
+                sys.exit(1)
 
-        # Step 2: Delete branch if exists
-        if resolved_branch:
-            console.print(f"\n[bold cyan]Step 2: Deleting branch '{resolved_branch}'[/bold cyan]")
-            if not dry_run:
-                success = github_client.delete_branch(repo_full_name, resolved_branch)
-                if not success:
-                    console.print(f"[red]✗ Failed to delete branch '{resolved_branch}'. Aborting.[/red]")
+            # Operation 2: Delete branch
+            if branch_name:
+                console.print(f"\n[bold]Deleting branch {branch_name}...[/bold]")
+                if github_client.delete_branch(repo_full_name, branch_name):
+                    console.print(f"  ✓ Deleted branch {branch_name}")
+                    success_operations.append(f"Delete branch {branch_name}")
+                else:
+                    console.print(f"  [red]✗ Failed to delete branch {branch_name}[/red]")
+                    failed_operations.append(f"Delete branch {branch_name}")
+                    console.print("[red]Stopping due to failure.[/red]")
                     sys.exit(1)
+
+        # Operation 3: Delete GitHub release
+        if version and tag_name:
+            console.print(f"\n[bold]Deleting GitHub release {tag_name}...[/bold]")
+            if github_client.delete_release(repo_full_name, tag_name):
+                console.print(f"  ✓ Deleted GitHub release {tag_name}")
+                success_operations.append(f"Delete release {tag_name}")
             else:
-                console.print(f"[dim]Would delete branch '{resolved_branch}'[/dim]")
-        else:
-            console.print("\n[dim]Step 2: No branch to delete (skipping)[/dim]")
-
-        # Step 3: Delete GitHub release
-        console.print(f"\n[bold cyan]Step 3: Deleting GitHub release '{tag_name}'[/bold cyan]")
-        if not dry_run:
-            success = github_client.delete_release(repo_full_name, tag_name)
-            if not success:
-                console.print(f"[red]✗ Failed to delete release. Aborting.[/red]")
+                console.print(f"  [red]✗ Failed to delete GitHub release {tag_name}[/red]")
+                failed_operations.append(f"Delete release {tag_name}")
+                console.print("[red]Stopping due to failure.[/red]")
                 sys.exit(1)
-        else:
-            console.print(f"[dim]Would delete GitHub release '{tag_name}'[/dim]")
 
-        # Step 4: Delete git tag
-        console.print(f"\n[bold cyan]Step 4: Deleting git tag '{tag_name}'[/bold cyan]")
-        if not dry_run:
-            success = github_client.delete_tag(repo_full_name, tag_name)
-            if not success:
-                console.print(f"[red]✗ Failed to delete tag. Aborting.[/red]")
+        # Operation 4: Delete git tag
+        if version and tag_name:
+            console.print(f"\n[bold]Deleting git tag {tag_name}...[/bold]")
+            if github_client.delete_tag(repo_full_name, tag_name):
+                console.print(f"  ✓ Deleted git tag {tag_name}")
+                success_operations.append(f"Delete tag {tag_name}")
+            else:
+                console.print(f"  [red]✗ Failed to delete git tag {tag_name}[/red]")
+                failed_operations.append(f"Delete tag {tag_name}")
+                console.print("[red]Stopping due to failure.[/red]")
                 sys.exit(1)
-        else:
-            console.print(f"[dim]Would delete git tag '{tag_name}'[/dim]")
 
-        # Step 5: Delete database records
-        console.print(f"\n[bold cyan]Step 5: Deleting database records[/bold cyan]")
-        if not dry_run:
+        # Operation 5: Delete database records
+        if version:
+            console.print(f"\n[bold]Deleting database records for {version}...[/bold]")
             try:
                 # Delete release record
-                db.cursor.execute(
-                    """DELETE FROM releases
-                       WHERE repo_id IN (SELECT id FROM repositories WHERE full_name=?)
-                       AND version=?""",
-                    (repo_full_name, resolved_version)
-                )
-
-                # Delete issue association
-                db.cursor.execute(
-                    """DELETE FROM release_issues
-                       WHERE repo_full_name=? AND version=?""",
-                    (repo_full_name, resolved_version)
-                )
-
-                db.conn.commit()
-                console.print(f"[green]✓ Deleted database records for version {resolved_version}[/green]")
-            except Exception as e:
-                console.print(f"[red]✗ Failed to delete database records: {e}. Aborting.[/red]")
-                sys.exit(1)
-        else:
-            console.print(f"[dim]Would delete database records for version {resolved_version}[/dim]")
-
-        # Step 6: Close issue if exists
-        if resolved_issue:
-            console.print(f"\n[bold cyan]Step 6: Closing issue #{resolved_issue}[/bold cyan]")
-            if not dry_run:
-                success = github_client.close_issue(
-                    repo_full_name,
-                    resolved_issue,
-                    comment=f"Release {resolved_version} has been cancelled."
-                )
-                if not success:
-                    console.print(f"[red]✗ Failed to close issue #{resolved_issue}. Aborting.[/red]")
+                if db.delete_release(repo_id, version):
+                    console.print(f"  ✓ Deleted database records for {version}")
+                    success_operations.append(f"Delete database records for {version}")
+                else:
+                    console.print(f"  [red]✗ Failed to delete database records[/red]")
+                    failed_operations.append(f"Delete database records for {version}")
+                    console.print("[red]Stopping due to failure.[/red]")
                     sys.exit(1)
+            except Exception as e:
+                console.print(f"  [red]✗ Failed to delete database records: {e}[/red]")
+                failed_operations.append(f"Delete database records for {version}")
+                console.print("[red]Stopping due to failure.[/red]")
+                sys.exit(1)
+
+        # Operation 6: Close issue (if provided)
+        if issue_number:
+            console.print(f"\n[bold]Closing issue #{issue_number}...[/bold]")
+            comment = f"Closing issue as release {version or 'this release'} is being cancelled."
+            if github_client.close_issue(repo_full_name, issue_number, comment):
+                console.print(f"  ✓ Closed issue #{issue_number}")
+                success_operations.append(f"Close issue #{issue_number}")
             else:
-                console.print(f"[dim]Would close issue #{resolved_issue}[/dim]")
-        else:
-            console.print("\n[dim]Step 6: No issue to close (skipping)[/dim]")
+                console.print(f"  [red]✗ Failed to close issue #{issue_number}[/red]")
+                failed_operations.append(f"Close issue #{issue_number}")
+                console.print("[red]Stopping due to failure.[/red]")
+                sys.exit(1)
 
-        # Success!
-        console.print(f"\n[bold green]✓ Release {resolved_version} cancelled successfully![/bold green]")
+        # Success summary
+        console.print(f"\n[bold green]✓ Successfully cancelled release {version or ''}[/bold green]")
+        console.print(f"[dim]Operations completed: {len(success_operations)}[/dim]")
 
-        if dry_run:
-            console.print("\n[yellow]This was a dry run. Use without --dry-run to execute.[/yellow]")
-
-    except Exception as e:
-        console.print(f"\n[red]Error: {str(e)}[/red]")
-        if debug:
-            import traceback
-            console.print("\n[dim]Full traceback:[/dim]")
-            console.print(traceback.format_exc())
-        sys.exit(1)
     finally:
         db.close()
