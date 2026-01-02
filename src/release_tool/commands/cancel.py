@@ -407,6 +407,14 @@ def cancel(
         # Create GitHub client
         github_client = GitHubClient(config)
 
+        # Show authenticated user for debugging
+        auth_user = github_client.get_authenticated_user()
+        if auth_user:
+            if debug:
+                console.print(f"[dim]Authenticated as GitHub user: @{auth_user}[/dim]")
+        else:
+            console.print(f"[yellow]Warning: Could not determine authenticated GitHub user[/yellow]")
+
         success_operations = []
         failed_operations = []
 

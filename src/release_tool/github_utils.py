@@ -2125,6 +2125,9 @@ class GitHubClient:
 
         This method is idempotent - if the PR is already merged, it returns True.
 
+        If the requested merge method is not allowed by repository settings,
+        this will automatically try alternative methods in order: squash, rebase.
+
         Args:
             repo_full_name: Repository in "owner/repo" format
             pr_number: PR number to merge
@@ -2149,24 +2152,56 @@ class GitHubClient:
                 console.print(f"[yellow]Warning: PR #{pr_number} is {pr.state}, cannot merge[/yellow]")
                 return False
 
-            # Merge the PR - only pass non-None parameters
-            merge_kwargs = {"merge_method": merge_method}
-            if commit_title is not None:
-                merge_kwargs["commit_title"] = commit_title
-            if commit_message is not None:
-                merge_kwargs["commit_message"] = commit_message
+            # Try to merge with fallback strategies
+            # Order: requested method first, then try alternatives if 405 (method not allowed)
+            methods_to_try = [merge_method]
 
-            result = pr.merge(**merge_kwargs)
+            # Add fallback methods if primary fails
+            for fallback in ["squash", "rebase", "merge"]:
+                if fallback not in methods_to_try:
+                    methods_to_try.append(fallback)
 
-            if result.merged:
-                console.print(f"[green]✓ Merged PR #{pr_number}: {pr.title}[/green]")
-                return True
-            else:
-                console.print(f"[red]Failed to merge PR #{pr_number}: {result.message}[/red]")
-                return False
+            last_error = None
+            for method in methods_to_try:
+                try:
+                    # Merge the PR - only pass non-None parameters
+                    merge_kwargs = {"merge_method": method}
+                    if commit_title is not None:
+                        merge_kwargs["commit_title"] = commit_title
+                    if commit_message is not None:
+                        merge_kwargs["commit_message"] = commit_message
+
+                    result = pr.merge(**merge_kwargs)
+
+                    if result.merged:
+                        if method != merge_method:
+                            console.print(f"[yellow]Note: Used '{method}' merge method ('{merge_method}' not allowed by repository settings)[/yellow]")
+                        console.print(f"[green]✓ Merged PR #{pr_number}: {pr.title}[/green]")
+                        return True
+                    else:
+                        console.print(f"[red]Failed to merge PR #{pr_number}: {result.message}[/red]")
+                        return False
+
+                except GithubException as e:
+                    # Check if this is a "method not allowed" error (405)
+                    if e.status == 405 and "not allowed" in str(e).lower():
+                        # Try next method
+                        last_error = e
+                        continue
+                    else:
+                        # Different error, don't retry
+                        raise
+
+            # All methods failed
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error merging PR #{pr_number}{user_info}: {last_error}[/red]")
+            return False
 
         except GithubException as e:
-            console.print(f"[red]Error merging PR #{pr_number}: {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error merging PR #{pr_number}{user_info}: {e}[/red]")
             return False
 
     def close_issue(
@@ -2207,7 +2242,9 @@ class GitHubClient:
             return True
 
         except GithubException as e:
-            console.print(f"[red]Error closing issue #{issue_number}: {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error closing issue #{issue_number}{user_info}: {e}[/red]")
             return False
 
     def close_pull_request(
@@ -2248,7 +2285,9 @@ class GitHubClient:
             return True
 
         except GithubException as e:
-            console.print(f"[red]Error closing PR #{pr_number}: {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error closing PR #{pr_number}{user_info}: {e}[/red]")
             return False
 
     def delete_branch(
@@ -2284,7 +2323,9 @@ class GitHubClient:
                 raise
 
         except GithubException as e:
-            console.print(f"[red]Error deleting branch '{branch_name}': {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error deleting branch '{branch_name}'{user_info}: {e}[/red]")
             return False
 
     def delete_tag(
@@ -2344,7 +2385,9 @@ class GitHubClient:
                 raise
 
         except GithubException as e:
-            console.print(f"[red]Error deleting tag '{tag_name}': {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error deleting tag '{tag_name}'{user_info}: {e}[/red]")
             return False
 
     def delete_release(
@@ -2379,7 +2422,9 @@ class GitHubClient:
             return True
 
         except GithubException as e:
-            console.print(f"[red]Error deleting release '{tag_name}': {e}[/red]")
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error deleting release '{tag_name}'{user_info}: {e}[/red]")
             return False
 
     def find_prs_referencing_issue(

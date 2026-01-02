@@ -499,6 +499,14 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
     db.connect()
 
     try:
+        # Show authenticated user for debugging
+        auth_user = github_client.get_authenticated_user()
+        if auth_user:
+            if debug:
+                console.print(f"[dim]Authenticated as GitHub user: @{auth_user}[/dim]")
+        else:
+            console.print(f"[yellow]Warning: Could not determine authenticated GitHub user[/yellow]")
+
         # Resolve version, PR, and issue
         resolved_version, resolved_pr, resolved_issue, resolved_issue_repo = _resolve_version_pr_issue(
             config, github_client, db, version, pr, issue, auto_mode, debug
