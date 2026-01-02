@@ -112,7 +112,7 @@ def _resolve_version_pr_issue(
     pr_number: Optional[int],
     issue_number: Optional[int],
     debug: bool = False
-) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+) -> Tuple[Optional[str], Optional[int], Optional[int], Optional[str]]:
     """
     Auto-detect version, PR, and issue if not provided.
 
@@ -120,8 +120,8 @@ def _resolve_version_pr_issue(
 
     Args:
         db: Database instance
-        repo_id: Repository ID
-        repo_full_name: Full repository name
+        repo_id: Repository ID (code repo)
+        repo_full_name: Full repository name (code repo)
         config: Config instance with issue_policy.patterns
         version: Optional version string
         pr_number: Optional PR number
@@ -129,8 +129,11 @@ def _resolve_version_pr_issue(
         debug: Enable debug output
 
     Returns:
-        Tuple of (version, pr_number, issue_number)
+        Tuple of (version, pr_number, issue_number, issue_repo_full_name)
+        issue_repo_full_name is the repository where the issue was found (None if not found)
     """
+    issue_repo_full_name = None
+
     # If version provided, try to find PR/issue from database
     if version:
         if debug:
@@ -182,8 +185,22 @@ def _resolve_version_pr_issue(
         if debug:
             console.print(f"[dim]Searching for version from issue #{issue_number}...[/dim]")
 
-        # Try to get issue from database
-        issue = db.get_issue(repo_id, issue_number)
+        # Try to get issue from all issue repositories
+        issue = None
+
+        # Get all possible issue repositories
+        issue_repos = config.get_issue_repos()  # Returns list of all issue repos
+
+        for issue_repo in issue_repos:
+            issue_repo_obj = db.get_repository(issue_repo)
+            if issue_repo_obj:
+                issue = db.get_issue(issue_repo_obj.id, issue_number)
+                if issue:
+                    issue_repo_full_name = issue_repo
+                    if debug:
+                        console.print(f"[dim]Found issue #{issue_number} in repository {issue_repo}[/dim]")
+                    break
+
         if issue:
             # Try to extract version from issue title
             import re
@@ -194,13 +211,30 @@ def _resolve_version_pr_issue(
                 if debug:
                     console.print(f"[dim]Extracted version {version} from issue title[/dim]")
 
-        # If no PR found yet, use pattern matching to find PR for this issue
-        if not pr_number:
-            pr_number = find_pr_for_issue_using_patterns(
-                db, repo_id, repo_full_name, config, issue_number, debug
-            )
+            # If no PR found yet, use pattern matching to find PR for this issue
+            if not pr_number:
+                pr_number = find_pr_for_issue_using_patterns(
+                    db, repo_id, repo_full_name, config, issue_number, debug
+                )
 
-    return version, pr_number, issue_number
+    # If we have an issue_number but haven't found the repository yet,
+    # search for it in all issue repositories
+    if issue_number and not issue_repo_full_name:
+        if debug:
+            console.print(f"[dim]Searching for issue #{issue_number} in all configured issue repositories...[/dim]")
+
+        issue_repos = config.get_issue_repos()
+        for issue_repo in issue_repos:
+            issue_repo_obj = db.get_repository(issue_repo)
+            if issue_repo_obj:
+                issue = db.get_issue(issue_repo_obj.id, issue_number)
+                if issue:
+                    issue_repo_full_name = issue_repo
+                    if debug:
+                        console.print(f"[dim]Found issue #{issue_number} in repository {issue_repo}[/dim]")
+                    break
+
+    return version, pr_number, issue_number, issue_repo_full_name
 
 
 def _check_published_status(
@@ -321,7 +355,7 @@ def cancel(
         repo_id = repo.id
 
         # Auto-detect version, PR, and issue if not all provided
-        version, pr_number, issue_number = _resolve_version_pr_issue(
+        version, pr_number, issue_number, issue_repo_full_name = _resolve_version_pr_issue(
             db, repo_id, repo_full_name, config, version, pr, issue, debug
         )
 
@@ -454,9 +488,12 @@ def cancel(
 
         # Operation 6: Close issue (if provided)
         if issue_number:
-            console.print(f"\n[bold]Closing issue #{issue_number}...[/bold]")
+            # Use issue_repo_full_name if we found the issue in DB,
+            # otherwise use the primary issue_repo from config (never code_repo directly)
+            target_repo = issue_repo_full_name if issue_repo_full_name else config.get_issue_repos()[0]
+            console.print(f"\n[bold]Closing issue #{issue_number} in {target_repo}...[/bold]")
             comment = f"Closing issue as release {version or 'this release'} is being cancelled."
-            if github_client.close_issue(repo_full_name, issue_number, comment):
+            if github_client.close_issue(target_repo, issue_number, comment):
                 console.print(f"  ✓ Closed issue #{issue_number}")
                 success_operations.append(f"Close issue #{issue_number}")
             else:

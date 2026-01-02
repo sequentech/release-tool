@@ -102,8 +102,8 @@ def test_version_required_without_pr_or_issue(test_config):
         mock_repo.id = 1
         mock_db.get_repository.return_value = mock_repo
 
-        # Mock _resolve_version_pr_issue to return all None
-        with patch('release_tool.commands.cancel._resolve_version_pr_issue', return_value=(None, None, None)):
+        # Mock _resolve_version_pr_issue to return all None (4-tuple now includes issue_repo_full_name)
+        with patch('release_tool.commands.cancel._resolve_version_pr_issue', return_value=(None, None, None, None)):
             result = runner.invoke(
                 cancel,
                 [],
@@ -296,7 +296,7 @@ def test_resolve_version_from_pr(test_config, test_db):
     )
     db.upsert_pull_request(pr)
 
-    version, pr_number, issue_number = _resolve_version_pr_issue(
+    version, pr_number, issue_number, issue_repo_full_name = _resolve_version_pr_issue(
         db, repo_id, "test/repo", test_config, None, 42, None, debug=False
     )
 
@@ -320,12 +320,13 @@ def test_resolve_version_from_issue(test_config, test_db):
     )
     db.upsert_issue(issue)
 
-    version, pr_number, issue_number = _resolve_version_pr_issue(
+    version, pr_number, issue_number, issue_repo_full_name = _resolve_version_pr_issue(
         db, repo_id, "test/repo", test_config, None, None, 1, debug=False
     )
 
     assert version == "1.2.3"
     assert issue_number == 1
+    assert issue_repo_full_name == "test/repo"  # Issue should be found in code_repo
 
 
 def test_find_pr_by_branch_name_pattern(test_config, test_db):
@@ -504,4 +505,237 @@ def test_github_client_initialized_correctly(test_config, test_db):
         # The first argument should be the config object
         assert call_args[0][0] == test_config, "GitHubClient should be initialized with config object, not token string"
 
+    assert result.exit_code == 0
+
+
+def test_resolve_issue_from_different_repo(tmp_path):
+    """Test that _resolve_version_pr_issue finds issues in issue_repo when different from code_repo."""
+    # Create config with different issue_repo
+    db_path = tmp_path / "test.db"
+    config_dict = {
+        "repository": {
+            "code_repo": "test/code-repo",
+            "issue_repos": ["test/issue-repo"]
+        },
+        "database": {
+            "path": str(db_path)
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    # Setup database with both repositories
+    db = Database(config.database.path)
+    db.connect()
+
+    try:
+        # Create code repository
+        code_repo = Repository(
+            owner="test",
+            name="code-repo",
+            full_name="test/code-repo",
+            url="https://github.com/test/code-repo"
+        )
+        code_repo_id = db.upsert_repository(code_repo)
+
+        # Create issue repository
+        issue_repo = Repository(
+            owner="test",
+            name="issue-repo",
+            full_name="test/issue-repo",
+            url="https://github.com/test/issue-repo"
+        )
+        issue_repo_id = db.upsert_repository(issue_repo)
+
+        # Create an issue in the issue_repo (not code_repo)
+        issue = Issue(
+            repo_id=issue_repo_id,
+            number=100,
+            key="100",
+            title="Release 2.0.0",
+            body="Tracking issue for release",
+            state="open",
+            url="https://github.com/test/issue-repo/issues/100"
+        )
+        db.upsert_issue(issue)
+
+        # Call _resolve_version_pr_issue - should find issue in issue_repo
+        version, pr_number, issue_number, issue_repo_full_name = _resolve_version_pr_issue(
+            db, code_repo_id, "test/code-repo", config, None, None, 100, debug=False
+        )
+
+        # Verify that issue was found and correct repo was returned
+        assert version == "2.0.0"
+        assert issue_number == 100
+        assert issue_repo_full_name == "test/issue-repo", "Should return issue_repo, not code_repo"
+
+    finally:
+        db.close()
+
+
+def test_cancel_closes_issue_in_correct_repo(tmp_path):
+    """Test that cancel command closes issue in the correct repository when issue_repo differs from code_repo."""
+    # Create config with different issue_repo
+    db_path = tmp_path / "test.db"
+    config_dict = {
+        "repository": {
+            "code_repo": "test/code-repo",
+            "issue_repos": ["test/issue-repo"]
+        },
+        "database": {
+            "path": str(db_path)
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    # Setup database
+    db = Database(config.database.path)
+    db.connect()
+
+    try:
+        # Create repositories
+        code_repo = Repository(
+            owner="test",
+            name="code-repo",
+            full_name="test/code-repo",
+            url="https://github.com/test/code-repo"
+        )
+        code_repo_id = db.upsert_repository(code_repo)
+
+        issue_repo = Repository(
+            owner="test",
+            name="issue-repo",
+            full_name="test/issue-repo",
+            url="https://github.com/test/issue-repo"
+        )
+        issue_repo_id = db.upsert_repository(issue_repo)
+
+        # Create release in code repo
+        release = Release(
+            repo_id=code_repo_id,
+            version="2.0.0",
+            tag_name="v2.0.0",
+            is_draft=True,
+            is_prerelease=False,
+            created_at=datetime.now()
+        )
+        db.upsert_release(release)
+
+        # Create issue in issue_repo
+        issue = Issue(
+            repo_id=issue_repo_id,
+            number=200,
+            key="200",
+            title="Release 2.0.0",
+            body="Tracking issue",
+            state="open",
+            url="https://github.com/test/issue-repo/issues/200"
+        )
+        db.upsert_issue(issue)
+
+    finally:
+        db.close()
+
+    runner = CliRunner()
+
+    with patch('release_tool.commands.cancel.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_release.return_value = True
+        mock_client.delete_tag.return_value = True
+        mock_client.close_issue.return_value = True
+
+        result = runner.invoke(
+            cancel,
+            ['2.0.0', '--issue', '200'],
+            obj={'config': config, 'debug': False, 'assume_yes': True},
+            catch_exceptions=False
+        )
+
+    # Verify that close_issue was called with the ISSUE repository, not code repository
+    mock_client.close_issue.assert_called_once()
+    call_args = mock_client.close_issue.call_args
+    repo_arg = call_args[0][0]
+    issue_number_arg = call_args[0][1]
+
+    assert repo_arg == "test/issue-repo", f"Should close issue in issue-repo, but got {repo_arg}"
+    assert issue_number_arg == 200
+    assert result.exit_code == 0
+
+
+def test_cancel_uses_issue_repo_when_issue_not_in_db(tmp_path):
+    """Test that cancel uses primary issue_repo when issue is not found in database."""
+    # Create config with different issue_repo
+    db_path = tmp_path / "test.db"
+    config_dict = {
+        "repository": {
+            "code_repo": "test/code-repo",
+            "issue_repos": ["test/issue-repo"]
+        },
+        "database": {
+            "path": str(db_path)
+        }
+    }
+    config = Config.from_dict(config_dict)
+
+    # Setup database
+    db = Database(config.database.path)
+    db.connect()
+
+    try:
+        # Create code repository
+        code_repo = Repository(
+            owner="test",
+            name="code-repo",
+            full_name="test/code-repo",
+            url="https://github.com/test/code-repo"
+        )
+        code_repo_id = db.upsert_repository(code_repo)
+
+        # Create issue_repo but don't add any issue to it
+        issue_repo = Repository(
+            owner="test",
+            name="issue-repo",
+            full_name="test/issue-repo",
+            url="https://github.com/test/issue-repo"
+        )
+        db.upsert_repository(issue_repo)
+
+        # Create release
+        release = Release(
+            repo_id=code_repo_id,
+            version="3.0.0",
+            tag_name="v3.0.0",
+            is_draft=True,
+            is_prerelease=False,
+            created_at=datetime.now()
+        )
+        db.upsert_release(release)
+
+    finally:
+        db.close()
+
+    runner = CliRunner()
+
+    with patch('release_tool.commands.cancel.GitHubClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_release.return_value = True
+        mock_client.delete_tag.return_value = True
+        mock_client.close_issue.return_value = True
+
+        # Try to cancel with issue #300 that doesn't exist in DB
+        result = runner.invoke(
+            cancel,
+            ['3.0.0', '--issue', '300'],
+            obj={'config': config, 'debug': False, 'assume_yes': True},
+            catch_exceptions=False
+        )
+
+    # When issue is not found in DB, should still use configured issue_repo (not code_repo)
+    mock_client.close_issue.assert_called_once()
+    call_args = mock_client.close_issue.call_args
+    repo_arg = call_args[0][0]
+
+    # Should use issue_repo even when issue wasn't found in database
+    assert repo_arg == "test/issue-repo", f"Should use issue-repo when issue not in DB, but got {repo_arg}"
     assert result.exit_code == 0
