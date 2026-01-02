@@ -7,6 +7,7 @@
 import pytest
 import tempfile
 import shutil
+import os
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from git import Repo
@@ -16,6 +17,16 @@ from release_tool.config import Config
 from release_tool.models import PullRequest, Issue, Label, Repository
 from helpers.git_helpers import init_git_repo, GitScenario
 from helpers.config_helpers import create_test_config, write_config_file
+
+
+@pytest.fixture(autouse=True)
+def mock_github_token(monkeypatch):
+    """
+    Automatically set GITHUB_TOKEN environment variable for all tests.
+
+    This ensures that Config.github.token can be accessed without error.
+    """
+    monkeypatch.setenv("GITHUB_TOKEN", "test_token")
 
 
 @pytest.fixture

@@ -5,6 +5,8 @@
 # Example configuration showcasing the output_template master template feature
 # This example shows how to create custom release notes with migrations section
 
+config_version = "1.8"
+
 [repository]
 code_repo = "owner/repo"
 

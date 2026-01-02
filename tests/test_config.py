@@ -10,14 +10,13 @@ from pathlib import Path
 from release_tool.config import Config, load_config
 
 
-def test_config_from_dict():
+def test_config_from_dict(monkeypatch):
     """Test creating config from dictionary."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test_token")
+
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
-        },
-        "github": {
-            "token": "test_token"
         }
     }
     config = Config.from_dict(config_dict)
@@ -25,8 +24,10 @@ def test_config_from_dict():
     assert config.github.token == "test_token"
 
 
-def test_load_from_file(tmp_path):
+def test_load_from_file(tmp_path, monkeypatch):
     """Test loading config from TOML file."""
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
+
     config_file = tmp_path / "test_config.toml"
     config_content = """
 config_version = "1.5"
@@ -34,9 +35,6 @@ config_version = "1.5"
 [repository]
 code_repo = "owner/repo"
 default_branch = "main"
-
-[github]
-token = "fake-token"
 
 [version_policy]
 tag_prefix = "release-"
@@ -46,6 +44,7 @@ tag_prefix = "release-"
     config = Config.from_file(str(config_file), auto_upgrade=True)
     assert config.repository.code_repo == "owner/repo"
     assert config.version_policy.tag_prefix == "release-"
+    assert config.github.token == "fake-token"
 
 
 def test_env_var_override(monkeypatch):
@@ -61,8 +60,10 @@ def test_env_var_override(monkeypatch):
     assert config.github.token == "env-token"
 
 
-def test_category_map():
+def test_category_map(monkeypatch):
     """Test category mapping generation."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -76,8 +77,10 @@ def test_category_map():
     assert "feature" in category_map["🚀 Features"]
 
 
-def test_ordered_categories():
+def test_ordered_categories(monkeypatch):
     """Test category ordering."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
     config_dict = {
         "repository": {
             "code_repo": "test/repo"
@@ -146,9 +149,10 @@ def test_category_label_matching_with_issue_prefix():
     assert category.matches_label("normal", "issue")
 
 
-def test_invalid_inclusion_policy_raises_error():
+def test_invalid_inclusion_policy_raises_error(monkeypatch):
     """Test that invalid release_notes_inclusion_policy values raise ValidationError."""
     from pydantic import ValidationError
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     # Invalid value "invalid-type"
     with pytest.raises(ValidationError) as exc_info:
@@ -162,8 +166,10 @@ def test_invalid_inclusion_policy_raises_error():
     assert "release_notes_inclusion_policy" in str(exc_info.value)
 
 
-def test_valid_inclusion_policy_values():
+def test_valid_inclusion_policy_values(monkeypatch):
     """Test that all valid inclusion policy values are accepted."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
     # Test each valid value individually
     for value in ["issues", "pull-requests", "commits"]:
         config = Config.from_dict({
@@ -184,10 +190,26 @@ def test_valid_inclusion_policy_values():
     assert len(config.issue_policy.release_notes_inclusion_policy) == 3
 
 
-def test_default_inclusion_policy():
+def test_default_inclusion_policy(monkeypatch):
     """Test that default inclusion policy is ["issues", "pull-requests"]."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
     config = Config.from_dict({
         "repository": {"code_repo": "test/repo"}
     })
 
     assert config.issue_policy.release_notes_inclusion_policy == ["issues", "pull-requests"]
+
+
+def test_missing_github_token_raises_error(monkeypatch):
+    """Test that accessing token without GITHUB_TOKEN env var raises an error."""
+    # Unset GITHUB_TOKEN if it exists
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    config = Config.from_dict({
+        "repository": {"code_repo": "test/repo"}
+    })
+
+    # Accessing token should raise ValueError
+    with pytest.raises(ValueError, match="GitHub token is required"):
+        _ = config.github.token

@@ -10,13 +10,13 @@ from typing import Dict, Any, List, Optional
 
 
 def minimal_config(code_repo: str = "test/repo") -> Dict[str, Any]:
-    """Return minimal valid configuration."""
+    """Return minimal valid configuration.
+
+    Note: GitHub token should be set via GITHUB_TOKEN environment variable.
+    """
     return {
         "repository": {
             "code_repo": code_repo
-        },
-        "github": {
-            "token": "test_token"
         }
     }
 
@@ -30,6 +30,8 @@ def create_test_config(
     """
     Create a test configuration dictionary.
 
+    Note: GitHub token should be set via GITHUB_TOKEN environment variable.
+
     Args:
         code_repo: Repository name
         pr_code_templates: List of pr_code template configurations
@@ -42,9 +44,6 @@ def create_test_config(
     config = {
         "repository": {
             "code_repo": code_repo
-        },
-        "github": {
-            "token": "test_token"
         },
         "output": {
             "draft_output_path": draft_output_path

@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.7"  # Latest config version
+    CURRENT_VERSION = "1.8"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -268,6 +268,17 @@ class MigrationManager:
                 "  • GitHub releases always use standard version comparison (unaffected)\n"
                 "  • Default value: 'final-only' (same behavior as before)\n"
                 "  • Automatic config migration preserves your policy setting"
+            ),
+            ("1.7", "1.8"): (
+                "Version 1.8 removes GitHub token from config:\n"
+                "  • SECURITY: Removed [github].token config field\n"
+                "  • GitHub token MUST now be provided via GITHUB_TOKEN environment variable\n"
+                "  • Config.github.token property reads from GITHUB_TOKEN env var\n"
+                "  • Raises clear error if GITHUB_TOKEN is not set\n"
+                "  • BREAKING: Any config files with 'token = ...' will have it removed\n"
+                "  • Prevents accidental commit of secrets to version control\n"
+                "  • Migration removes token field from config (if present)\n"
+                "  • Set environment variable: export GITHUB_TOKEN='your_token_here'"
             ),
         }
 

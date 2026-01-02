@@ -520,14 +520,27 @@ class RepositoryConfig(BaseModel):
 
 class GitHubConfig(BaseModel):
     """GitHub configuration."""
-    token: Optional[str] = Field(
-        default=None,
-        description="GitHub API token (can also use GITHUB_TOKEN env var)"
-    )
     api_url: str = Field(
         default="https://api.github.com",
         description="GitHub API URL"
     )
+
+    @property
+    def token(self) -> str:
+        """Get GitHub token from environment variable.
+
+        Returns:
+            GitHub token from GITHUB_TOKEN environment variable
+
+        Raises:
+            ValueError: If GITHUB_TOKEN environment variable is not set
+        """
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            raise ValueError(
+                "GitHub token is required. Please set the GITHUB_TOKEN environment variable."
+            )
+        return token
 
 
 class DatabaseConfig(BaseModel):
@@ -658,23 +671,11 @@ class Config(BaseModel):
                         f"Please upgrade to v{target_version} using: release-tool update-config"
                     )
 
-        # Override GitHub token from environment if present
-        if 'github' not in data:
-            data['github'] = {}
-        if not data['github'].get('token'):
-            data['github']['token'] = os.getenv('GITHUB_TOKEN')
-
         return cls(**data)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Config":
         """Load configuration from dictionary."""
-        # Override GitHub token from environment if present
-        if 'github' not in data:
-            data['github'] = {}
-        if not data['github'].get('token'):
-            data['github']['token'] = os.getenv('GITHUB_TOKEN')
-
         return cls(**data)
 
     def get_issue_repos(self) -> List[str]:
