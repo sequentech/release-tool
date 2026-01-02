@@ -2365,20 +2365,18 @@ class GitHubClient:
             True if successful (or release doesn't exist), False otherwise
         """
         try:
-            repo = self.gh.get_repo(repo_full_name)
+            # Use get_release_by_tag which handles draft/untagged releases better
+            release = self.get_release_by_tag(repo_full_name, tag_name)
 
-            try:
-                release = repo.get_release(tag_name)
-                release_name = release.title or tag_name
-                release.delete_release()
-                console.print(f"[green]✓ Deleted GitHub release '{release_name}' ({tag_name})[/green]")
+            if not release:
+                # Release doesn't exist - idempotent success
+                console.print(f"[dim]Release '{tag_name}' not found, skipping deletion[/dim]")
                 return True
-            except GithubException as e:
-                if e.status == 404:
-                    # Release doesn't exist - idempotent success
-                    console.print(f"[dim]Release '{tag_name}' not found, skipping deletion[/dim]")
-                    return True
-                raise
+
+            release_name = release.title or tag_name
+            release.delete_release()
+            console.print(f"[green]✓ Deleted GitHub release '{release_name}' ({tag_name})[/green]")
+            return True
 
         except GithubException as e:
             console.print(f"[red]Error deleting release '{tag_name}': {e}[/red]")

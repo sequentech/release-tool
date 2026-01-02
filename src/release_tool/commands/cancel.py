@@ -63,8 +63,9 @@ def find_pr_for_issue_using_patterns(
     # Create issue extractor with configured patterns
     extractor = IssueExtractor(config, debug=debug)
 
-    # Get all open PRs (use issue_number=0 to get all, not filter by issue)
-    all_prs = db.find_prs_for_issue(repo_full_name, issue_number=0, limit=100)
+    # Get all PRs (use issue_number=0 to get all, not filter by issue)
+    # Increased limit to 1000 to ensure we don't miss PRs in large repos
+    all_prs = db.find_prs_for_issue(repo_full_name, issue_number=0, limit=1000)
 
     if debug:
         console.print(f"[dim]Found {len(all_prs)} PRs to check[/dim]")
@@ -141,7 +142,8 @@ def _resolve_version_pr_issue(
 
         # Try to find PR by searching for PRs with version in title/branch
         if not pr_number:
-            prs = db.find_prs_for_issue(repo_full_name, 0, limit=100)  # Get all PRs
+            # Increased limit to 1000 to ensure we don't miss PRs in large repos
+            prs = db.find_prs_for_issue(repo_full_name, 0, limit=1000)  # Get all PRs
             for pr in prs:
                 if version in pr.get('title', '') or version in pr.get('body', ''):
                     pr_number = pr.get('number')
@@ -421,8 +423,8 @@ def cancel(
                 console.print(f"  PR branch: {branch_name}")
 
             # Close the PR
-            comment = f"Closing PR as release {version or 'this release'} is being cancelled."
-            if github_client.close_pull_request(repo_full_name, pr_number, comment):
+            # Don't add a comment here - let release-bot add the success comment
+            if github_client.close_pull_request(repo_full_name, pr_number):
                 console.print(f"  ✓ Closed PR #{pr_number}")
                 success_operations.append(f"Close PR #{pr_number}")
             else:
@@ -492,8 +494,8 @@ def cancel(
             # otherwise use the primary issue_repo from config (never code_repo directly)
             target_repo = issue_repo_full_name if issue_repo_full_name else config.get_issue_repos()[0]
             console.print(f"\n[bold]Closing issue #{issue_number} in {target_repo}...[/bold]")
-            comment = f"Closing issue as release {version or 'this release'} is being cancelled."
-            if github_client.close_issue(target_repo, issue_number, comment):
+            # Don't add a comment here - let release-bot add the success comment
+            if github_client.close_issue(target_repo, issue_number):
                 console.print(f"  ✓ Closed issue #{issue_number}")
                 success_operations.append(f"Close issue #{issue_number}")
             else:

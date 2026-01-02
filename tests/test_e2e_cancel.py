@@ -277,11 +277,10 @@ class TestE2ECancelExecution:
                 catch_exceptions=False
             )
 
-        # Should close PR
+        # Should close PR (without comment - release-bot will add success comment)
         mock_client.close_pull_request.assert_called_once_with(
             'test/repo',
-            42,
-            "Closing PR as release 1.2.3-rc.1 is being cancelled."
+            42
         )
 
         # Should delete branch
@@ -312,11 +311,10 @@ class TestE2ECancelExecution:
                 catch_exceptions=False
             )
 
-        # Should close issue
+        # Should close issue (without comment - release-bot will add success comment)
         mock_client.close_issue.assert_called_once_with(
             'test/repo',
-            1,
-            "Closing issue as release 1.2.3-rc.1 is being cancelled."
+            1
         )
 
         assert result.exit_code == 0
