@@ -314,3 +314,100 @@ class TestE2EPushWithPrCodeTemplates:
             for line in commit_lines:
                 assert str(tmp_path / "drafts") not in line, \
                     f"Should not commit to draft path. Found: {line}"
+
+    def test_version_components_available_in_pr_code_template(
+        self, git_scenario, populated_db, mock_github_api, tmp_path
+    ):
+        """
+        Test that version components (major, minor, patch, prerelease) are available in pr_code templates.
+
+        This ensures templates can use {{major}}, {{minor}}, {{patch}}, and {{prerelease}}.
+        """
+        # Setup: Create git history
+        scenario_data = git_scenario.create_release_scenario_rc_sequence()
+        repo_path = Path(git_scenario.repo.working_dir)
+        db, repo_id, test_data = populated_db
+
+        # Create pr_code template that uses version components
+        pr_code_template = create_pr_code_template(
+            output_template="""title: {{title}}
+position: -{{major}}.{{minor}}
+version: {{version}}
+components:
+  major: {{major}}
+  minor: {{minor}}
+  patch: {{patch}}
+  prerelease: {{prerelease}}
+year: {{year}}""",
+            output_path="docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/_category_.yml",
+            release_version_policy="final-only"
+        )
+
+        # Custom draft_output_path
+        draft_output_path = str(tmp_path / "drafts" / "{{version}}-{{output_file_type}}.md")
+
+        config_dict = create_test_config(
+            code_repo="test/repo",
+            pr_code_templates=[pr_code_template],
+            draft_output_path=draft_output_path,
+            database={"path": db.db_path},
+            branch_policy={
+                "create_branches": False,
+                "default_branch": "main",
+                "release_branch_template": "main",
+                "branch_from_previous_release": False
+            }
+        )
+
+        config = Config.from_dict(config_dict)
+
+        # Test with regular version
+        runner = CliRunner()
+        with patch('release_tool.commands.generate.GitHubClient'):
+            result = runner.invoke(
+                generate,
+                ['1.2.3', '--repo-path', str(repo_path)],
+                obj={'config': config, 'debug': False},
+                catch_exceptions=False
+            )
+
+        assert result.exit_code == 0, f"Generate failed: {result.output}"
+
+        # Verify the draft file was created and has correct values
+        draft_file = tmp_path / "drafts" / "1.2.3-code-0.md"
+        assert draft_file.exists(), f"Draft file not found at {draft_file}"
+
+        content = draft_file.read_text()
+
+        # Verify all version components are present
+        assert "position: -1.2" in content, f"Position should be '-1.2', content:\n{content}"
+        assert "version: 1.2.3" in content, f"Version should be '1.2.3', content:\n{content}"
+        assert "major: 1" in content, f"Major should be '1', content:\n{content}"
+        assert "minor: 2" in content, f"Minor should be '2', content:\n{content}"
+        assert "patch: 3" in content, f"Patch should be '3', content:\n{content}"
+        assert "prerelease:" in content, f"Prerelease should be present (empty for stable), content:\n{content}"
+
+        # Test with RC version
+        with patch('release_tool.commands.generate.GitHubClient'):
+            result = runner.invoke(
+                generate,
+                ['2.0.0-rc.1', '--repo-path', str(repo_path)],
+                obj={'config': config, 'debug': False},
+                catch_exceptions=False
+            )
+
+        assert result.exit_code == 0, f"Generate failed: {result.output}"
+
+        # Verify the draft file for RC version
+        draft_file_rc = tmp_path / "drafts" / "2.0.0-rc.1-code-0.md"
+        assert draft_file_rc.exists(), f"Draft file not found at {draft_file_rc}"
+
+        content_rc = draft_file_rc.read_text()
+
+        # Verify version components for RC
+        assert "position: -2.0" in content_rc, f"Position should be '-2.0', content:\n{content_rc}"
+        assert "version: 2.0.0-rc.1" in content_rc, f"Version should be '2.0.0-rc.1', content:\n{content_rc}"
+        assert "major: 2" in content_rc, f"Major should be '2', content:\n{content_rc}"
+        assert "minor: 0" in content_rc, f"Minor should be '0', content:\n{content_rc}"
+        assert "patch: 0" in content_rc, f"Patch should be '0', content:\n{content_rc}"
+        assert "prerelease: rc.1" in content_rc, f"Prerelease should be 'rc.1', content:\n{content_rc}"

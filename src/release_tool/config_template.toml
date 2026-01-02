@@ -824,6 +824,7 @@ create_issue = true
 #   - {{ major }}                   : Major version number (e.g., "1")
 #   - {{ minor }}                   : Minor version number (e.g., "2")
 #   - {{ patch }}                   : Patch version number (e.g., "3")
+#   - {{ prerelease }}              : Prerelease identifier (e.g., "rc.1", "" for stable)
 #   - {{ title }}                   : Rendered release title (from title_template)
 #   - {{ year }}                    : Current year (e.g., "2025")
 #   - {{ categories }}              : List of category dicts with 'name', 'alias', 'notes'

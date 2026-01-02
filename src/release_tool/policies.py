@@ -11,7 +11,7 @@ from enum import Enum
 from rich.console import Console
 
 from .models import (
-    Commit, PullRequest, Issue, ReleaseNote, ConsolidatedChange, Label
+    Commit, PullRequest, Issue, ReleaseNote, ConsolidatedChange, Label, SemanticVersion
 )
 from .config import (
     Config, PolicyAction, IssueExtractionStrategy
@@ -971,11 +971,30 @@ class ReleaseNoteGenerator:
             )
             return self._process_html_like_whitespace(output, intermediate_pass=True)
 
+        # Parse version to extract components
+        try:
+            sem_ver = SemanticVersion.parse(version)
+            major = sem_ver.major
+            minor = sem_ver.minor
+            patch = sem_ver.patch
+            prerelease = sem_ver.prerelease or ""
+        except Exception as e:
+            # If version parsing fails, set empty values
+            console.print(f"[yellow]Warning: Could not parse version '{version}' for template variables: {e}[/yellow]")
+            major = ""
+            minor = ""
+            patch = ""
+            prerelease = ""
+
         # Render the pr_code template
         from datetime import datetime
         pr_code_template = Template(template_str)
         output = pr_code_template.render(
             version=version,
+            major=major,
+            minor=minor,
+            patch=patch,
+            prerelease=prerelease,
             title=title,
             categories=categories_data,
             all_notes=all_notes_data,
