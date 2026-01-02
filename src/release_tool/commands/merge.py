@@ -268,7 +268,7 @@ def _resolve_version_pr_issue(
     issue_number: Optional[int],
     auto_mode: bool,
     debug: bool
-) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+) -> Tuple[Optional[str], Optional[int], Optional[int], Optional[str]]:
     """
     Resolve version, PR, and issue from provided arguments with auto-detection.
 
@@ -283,9 +283,11 @@ def _resolve_version_pr_issue(
         debug: Enable debug output
 
     Returns:
-        Tuple of (version, pr_number, issue_number) or (None, None, None) if resolution fails
+        Tuple of (version, pr_number, issue_number, issue_repo_full_name) or (None, None, None, None) if resolution fails
+        issue_repo_full_name is the repository where the issue was found
     """
     repo_full_name = config.repository.code_repo
+    issue_repo_full_name = None
 
     # Case 1: Issue number provided
     if issue_number and not version:
@@ -305,28 +307,49 @@ def _resolve_version_pr_issue(
                 console.print(f"[dim]  No database association found for issue #{issue_number}[/dim]")
                 console.print(f"[dim]  Step 2: Fetching issue from GitHub to parse title...[/dim]")
 
-            # Step 2: Fetch issue from GitHub and parse title
-            try:
-                repo = github_client.gh.get_repo(repo_full_name)
-                issue = repo.get_issue(issue_number)
-                issue_title = issue.title
+            # Step 2: Fetch issue from GitHub - search all configured issue repos
+            issue = None
+            issue_title = None
 
-                console.print(f"[cyan]  Issue title: {issue_title}[/cyan]")
+            # Get all possible issue repositories
+            issue_repos = config.get_issue_repos()  # Returns list of all issue repos
 
-                # Try to extract version from title
-                version = _extract_version_from_text(issue_title, debug=debug)
+            for issue_repo in issue_repos:
+                if debug:
+                    console.print(f"[dim]    Checking repository: {issue_repo}[/dim]")
 
-                if version:
-                    console.print(f"[green]  ✓ Extracted version {version} from issue title[/green]")
-                else:
-                    console.print(f"[red]Error: Could not extract version from issue #{issue_number}[/red]")
-                    console.print(f"[yellow]Issue title: {issue_title}[/yellow]")
-                    console.print(f"[yellow]Please ensure the issue title contains a version (e.g., 'Prepare Release 1.2.3')[/yellow]")
-                    return None, None, None
+                try:
+                    repo = github_client.gh.get_repo(issue_repo)
+                    issue = repo.get_issue(issue_number)
+                    issue_title = issue.title
+                    issue_repo_full_name = issue_repo
 
-            except Exception as e:
-                console.print(f"[red]Error fetching issue #{issue_number}: {e}[/red]")
-                return None, None, None
+                    if debug:
+                        console.print(f"[dim]  ✓ Found issue #{issue_number} in repository {issue_repo}[/dim]")
+                    break
+
+                except Exception as e:
+                    if debug:
+                        console.print(f"[dim]    Not found in {issue_repo}: {e}[/dim]")
+                    continue
+
+            if not issue or not issue_title:
+                console.print(f"[red]Error: Issue #{issue_number} not found in any configured repository[/red]")
+                console.print(f"[yellow]Searched repositories: {', '.join(issue_repos)}[/yellow]")
+                return None, None, None, None
+
+            console.print(f"[cyan]  Issue title: {issue_title}[/cyan]")
+
+            # Try to extract version from title
+            version = _extract_version_from_text(issue_title, debug=debug)
+
+            if version:
+                console.print(f"[green]  ✓ Extracted version {version} from issue title[/green]")
+            else:
+                console.print(f"[red]Error: Could not extract version from issue #{issue_number}[/red]")
+                console.print(f"[yellow]Issue title: {issue_title}[/yellow]")
+                console.print(f"[yellow]Please ensure the issue title contains a version (e.g., 'Prepare Release 1.2.3')[/yellow]")
+                return None, None, None, None
 
     # Case 2: Partial version provided
     if version:
@@ -341,7 +364,7 @@ def _resolve_version_pr_issue(
 
             if not matches:
                 console.print(f"[red]Error: No matching versions found for '{version}' with associated PR or issue[/red]")
-                return None, None, None
+                return None, None, None, None
 
             if len(matches) > 1:
                 # Build match dictionaries with PR and issue info
@@ -365,7 +388,7 @@ def _resolve_version_pr_issue(
                 # Let user select or auto-select
                 selected = _select_from_matches(match_dicts, auto_mode, "version")
                 if not selected:
-                    return None, None, None
+                    return None, None, None, None
 
                 version = selected['version']
                 if not pr_number:
@@ -383,7 +406,7 @@ def _resolve_version_pr_issue(
         console.print("[yellow]Please provide either:")
         console.print("  - A version number (e.g., 1.2.3 or 1.2)")
         console.print("  - An issue number with --issue[/yellow]")
-        return None, None, None
+        return None, None, None, None
 
     # Find PR if not provided
     if not pr_number:
@@ -418,11 +441,13 @@ def _resolve_version_pr_issue(
         if issue_assoc:
             issue_number = issue_assoc.get('issue_number')
             console.print(f"[green]  ✓ Found issue #{issue_number}[/green]")
+            # Note: We don't set issue_repo_full_name here because the database doesn't track which repo
+            # the issue is in. We'll need to search for it when closing if issue_repo_full_name is None.
         else:
             if debug:
                 console.print(f"[dim]  No issue association found (will skip close step)[/dim]")
 
-    return version, pr_number, issue_number
+    return version, pr_number, issue_number, issue_repo_full_name
 
 
 @click.command()
@@ -475,7 +500,7 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
 
     try:
         # Resolve version, PR, and issue
-        resolved_version, resolved_pr, resolved_issue = _resolve_version_pr_issue(
+        resolved_version, resolved_pr, resolved_issue, resolved_issue_repo = _resolve_version_pr_issue(
             config, github_client, db, version, pr, issue, auto_mode, debug
         )
 
@@ -609,16 +634,17 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         if resolved_issue:
             console.print(f"\n[bold cyan]Step 3: Closing issue #{resolved_issue}[/bold cyan]")
             if not dry_run:
-                # Build comment with release link if available
-                comment_parts = [f"Release {resolved_version} has been published."]
-                if release_url:
-                    comment_parts.append(f"\n[View Release]({release_url})")
-                issue_comment = "".join(comment_parts)
+                # Determine which repository the issue is in
+                # Use resolved_issue_repo if we found it, otherwise use the primary issue_repo from config
+                target_repo = resolved_issue_repo if resolved_issue_repo else config.get_issue_repos()[0]
 
+                if debug:
+                    console.print(f"[dim]  Closing issue in repository: {target_repo}[/dim]")
+
+                # Don't add a comment here - let release-bot add the success comment
                 success = github_client.close_issue(
-                    repo_full_name,
-                    resolved_issue,
-                    comment=issue_comment
+                    target_repo,
+                    resolved_issue
                 )
                 if not success:
                     console.print(f"[yellow]Warning: Failed to close issue #{resolved_issue}[/yellow]")
