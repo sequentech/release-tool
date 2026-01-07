@@ -18,6 +18,72 @@ class VersionType(str, Enum):
     ALPHA = "alpha"
 
 
+def _compare_prerelease(pre1: str, pre2: str) -> int:
+    """
+    Compare two prerelease version strings numerically when possible.
+
+    Handles common prerelease formats like rc.3, beta.10, alpha.5.
+    Extracts numeric parts and compares them numerically instead of alphabetically.
+
+    Args:
+        pre1: First prerelease string (e.g., "rc.3", "beta.10")
+        pre2: Second prerelease string (e.g., "rc.30", "beta.2")
+
+    Returns:
+        -1 if pre1 < pre2, 0 if equal, 1 if pre1 > pre2
+
+    Examples:
+        _compare_prerelease("rc.3", "rc.30") → -1  (3 < 30 numerically)
+        _compare_prerelease("rc.30", "rc.3") → 1   (30 > 3 numerically)
+        _compare_prerelease("beta.2", "beta.10") → -1  (2 < 10 numerically)
+    """
+    import re
+
+    # Split by dots to get components
+    parts1 = pre1.split('.')
+    parts2 = pre2.split('.')
+
+    # Compare each component
+    for i in range(max(len(parts1), len(parts2))):
+        # Get parts, defaulting to empty string if one is shorter
+        p1 = parts1[i] if i < len(parts1) else ''
+        p2 = parts2[i] if i < len(parts2) else ''
+
+        # Try to extract numeric suffix from parts (e.g., "rc3" → "rc", "3")
+        # Match: optional letters, then optional number
+        match1 = re.match(r'([a-z]*)(\d+)$', p1, re.IGNORECASE)
+        match2 = re.match(r'([a-z]*)(\d+)$', p2, re.IGNORECASE)
+
+        # If both have the pattern, compare prefix first, then number
+        if match1 and match2:
+            prefix1, num1 = match1.groups()
+            prefix2, num2 = match2.groups()
+
+            # Compare prefixes lexicographically
+            if prefix1 < prefix2:
+                return -1
+            elif prefix1 > prefix2:
+                return 1
+
+            # Prefixes are equal, compare numbers numerically
+            num1_int = int(num1)
+            num2_int = int(num2)
+            if num1_int < num2_int:
+                return -1
+            elif num1_int > num2_int:
+                return 1
+            # Numbers are equal, continue to next component
+        else:
+            # Fall back to string comparison
+            if p1 < p2:
+                return -1
+            elif p1 > p2:
+                return 1
+
+    # All components are equal
+    return 0
+
+
 class SemanticVersion(BaseModel):
     """Semantic version model."""
     major: int
@@ -117,7 +183,8 @@ class SemanticVersion(BaseModel):
         if other.prerelease is None:
             return True  # Prerelease is less than final
 
-        return self.prerelease < other.prerelease
+        # Use numeric comparison for prerelease versions (e.g., rc.3 < rc.30)
+        return _compare_prerelease(self.prerelease, other.prerelease) < 0
 
     def __eq__(self, other: object) -> bool:
         """Check equality."""

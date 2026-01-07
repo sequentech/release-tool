@@ -12,6 +12,7 @@ This command automates the final steps of the release process by:
 
 import sys
 import re
+import os
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 import click
@@ -527,7 +528,8 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
         console.print("\n[bold]Steps to execute:[/bold]")
         console.print("  1. Merge PR (if exists and not merged)")
         console.print("  2. Mark release as published")
-        console.print("  3. Close issue (if exists and not closed)")
+        console.print("  3. Add summary comment to issue (if exists)")
+        console.print("  4. Close issue (if exists and not closed)")
 
         # Step 1: Merge PR
         if resolved_pr:
@@ -638,9 +640,69 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
             console.print(f"[dim]  - If already published: skip (idempotent) ✓[/dim]")
             console.print(f"[dim]  - If no release: ERROR (must create first)[/dim]")
 
-        # Step 3: Close issue
+        # Step 3: Add summary comment to issue
         if resolved_issue:
-            console.print(f"\n[bold cyan]Step 3: Closing issue #{resolved_issue}[/bold cyan]")
+            console.print(f"\n[bold cyan]Step 3: Adding summary comment to issue #{resolved_issue}[/bold cyan]")
+            if not dry_run:
+                # Build comprehensive comment with all actions performed
+                comment_parts = [f"## ✅ Release {resolved_version} Merged\n"]
+                comment_parts.append("### Actions Completed\n")
+
+                # List completed actions
+                completed_actions = []
+                if resolved_pr:
+                    pr_url = f"https://github.com/{repo_full_name}/pull/{resolved_pr}"
+                    completed_actions.append(f"- ✅ Merged PR [#{resolved_pr}]({pr_url})")
+
+                if release_url:
+                    completed_actions.append(f"- ✅ Published release [{resolved_version}]({release_url})")
+
+                if completed_actions:
+                    comment_parts.append("\n".join(completed_actions))
+                    comment_parts.append("\n")
+
+                # Add workflow run link if running in GitHub Actions
+                workflow_run_id = os.environ.get('GITHUB_RUN_ID')
+                github_server_url = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
+                github_repository = os.environ.get('GITHUB_REPOSITORY')
+
+                if workflow_run_id and github_repository:
+                    workflow_url = f"{github_server_url}/{github_repository}/actions/runs/{workflow_run_id}"
+                    comment_parts.append(f"\n### 🔗 Links\n")
+                    comment_parts.append(f"- [Workflow Run]({workflow_url})\n")
+
+                # Add release checklist reminder
+                comment_parts.append("\n### 📋 Next Steps\n")
+                comment_parts.append("Please complete any remaining deployment tasks from the issue checklist above.\n")
+
+                comment = "".join(comment_parts)
+
+                # Determine which repository the issue is in
+                target_repo = resolved_issue_repo if resolved_issue_repo else config.get_issue_repos()[0]
+
+                if debug:
+                    console.print(f"[dim]  Adding comment to issue in repository: {target_repo}[/dim]")
+                    console.print(f"[dim]  Comment preview:\n{comment}[/dim]")
+
+                # Add the comment
+                success = github_client.add_issue_comment(
+                    target_repo,
+                    resolved_issue,
+                    comment
+                )
+
+                if success:
+                    console.print(f"[green]  ✓ Added summary comment to issue #{resolved_issue}[/green]")
+                else:
+                    console.print(f"[yellow]  Warning: Failed to add comment to issue #{resolved_issue}[/yellow]")
+            else:
+                console.print(f"[dim]Would add summary comment to issue #{resolved_issue}[/dim]")
+        else:
+            console.print("\n[dim]Step 3: No issue to comment on (skipping)[/dim]")
+
+        # Step 4: Close issue
+        if resolved_issue:
+            console.print(f"\n[bold cyan]Step 4: Closing issue #{resolved_issue}[/bold cyan]")
             if not dry_run:
                 # Determine which repository the issue is in
                 # Use resolved_issue_repo if we found it, otherwise use the primary issue_repo from config
@@ -660,7 +722,7 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
             else:
                 console.print(f"[dim]Would close issue #{resolved_issue}[/dim]")
         else:
-            console.print("\n[dim]Step 3: No issue to close (skipping)[/dim]")
+            console.print("\n[dim]Step 4: No issue to close (skipping)[/dim]")
 
         # Success!
         console.print(f"\n[bold green]✓ Release {resolved_version} merge complete![/bold green]")

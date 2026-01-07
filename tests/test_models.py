@@ -190,6 +190,90 @@ class TestSemanticVersion:
         assert v2.patch == 3
         assert v2.prerelease == "rc.0"
 
+    def test_comparison_rc_versions_numeric(self):
+        """Test RC versions compare numerically, not alphabetically.
+
+        Bug fix: rc.3 should be less than rc.30 (3 < 30 numerically),
+        not greater (as it would be alphabetically).
+        """
+        rc3 = SemanticVersion.parse("9.3.0-rc.3")
+        rc30 = SemanticVersion.parse("9.3.0-rc.30")
+        assert rc3 < rc30, "rc.3 should be less than rc.30"
+        assert rc30 > rc3, "rc.30 should be greater than rc.3"
+        assert not rc3 > rc30, "rc.3 should not be greater than rc.30"
+
+    def test_comparison_rc_versions_sorted(self):
+        """Test sorting RC versions works correctly with numeric comparison."""
+        versions = [
+            SemanticVersion.parse("9.3.0-rc.30"),
+            SemanticVersion.parse("9.3.0-rc.3"),
+            SemanticVersion.parse("9.3.0-rc.29"),
+            SemanticVersion.parse("9.3.0-rc.1"),
+            SemanticVersion.parse("9.3.0-rc.10"),
+        ]
+        sorted_versions = sorted(versions)
+        expected = ["9.3.0-rc.1", "9.3.0-rc.3", "9.3.0-rc.10", "9.3.0-rc.29", "9.3.0-rc.30"]
+        actual = [v.to_string() for v in sorted_versions]
+        assert actual == expected, f"Expected {expected}, got {actual}"
+
+    def test_comparison_rc_versions_reverse_sorted(self):
+        """Test reverse sorting RC versions works correctly."""
+        versions = [
+            SemanticVersion.parse("9.3.0-rc.1"),
+            SemanticVersion.parse("9.3.0-rc.3"),
+            SemanticVersion.parse("9.3.0-rc.10"),
+            SemanticVersion.parse("9.3.0-rc.29"),
+            SemanticVersion.parse("9.3.0-rc.30"),
+        ]
+        sorted_versions = sorted(versions, reverse=True)
+        expected = ["9.3.0-rc.30", "9.3.0-rc.29", "9.3.0-rc.10", "9.3.0-rc.3", "9.3.0-rc.1"]
+        actual = [v.to_string() for v in sorted_versions]
+        assert actual == expected, f"Expected {expected}, got {actual}"
+
+    def test_comparison_beta_versions_numeric(self):
+        """Test beta versions compare numerically."""
+        beta2 = SemanticVersion.parse("1.0.0-beta.2")
+        beta10 = SemanticVersion.parse("1.0.0-beta.10")
+        assert beta2 < beta10, "beta.2 should be less than beta.10"
+        assert beta10 > beta2, "beta.10 should be greater than beta.2"
+
+    def test_comparison_alpha_versions_numeric(self):
+        """Test alpha versions compare numerically."""
+        alpha5 = SemanticVersion.parse("2.0.0-alpha.5")
+        alpha15 = SemanticVersion.parse("2.0.0-alpha.15")
+        assert alpha5 < alpha15, "alpha.5 should be less than alpha.15"
+        assert alpha15 > alpha5, "alpha.15 should be greater than alpha.5"
+
+    def test_comparison_mixed_prerelease_types(self):
+        """Test different prerelease types compare correctly."""
+        alpha = SemanticVersion.parse("1.0.0-alpha.1")
+        beta = SemanticVersion.parse("1.0.0-beta.1")
+        rc = SemanticVersion.parse("1.0.0-rc.1")
+        final = SemanticVersion.parse("1.0.0")
+
+        # Alpha < Beta < RC < Final
+        assert alpha < beta, "alpha should be less than beta"
+        assert beta < rc, "beta should be less than rc"
+        assert rc < final, "rc should be less than final"
+
+        # Transitive property
+        assert alpha < rc, "alpha should be less than rc"
+        assert alpha < final, "alpha should be less than final"
+        assert beta < final, "beta should be less than final"
+
+    def test_comparison_rc_edge_cases(self):
+        """Test edge cases in RC version comparison."""
+        # Single digit vs double digit
+        rc1 = SemanticVersion.parse("1.0.0-rc.1")
+        rc9 = SemanticVersion.parse("1.0.0-rc.9")
+        rc10 = SemanticVersion.parse("1.0.0-rc.10")
+        assert rc1 < rc9 < rc10, "RC versions should sort correctly: rc.1 < rc.9 < rc.10"
+
+        # Large numbers
+        rc99 = SemanticVersion.parse("1.0.0-rc.99")
+        rc100 = SemanticVersion.parse("1.0.0-rc.100")
+        assert rc99 < rc100, "rc.99 should be less than rc.100"
+
 
 class TestRepository:
     """Tests for Repository model."""

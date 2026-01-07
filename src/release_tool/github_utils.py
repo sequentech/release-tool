@@ -2247,6 +2247,35 @@ class GitHubClient:
             console.print(f"[red]Error closing issue #{issue_number}{user_info}: {e}[/red]")
             return False
 
+    def add_issue_comment(
+        self,
+        repo_full_name: str,
+        issue_number: int,
+        comment: str
+    ) -> bool:
+        """
+        Add a comment to an issue.
+
+        Args:
+            repo_full_name: Repository in "owner/repo" format
+            issue_number: Issue number
+            comment: Comment text to add
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            repo = self.gh.get_repo(repo_full_name)
+            issue = repo.get_issue(issue_number)
+            issue.create_comment(comment)
+            return True
+
+        except GithubException as e:
+            auth_user = self.get_authenticated_user()
+            user_info = f" (authenticated as @{auth_user})" if auth_user else ""
+            console.print(f"[red]Error adding comment to issue #{issue_number}{user_info}: {e}[/red]")
+            return False
+
     def close_pull_request(
         self,
         repo_full_name: str,

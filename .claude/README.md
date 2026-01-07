@@ -154,6 +154,9 @@ See `.claude/commands/` for custom slash commands:
 
 1. **Issue Consolidation**: Commits grouped by parent issue for cleaner notes
 2. **Version Comparison**: RCs compare to previous RC, finals to previous final
+   - Uses **numeric comparison** for prerelease versions (e.g., rc.3 < rc.30, not alphabetical)
+   - Handles RC, beta, and alpha versions correctly
+   - See `_compare_prerelease()` in `models.py` for implementation
 3. **Incremental Sync**: Only fetch new items since last sync
 4. **Parallel Everything**: All GitHub operations parallelized
 5. **Template System**: Jinja2 with category-based grouping and custom sections
