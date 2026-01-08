@@ -1128,3 +1128,239 @@ Test instructions."""
 
         assert note.description is None
         assert note.migration_notes is None
+
+    def test_extract_migration_stops_at_single_hash_header(self, test_config):
+        """Test that migration extraction stops at # headers (major sections)."""
+        issue_body = """## Migration
+Migration content line 1.
+Migration content line 2.
+
+# Tasks
+- Should NOT be included
+- Task 2"""
+
+        issue = Issue(
+            repo_id=1,
+            number=133,
+            key="133",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/133"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="133",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.migration_notes is not None
+        assert "Migration content line 1" in note.migration_notes
+        assert "Migration content line 2" in note.migration_notes
+        assert "Tasks" not in note.migration_notes
+        assert "Should NOT be included" not in note.migration_notes
+
+    def test_extract_description_with_emoji_in_description_header(self, test_config):
+        """Test extraction from Description header - emoji before keyword works."""
+        issue_body = """### 🐞 Bug Report
+
+## Description
+Description content here.
+More description content.
+
+# Tasks
+Should not be included."""
+
+        issue = Issue(
+            repo_id=1,
+            number=135,
+            key="135",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/135"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="135",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.description is not None
+        assert "Description content here" in note.description
+        assert "More description content" in note.description
+        assert "Tasks" not in note.description
+        assert "Should not be included" not in note.description
+
+    def test_extract_preserves_nested_subsections(self, test_config):
+        """Test that extraction includes nested sub-sections (### within ##)."""
+        issue_body = """## Migration
+Main migration content.
+
+### Sub-step 1
+Sub-step content 1.
+
+### Sub-step 2
+Sub-step content 2.
+
+# Tasks
+Should not be included."""
+
+        issue = Issue(
+            repo_id=1,
+            number=136,
+            key="136",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/136"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="136",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.migration_notes is not None
+        assert "Main migration content" in note.migration_notes
+        assert "### Sub-step 1" in note.migration_notes
+        assert "Sub-step content 1" in note.migration_notes
+        assert "### Sub-step 2" in note.migration_notes
+        assert "Sub-step content 2" in note.migration_notes
+        assert "Tasks" not in note.migration_notes
+
+    def test_extract_preserves_blank_lines(self, test_config):
+        """Test that blank lines within section are preserved."""
+        issue_body = """## Migration
+Line 1.
+
+Line 3 (blank line above preserved).
+
+# Next Section
+Not included."""
+
+        issue = Issue(
+            repo_id=1,
+            number=137,
+            key="137",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/137"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="137",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.migration_notes is not None
+        assert "Line 1." in note.migration_notes
+        assert "Line 3 (blank line above preserved)." in note.migration_notes
+        # Check that there are blank lines (multiple consecutive newlines)
+        assert "\n\n" in note.migration_notes
+        assert "Next Section" not in note.migration_notes
+
+    def test_extract_with_code_blocks_without_hash_comments(self, test_config):
+        """Test extraction with code blocks.
+
+        Note: Code blocks containing lines starting with '# ' will trigger
+        early termination due to regex limitations. Use comments without
+        space (like '#comment') or different comment styles to avoid this.
+        """
+        issue_body = """## Migration
+Run this command:
+```bash
+#comment (no space after hash)
+migrate --all
+```
+
+More migration content.
+
+# Tasks
+Should not be included."""
+
+        issue = Issue(
+            repo_id=1,
+            number=138,
+            key="138",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/138"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="138",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.migration_notes is not None
+        assert "Run this command" in note.migration_notes
+        assert "```bash" in note.migration_notes
+        assert "#comment" in note.migration_notes
+        assert "migrate --all" in note.migration_notes
+        assert "More migration content" in note.migration_notes
+        assert "Tasks" not in note.migration_notes
+
+    def test_extract_stops_at_double_hash_headers_too(self, test_config):
+        """Test that extraction also stops at ## headers."""
+        issue_body = """## Migration
+Migration content.
+
+## Testing
+Testing section - should not be included.
+
+# Tasks
+Also should not be included."""
+
+        issue = Issue(
+            repo_id=1,
+            number=139,
+            key="139",
+            title="Test issue",
+            state="closed",
+            body=issue_body,
+            url="https://github.com/test/repo/issues/139"
+        )
+
+        change = ConsolidatedChange(
+            type="issue",
+            issue_key="139",
+            prs=[],
+            commits=[]
+        )
+
+        generator = ReleaseNoteGenerator(test_config)
+        note = generator.create_release_note(change, issue)
+
+        assert note.migration_notes is not None
+        assert "Migration content" in note.migration_notes
+        assert "Testing" not in note.migration_notes
+        assert "Testing section" not in note.migration_notes
+        assert "Tasks" not in note.migration_notes

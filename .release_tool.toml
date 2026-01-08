@@ -245,21 +245,25 @@ release_notes_inclusion_policy = ["issues", "pull-requests"]
 
 # description_section_regex: Regex to extract description from issue body
 # Uses Python regex with capturing group (group 1 is extracted)
-# Looks for sections like "## Description" or "## Summary" in issue text
+# Matches headers with any level (1-6 hashes) containing "Description" or "Summary"
+# Stops at major section headers (1-2 hashes like "# Tasks", "## Other")
+# Continues past nested sub-sections (### or more hashes)
 # The tool gracefully handles issues without description sections
-# Default: r'(?:## Description|## Summary)\n(.*?)(?=\n##|\Z)'
+# Default: r'(?:#{1,6} (?:Description|Summary).*?)\n(.*?)(?=\n#{1,2} |\Z)'
 # Set to empty string "" to disable description extraction
 # NOTE: In TOML, backslashes must be doubled: \n becomes \\n, \Z becomes \\Z
-description_section_regex = "(?:## Description|## Summary)\\n(.*?)(?=\\n##|\\Z)"
+description_section_regex = "(?:#{1,6} (?:Description|Summary).*?)\\n(.*?)(?=\\n#{1,2} |\\Z)"
 
 # migration_section_regex: Regex to extract migration notes from issue body
 # Useful for database migrations, breaking changes, upgrade steps
-# Looks for sections like "## Migration" or "## Migration Notes"
+# Matches headers with any level (1-6 hashes) containing "Migration" or "Migration Notes"
+# Stops at major section headers (1-2 hashes like "# Tasks", "## Other")
+# Continues past nested sub-sections (### or more hashes)
 # The tool gracefully handles issues without migration sections
-# Default: r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)'
+# Default: r'(?:#{1,6} (?:Migration|Migration Notes).*?)\n(.*?)(?=\n#{1,2} |\Z)'
 # Set to empty string "" to disable migration notes extraction
 # NOTE: In TOML, backslashes must be doubled: \n becomes \\n, \Z becomes \\Z
-migration_section_regex = "(?:## Migration|## Migration Notes)\\n(.*?)(?=\\n##|\\Z)"
+migration_section_regex = "(?:#{1,6} (?:Migration|Migration Notes).*?)\\n(.*?)(?=\\n#{1,2} |\\Z)"
 
 # =============================================================================
 # Version Comparison and Gap Detection Policy

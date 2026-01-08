@@ -292,12 +292,12 @@ class IssuePolicyConfig(BaseModel):
         description="Whether to consolidate commits by parent issue"
     )
     description_section_regex: Optional[str] = Field(
-        default=r'(?:## Description|## Summary)\n(.*?)(?=\n##|\Z)',
-        description="Regex to extract description from issue body"
+        default=r'(?:#{1,6} (?:Description|Summary).*?)\n(.*?)(?=\n#{1,2} |\Z)',
+        description="Regex to extract description from issue body. Matches any header level (1-6 #) and stops at major section headers (1-2 #)."
     )
     migration_section_regex: Optional[str] = Field(
-        default=r'(?:## Migration|## Migration Notes)\n(.*?)(?=\n##|\Z)',
-        description="Regex to extract migration notes from issue body"
+        default=r'(?:#{1,6} (?:Migration|Migration Notes).*?)\n(.*?)(?=\n#{1,2} |\Z)',
+        description="Regex to extract migration notes from issue body. Matches any header level (1-6 #) and stops at major section headers (1-2 #)."
     )
     release_notes_inclusion_policy: List[InclusionType] = Field(
         default_factory=lambda: [InclusionType.ISSUES, InclusionType.PULL_REQUESTS],
