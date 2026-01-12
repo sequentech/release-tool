@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.8"  # Latest config version
+    CURRENT_VERSION = "1.9"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -279,6 +279,19 @@ class MigrationManager:
                 "  • Prevents accidental commit of secrets to version control\n"
                 "  • Migration removes token field from config (if present)\n"
                 "  • Set environment variable: export GITHUB_TOKEN='your_token_here'"
+            ),
+            ("1.8", "1.9"): (
+                "Version 1.9 adds multi-repository support:\n"
+                "  • Changed repository.code_repo (string) → repository.code_repos (list)\n"
+                "  • Changed repository.issue_repos (list of strings) → list of RepoInfo objects\n"
+                "  • Each repository now has 'link' and 'alias' fields\n"
+                "  • Aliases used in templates: {{code_repo.<alias>.link}}, {{code_repo.<alias>.slug}}\n"
+                "  • Primary repository: {{code_repo.primary.link}}, {{code_repo.primary.slug}}\n"
+                "  • Removed pull.clone_code_repo field (code repos are always cloned now)\n"
+                "  • Removed pull.code_repo_path field (path always uses .release_tool_cache/{repo_alias})\n"
+                "  • Migration auto-generates aliases from repository names\n"
+                "  • BREAKING: Template variables changed from {{code_repo}} to {{code_repo.primary.slug}}\n"
+                "  • Automatic config migration preserves all repository settings"
             ),
         }
 

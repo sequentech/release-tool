@@ -60,7 +60,7 @@ class PullManager:
             stats['repos_pulled'].add(repo_full_name)
 
         # Pull PRs from code repo
-        code_repo = self.config.repository.code_repo
+        code_repo = self.config.get_primary_code_repo().link
         if self.config.pull.show_progress:
             console.print(f"[cyan]Pulling pull requests from {code_repo}...[/cyan]")
 
@@ -68,13 +68,12 @@ class PullManager:
         stats['pull_requests'] = pr_count
         stats['repos_pulled'].add(code_repo)
 
-        # Pull git repository if enabled
-        if self.config.pull.clone_code_repo:
-            if self.config.pull.show_progress:
-                console.print(f"[cyan]Pulling git repository for {code_repo}...[/cyan]")
+        # Pull git repository (always enabled)
+        if self.config.pull.show_progress:
+            console.print(f"[cyan]Pulling git repository for {code_repo}...[/cyan]")
 
-            git_path = self._pull_git_repository(code_repo)
-            stats['git_repo_path'] = git_path
+        git_path = self._pull_git_repository(code_repo)
+        stats['git_repo_path'] = git_path
 
         if self.config.pull.show_progress:
             console.print("[bold green]Pull completed successfully![/bold green]")

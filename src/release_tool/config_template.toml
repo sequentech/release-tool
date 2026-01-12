@@ -1,4 +1,4 @@
-config_version = "1.8"
+config_version = "1.9"
 
 # =============================================================================
 # Release Tool Configuration
@@ -14,15 +14,26 @@ config_version = "1.8"
 # Repository Configuration
 # =============================================================================
 [repository]
-# code_repo (REQUIRED): The GitHub repository containing the code
-# Format: "owner/repo" (e.g., "sequentech/voting-booth")
-code_repo = "sequentech/step"
+# code_repos (REQUIRED): List of GitHub repositories containing code
+# Each repository must have a 'link' (owner/repo format) and an 'alias' for referencing
+# The first repository in the list is the primary repository
+# The alias is used in templates: {{code_repo.alias.link}} or {{code_repo.alias.slug}}
+# Format: [[repository.code_repos]]
+#         link = "owner/repo"
+#         alias = "short_name"
+[[repository.code_repos]]
+link = "sequentech/step"
+alias = "step"
 
-# issue_repos: List of repositories where issues/issues are tracked
-# If empty, uses code_repo for issues as well
+# issue_repos: List of repositories where issues/tickets are tracked
+# Each repository must have a 'link' (owner/repo format) and an 'alias' for referencing
+# If empty, uses code_repos for issues as well
 # This is useful when issues are tracked in different repos than the code
-# Default: [] (uses code_repo)
-issue_repos = ["sequentech/meta"]
+# The alias is used in templates: {{issue_repo.alias.link}} or {{issue_repo.alias.slug}}
+# Default: [] (uses code_repos)
+[[repository.issue_repos]]
+link = "sequentech/meta"
+alias = "meta"
 
 # =============================================================================
 # GitHub API Configuration
@@ -67,16 +78,8 @@ cutoff_date = "2025-01-01"
 # Default: 10
 parallel_workers = 10
 
-# clone_code_repo: Whether to clone the code repository locally for offline operation
-# When true, the generate-notes command can work without internet access
-# Default: true
-clone_code_repo = true
-
-# code_repo_path: Local path where to clone/sync the code repository
-# If not specified, defaults to .release_tool_cache/{repo_name}
-# Example: "/tmp/release_tool_repos/voting-booth"
-# Default: null (uses .release_tool_cache/{repo_name})
-# code_repo_path = "/path/to/local/repo"
+# NOTE: Code repositories are always cloned to .release_tool_cache/{repo_alias}
+# This path is no longer configurable to ensure consistency
 
 # clone_method: Method for cloning repositories
 # Options:
@@ -697,7 +700,10 @@ alias = "other"
 # Files are saved here for review/editing before pushing to GitHub
 #
 # Available variables:
-#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
+#   - {{code_repo.primary.slug}}: Primary code repository name sanitized (e.g., "sequentech-step")
+#   - {{code_repo.primary.link}}: Primary code repository link (e.g., "sequentech/step")
+#   - {{code_repo.<alias>.slug}}: Code repository by alias, sanitized (e.g., "sequentech-step")
+#   - {{code_repo.<alias>.link}}: Code repository by alias, link format
 #   - {{version}}: Full version string
 #   - {{major}}: Major version number
 #   - {{minor}}: Minor version number
@@ -710,16 +716,16 @@ alias = "other"
 #       - "doc": (deprecated, use code-N instead)
 #
 # Examples:
-#   - ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
+#   - ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
 #     This will create files like:
 #       - "1.0.0-release.md" (GitHub release draft)
 #       - "1.0.0-code-0.md" (first pr_code template)
 #       - "1.0.0-code-1.md" (second pr_code template)
 #   - "drafts/{{major}}.{{minor}}.{{patch}}-{{output_file_type}}.md": Simple draft folder
-#   - "/tmp/releases/{{code_repo}}-{{version}}-{{output_file_type}}.md": Temporary location
+#   - "/tmp/releases/{{code_repo.primary.slug}}-{{version}}-{{output_file_type}}.md": Temporary location
 #
-# Default: ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
-draft_output_path = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}-{{output_file_type}}.md"
+# Default: ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
 
 # assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
 # Images and videos referenced in issue descriptions will be downloaded here
@@ -1141,7 +1147,9 @@ milestone = "{{year}}_{{quarter_uppercase}}"
 # Available variables (always):
 #   - {{version}}: Full version string (e.g., "1.2.3")
 #   - {{major}}, {{minor}}, {{patch}}: Version components
-#   - {{code_repo}}: Sanitized code repository name (e.g., "sequentech-step")
+#   - {{code_repo.primary.slug}}: Primary code repository sanitized name (e.g., "sequentech-step")
+#   - {{code_repo.primary.link}}: Primary code repository link (e.g., "sequentech/step")
+#   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
 #   - {{target_branch}}: Target branch for PR
@@ -1165,7 +1173,9 @@ branch_template = "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo}}, {{issue_repo}}: Repository names
+#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
+#   - {{issue_repo}}: Issues repository name
 #
 # Available variables (only when create_issue=true and issue was created):
 #   - {{issue_number}}, {{issue_link}}: Issue information
@@ -1184,7 +1194,8 @@ title_template = "Release notes for {{version}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo}}: Sanitized code repository name
+#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name
 #   - {{issue_repo_name}}: Short name of issues repo
 #   - {{target_branch}}: Target branch for PR

@@ -4,8 +4,11 @@
 
 """Template rendering utilities using Jinja2."""
 
-from typing import Dict, Set, Any
+from typing import Dict, Set, Any, TYPE_CHECKING
 from jinja2 import Template, TemplateSyntaxError, UndefinedError, StrictUndefined
+
+if TYPE_CHECKING:
+    from .config import Config
 
 
 class TemplateError(Exception):
@@ -106,3 +109,51 @@ def get_template_variables(template_str: str) -> Set[str]:
         raise TemplateError(f"Invalid template syntax: {e}")
     except Exception as e:
         raise TemplateError(f"Error parsing template: {e}")
+
+
+def build_repo_context(config: "Config") -> Dict[str, Any]:
+    """
+    Build template context for repository variables.
+
+    Creates a nested structure for accessing code repos and issue repos by alias:
+    - code_repo.primary.link: Primary code repo link (e.g., 'sequentech/step')
+    - code_repo.primary.slug: Primary code repo slug (e.g., 'sequentech-step')
+    - code_repo.<alias>.link: Code repo link by alias
+    - code_repo.<alias>.slug: Code repo slug by alias
+    - issue_repo.<alias>.link: Issue repo link by alias
+    - issue_repo.<alias>.slug: Issue repo slug by alias
+
+    Args:
+        config: Configuration object
+
+    Returns:
+        Dictionary with 'code_repo' and 'issue_repo' namespaces
+    """
+    code_repo_context = {}
+    issue_repo_context = {}
+
+    # Add primary code repo
+    primary_repo = config.get_primary_code_repo()
+    code_repo_context['primary'] = {
+        'link': primary_repo.link,
+        'slug': primary_repo.link.replace('/', '-')
+    }
+
+    # Add all code repos by alias
+    for repo in config.repository.code_repos:
+        code_repo_context[repo.alias] = {
+            'link': repo.link,
+            'slug': repo.link.replace('/', '-')
+        }
+
+    # Add all issue repos by alias
+    for repo in config.repository.issue_repos:
+        issue_repo_context[repo.alias] = {
+            'link': repo.link,
+            'slug': repo.link.replace('/', '-')
+        }
+
+    return {
+        'code_repo': code_repo_context,
+        'issue_repo': issue_repo_context
+    }

@@ -16,7 +16,7 @@ from ..config import Config
 from ..db import Database
 from ..github_utils import GitHubClient
 from ..models import SemanticVersion, Release
-from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError
+from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError, build_repo_context
 from ..git_ops import GitOperations, determine_release_branch_strategy
 
 console = Console()
@@ -561,7 +561,7 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         if debug:
             console.print("\n[bold cyan]Debug Mode: Configuration & Settings[/bold cyan]")
             console.print("[dim]" + "=" * 60 + "[/dim]")
-            console.print(f"[dim]Repository:[/dim] {config.repository.code_repo}")
+            console.print(f"[dim]Repository:[/dim] {config.get_primary_code_repo().link}")
             console.print(f"[dim]Dry run:[/dim] {dry_run}")
             console.print(f"[dim]Operations that will be performed:[/dim]")
             console.print(f"[dim]  • Create GitHub release: {create_release} (CLI override: {create_release is not None})[/dim]")
@@ -1093,8 +1093,9 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                 quarter = (now.month - 1) // 3 + 1
                 quarter_uppercase = f"Q{quarter}"
 
-                template_context = {
-                    'code_repo': config.repository.code_repo.replace('/', '-'),
+                # Build template context with repo namespaces
+                template_context = build_repo_context(config)
+                template_context.update({
                     'issue_repo': issues_repo,
                     'issue_repo_name': issue_repo_name,
                     'pr_link': 'PR_LINK_PLACEHOLDER',
@@ -1107,7 +1108,7 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                     'num_changes': num_changes if num_changes > 0 else 'several',
                     'num_categories': num_categories if num_categories > 0 else 'multiple',
                     'target_branch': target_branch
-                }
+                })
 
                 # Create release tracking issue if enabled
                 issue_result = None
@@ -1228,14 +1229,14 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
                         # For each pr_code template, find its draft file and map it to its output_path
                         for idx, pr_code_template in enumerate(config.output.pr_code.templates):
                             # Build context for rendering paths
-                            path_template_context = {
-                                'code_repo': config.repository.code_repo.replace('/', '-'),
+                            path_template_context = build_repo_context(config)
+                            path_template_context.update({
                                 'version': version,
                                 'major': str(target_version.major),
                                 'minor': str(target_version.minor),
                                 'patch': str(target_version.patch),
                                 'output_file_type': f'code-{idx}'
-                            }
+                            })
 
                             # Determine the draft file path (where we READ from)
                             draft_file_path = render_template(config.output.draft_output_path, path_template_context)
@@ -1368,14 +1369,14 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
 
         # Handle Docusaurus file if configured (only if PR creation didn't handle it)
         if doc_output_enabled and not create_pr:
-            template_context_doc = {
-                'code_repo': config.repository.code_repo.replace('/', '-'),
+            template_context_doc = build_repo_context(config)
+            template_context_doc.update({
                 'version': version,
                 'major': str(target_version.major),
                 'minor': str(target_version.minor),
                 'patch': str(target_version.patch),
                 'output_file_type': 'code-0'  # First pr_code template
-            }
+            })
             try:
                 doc_path = render_template(config.output.draft_output_path, template_context_doc)
             except TemplateError as e:

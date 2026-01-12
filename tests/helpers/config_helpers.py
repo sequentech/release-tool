@@ -14,9 +14,13 @@ def minimal_config(code_repo: str = "test/repo") -> Dict[str, Any]:
 
     Note: GitHub token should be set via GITHUB_TOKEN environment variable.
     """
+    # Extract alias from repo name (e.g., "test/repo" -> "repo")
+    alias = code_repo.split('/')[-1]
     return {
         "repository": {
-            "code_repo": code_repo
+            "code_repos": [
+                {"link": code_repo, "alias": alias}
+            ]
         }
     }
 
@@ -24,7 +28,7 @@ def minimal_config(code_repo: str = "test/repo") -> Dict[str, Any]:
 def create_test_config(
     code_repo: str = "test/repo",
     pr_code_templates: Optional[List[Dict[str, Any]]] = None,
-    draft_output_path: str = ".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md",
+    draft_output_path: str = ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}.md",
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -41,9 +45,13 @@ def create_test_config(
     Returns:
         Configuration dictionary
     """
+    # Extract alias from repo name (e.g., "test/repo" -> "repo")
+    alias = code_repo.split('/')[-1]
     config = {
         "repository": {
-            "code_repo": code_repo
+            "code_repos": [
+                {"link": code_repo, "alias": alias}
+            ]
         },
         "output": {
             "draft_output_path": draft_output_path

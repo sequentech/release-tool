@@ -154,13 +154,27 @@ Users should be able to:
 The release tool uses semantic versioning for config files to handle breaking changes and new features gracefully.
 
 ### Current Version
-- **Latest**: 1.2 (defined in `src/release_tool/migrations/manager.py`)
-- Stored in config file as `config_version = "1.2"`
+- **Latest**: 1.9 (defined in `src/release_tool/migrations/manager.py`)
+- Stored in config file as `config_version = "1.9"`
 
 ### Version History
 - **1.0**: Initial config format
 - **1.1**: Added template variables (issue_url, pr_url)
 - **1.2**: Added partial_issue_action policy
+- **1.3**: Fixed issue key format (removed '#' prefix from database)
+- **1.4**: Added dual template support (GitHub + Docusaurus)
+- **1.5**: Renamed issue terminology to issue for consistency
+- **1.6**: Refactored templates (pr_code.templates array)
+- **1.7**: Moved version policy to templates
+- **1.8**: Removed GitHub token from config (security)
+- **1.9**: Added multi-repository support with aliases
+  - Changed `repository.code_repo` (string) → `repository.code_repos` (list of RepoInfo)
+  - Changed `repository.issue_repos` (list of strings) → list of RepoInfo objects
+  - Each repository now has `link` (owner/repo) and `alias` (short identifier)
+  - Template variables: `{{code_repo.primary.slug}}`, `{{code_repo.<alias>.link}}`, etc.
+  - Removed `pull.clone_code_repo` field (code repos always cloned now)
+  - Removed `pull.code_repo_path` field (path always uses `.release_tool_cache/{repo_alias}`)
+  - Migration auto-generates aliases from repository names
 
 ### When to Bump Config Version
 

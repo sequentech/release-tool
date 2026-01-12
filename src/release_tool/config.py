@@ -471,6 +471,16 @@ class ReleaseNoteConfig(BaseModel):
     )
 
 
+class RepoInfo(BaseModel):
+    """Repository information with link and alias."""
+    link: str = Field(
+        description="Full repository name (owner/name), e.g., 'sequentech/step'"
+    )
+    alias: str = Field(
+        description="Short identifier for referencing in templates and other config, e.g., 'step'"
+    )
+
+
 class PullConfig(BaseModel):
     """Pull configuration for GitHub data fetching."""
     cutoff_date: Optional[str] = Field(
@@ -480,14 +490,6 @@ class PullConfig(BaseModel):
     parallel_workers: int = Field(
         default=20,
         description="Number of parallel workers for GitHub API calls"
-    )
-    clone_code_repo: bool = Field(
-        default=True,
-        description="Whether to clone/pull the code repository locally for offline operation"
-    )
-    code_repo_path: Optional[str] = Field(
-        default=None,
-        description="Local path to clone code repository. Defaults to .release_tool_cache/{repo_name}"
     )
     clone_method: CloneMethod = Field(
         default=CloneMethod.AUTO,
@@ -505,12 +507,12 @@ class PullConfig(BaseModel):
 
 class RepositoryConfig(BaseModel):
     """Repository configuration."""
-    code_repo: str = Field(
-        description="Full name of code repository (owner/name)"
+    code_repos: List[RepoInfo] = Field(
+        description="List of code repositories with link and alias. First repo is used as primary."
     )
-    issue_repos: List[str] = Field(
+    issue_repos: List[RepoInfo] = Field(
         default_factory=list,
-        description="List of issue repository names (owner/name). If empty, uses code_repo."
+        description="List of issue repositories with link and alias. If empty, uses code_repos."
     )
     default_branch: Optional[str] = Field(
         default=None,
@@ -678,19 +680,50 @@ class Config(BaseModel):
         """Load configuration from dictionary."""
         return cls(**data)
 
+    def get_primary_code_repo(self) -> RepoInfo:
+        """Get the primary (first) code repository.
+
+        Returns:
+            RepoInfo: The first code repository in the list
+
+        Raises:
+            ValueError: If no code repositories are configured
+        """
+        if not self.repository.code_repos:
+            raise ValueError("No code repositories configured")
+        return self.repository.code_repos[0]
+
+    def get_code_repo_by_alias(self, alias: str) -> Optional[RepoInfo]:
+        """Get a code repository by its alias.
+
+        Args:
+            alias: The repository alias to search for
+
+        Returns:
+            RepoInfo if found, None otherwise
+        """
+        for repo in self.repository.code_repos:
+            if repo.alias == alias:
+                return repo
+        return None
+
     def get_issue_repos(self) -> List[str]:
-        """Get the list of issue repositories (defaults to code repo if not specified)."""
+        """Get the list of issue repository links (defaults to code repos if not specified).
+
+        Returns:
+            List of repository full names (owner/name)
+        """
         if self.repository.issue_repos:
-            return self.repository.issue_repos
-        return [self.repository.code_repo]
+            return [repo.link for repo in self.repository.issue_repos]
+        return [repo.link for repo in self.repository.code_repos]
 
     def get_code_repo_path(self) -> str:
-        """Get the local path for the cloned code repository."""
-        if self.pull.code_repo_path:
-            return self.pull.code_repo_path
-        # Default to .release_tool_cache/{repo_name}
-        repo_name = self.repository.code_repo.split('/')[-1]
-        return str(Path.cwd() / '.release_tool_cache' / repo_name)
+        """Get the local path for the cloned primary code repository.
+
+        Always uses .release_tool_cache/{repo_alias} pattern.
+        """
+        primary_repo = self.get_primary_code_repo()
+        return str(Path.cwd() / '.release_tool_cache' / primary_repo.alias)
 
     def get_category_map(self) -> Dict[str, List[str]]:
         """Get a mapping of category names to their labels."""
