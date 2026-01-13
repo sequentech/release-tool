@@ -26,11 +26,18 @@ def pull(ctx, repository, repo_path):
     debug = ctx.obj.get('debug', False)
 
     config: Config = ctx.obj['config']
-    repo_name = repository or config.repository.code_repo
+
+    # If repository specified, use it; otherwise pull all configured code repos
+    if repository:
+        # Single repo mode (for backward compatibility or specific repo pull)
+        repo_list = [repository]
+    else:
+        # Multi-repo mode - pull all configured code repos
+        repo_list = [repo.link for repo in config.repository.code_repos]
 
     if debug:
         console.print(f"[dim]Debug mode enabled[/dim]")
-        console.print(f"[dim]Repository: {repo_name}[/dim]")
+        console.print(f"[dim]Repositories to pull: {', '.join(repo_list)}[/dim]")
         console.print(f"[dim]Config path: {config.database.path}[/dim]")
 
     # Initialize components
@@ -42,26 +49,34 @@ def pull(ctx, repository, repo_path):
         pull_manager = PullManager(config, db, github_client)
 
         # Use the pull manager for parallelized, incremental pull
-        console.print(f"[bold blue]Starting comprehensive pull...[/bold blue]")
+        console.print(f"[bold blue]Starting comprehensive pull for {len(repo_list)} repository(ies)...[/bold blue]")
         stats = pull_manager.pull_all()
 
-        # Also fetch releases (not yet in PullManager)
-        console.print("[blue]Fetching releases...[/blue]")
-        repo_info = github_client.get_repository_info(repo_name)
-        repo_id = db.upsert_repository(repo_info)
-        releases = github_client.fetch_releases(repo_name, repo_id)
-        for release in releases:
-            db.upsert_release(release)
-        console.print(f"[green]Pulled {len(releases)} releases[/green]")
+        # Also fetch releases for all code repos
+        total_releases = 0
+        console.print("[blue]Fetching releases from all code repos...[/blue]")
+        for repo_name in repo_list:
+            repo_info = github_client.get_repository_info(repo_name)
+            repo_id = db.upsert_repository(repo_info)
+            releases = github_client.fetch_releases(repo_name, repo_id)
+            for release in releases:
+                db.upsert_release(release)
+            total_releases += len(releases)
+            if debug:
+                console.print(f"  [dim]Pulled {len(releases)} releases from {repo_name}[/dim]")
+
+        console.print(f"[green]Pulled {total_releases} total releases[/green]")
 
         console.print("[bold green]Pull complete![/bold green]")
         console.print(f"[dim]Summary:[/dim]")
         console.print(f"  Issues: {stats['issues']}")
         console.print(f"  Pull Requests: {stats['pull_requests']}")
-        console.print(f"  Releases: {len(releases)}")
+        console.print(f"  Releases: {total_releases}")
         console.print(f"  Repositories: {', '.join(stats['repos_pulled'])}")
-        if stats.get('git_repo_path'):
-            console.print(f"  Git repo: {stats['git_repo_path']}")
+        if stats.get('git_repo_paths'):
+            console.print(f"  Git repos:")
+            for repo_path in stats['git_repo_paths']:
+                console.print(f"    {repo_path}")
 
     finally:
         db.close()

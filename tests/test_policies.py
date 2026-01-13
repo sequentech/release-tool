@@ -18,7 +18,7 @@ def test_config():
     """Create a test configuration."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -291,7 +291,7 @@ class TestTOMLPatternEscaping:
     def test_toml_config_with_correct_escaping(self):
         """Test that patterns loaded from TOML with correct escaping work."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [
@@ -332,7 +332,7 @@ class TestTOMLPatternEscaping:
     def test_branch_pattern_real_world_examples(self):
         """Test branch pattern with real-world branch names."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [
@@ -365,7 +365,7 @@ class TestTOMLPatternEscaping:
     def test_parent_issue_pattern_real_world_examples(self):
         """Test parent issue pattern with real-world PR bodies."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [
@@ -405,7 +405,7 @@ class TestTOMLPatternEscaping:
     def test_github_issue_reference_patterns(self):
         """Test GitHub issue reference patterns (#123) in various contexts."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [
@@ -452,7 +452,7 @@ class TestTOMLPatternEscaping:
     def test_jira_style_pattern(self):
         """Test JIRA-style issue patterns (PROJ-123)."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [
@@ -489,7 +489,7 @@ class TestTOMLPatternEscaping:
     def test_pattern_priority_order(self):
         """Test that patterns are tried in order and first match wins for PRs."""
         config_dict = {
-            "repository": {"code_repo": "test/repo"},
+            "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
             "github": {"token": "test_token"},
             "issue_policy": {
                 "patterns": [

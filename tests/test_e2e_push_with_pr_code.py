@@ -7,7 +7,7 @@
 import pytest
 from pathlib import Path
 from click.testing import CliRunner
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 
 from release_tool.commands.generate import generate
 from release_tool.commands.push import push
@@ -56,7 +56,7 @@ class TestE2EPushWithPrCodeTemplates:
         )
 
         # Custom draft_output_path in tmp_path
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -151,7 +151,7 @@ class TestE2EPushWithPrCodeTemplates:
             release_version_policy="include-rcs"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -227,7 +227,7 @@ class TestE2EPushWithPrCodeTemplates:
             release_version_policy="include-rcs"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -245,9 +245,6 @@ class TestE2EPushWithPrCodeTemplates:
                 "create_pr": True,
                 "create_issue": False,  # Disable issue creation for simpler test
                 "draft_output_path": draft_output_path,
-                "pr_code": {
-                    "templates": [pr_code_template_0, pr_code_template_1]
-                },
                 "pr_templates": {
                     "branch_template": "release-notes-{{version}}",
                     "title_template": "Release notes for {{version}}",
@@ -270,10 +267,18 @@ class TestE2EPushWithPrCodeTemplates:
         assert generate_result.exit_code == 0
 
         # Run push --dry-run with debug to see what files it uses
-        with patch('release_tool.commands.push.GitHubClient') as mock_gh_class:
+        with patch('release_tool.commands.push.GitHubClient') as mock_gh_class, \
+             patch('release_tool.commands.push.GitOperations') as mock_git_ops:
             # Configure the mock
             mock_gh_instance = Mock()
             mock_gh_class.return_value = mock_gh_instance
+
+            # Mock git operations to avoid accessing non-existent cache directory
+            mock_git_instance = MagicMock()
+            mock_git_ops.return_value = mock_git_instance
+            mock_git_instance.get_version_tags.return_value = []
+            mock_git_instance.tag_exists.return_value = False
+            mock_git_instance.branch_exists.return_value = True
 
             push_result = runner.invoke(
                 push,

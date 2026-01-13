@@ -21,7 +21,7 @@ def test_config(tmp_path):
     db_path = tmp_path / "test.db"
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -514,8 +514,8 @@ def test_resolve_issue_from_different_repo(tmp_path):
     db_path = tmp_path / "test.db"
     config_dict = {
         "repository": {
-            "code_repo": "test/code-repo",
-            "issue_repos": ["test/issue-repo"]
+            "code_repos": [{"link": "test/code-repo", "alias": "code-repo"}],
+            "issue_repos": [{"link": "test/issue-repo", "alias": "issue-repo"}]
         },
         "database": {
             "path": str(db_path)
@@ -578,8 +578,8 @@ def test_cancel_closes_issue_in_correct_repo(tmp_path):
     db_path = tmp_path / "test.db"
     config_dict = {
         "repository": {
-            "code_repo": "test/code-repo",
-            "issue_repos": ["test/issue-repo"]
+            "code_repos": [{"link": "test/code-repo", "alias": "code-repo"}],
+            "issue_repos": [{"link": "test/issue-repo", "alias": "issue-repo"}]
         },
         "database": {
             "path": str(db_path)
@@ -668,8 +668,8 @@ def test_cancel_uses_issue_repo_when_issue_not_in_db(tmp_path):
     db_path = tmp_path / "test.db"
     config_dict = {
         "repository": {
-            "code_repo": "test/code-repo",
-            "issue_repos": ["test/issue-repo"]
+            "code_repos": [{"link": "test/code-repo", "alias": "code-repo"}],
+            "issue_repos": [{"link": "test/issue-repo", "alias": "issue-repo"}]
         },
         "database": {
             "path": str(db_path)

@@ -20,8 +20,8 @@ def test_config_warn():
     """Create a test configuration with warn policy."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo",
-            "issue_repos": ["test/meta"]
+            "code_repos": [{"link": "test/repo", "alias": "repo"}],
+            "issue_repos": [{"link": "test/meta", "alias": "meta"}]
         },
         "github": {
             "token": "test_token"
@@ -38,8 +38,8 @@ def test_config_ignore():
     """Create a test configuration with ignore policy."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo",
-            "issue_repos": ["test/meta"]
+            "code_repos": [{"link": "test/repo", "alias": "repo"}],
+            "issue_repos": [{"link": "test/meta", "alias": "meta"}]
         },
         "github": {
             "token": "test_token"
@@ -56,8 +56,8 @@ def test_config_error():
     """Create a test configuration with error policy."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo",
-            "issue_repos": ["test/meta"]
+            "code_repos": [{"link": "test/repo", "alias": "repo"}],
+            "issue_repos": [{"link": "test/meta", "alias": "meta"}]
         },
         "github": {
             "token": "test_token"

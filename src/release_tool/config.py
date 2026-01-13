@@ -169,10 +169,12 @@ class IssueTemplateConfig(BaseModel):
             "- [ ] Deploy in `qa`\n"
             "- [ ] Positive Test in `qa`\n\n"
             "### PRs to deploy new version in different environments\n\n"
-            "- [ ] PR 1"
+            "{% for pr in prs %}"
+            "- [ ] {{pr.repo_alias}}: {{pr.url}}\n"
+            "{% endfor %}"
         ),
         description="Issue body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
-                    "{{num_changes}}, {{num_categories}}"
+                    "{{num_changes}}, {{num_categories}}, {{prs}} (list of PRs with repo_alias, repo_link, number, url, branch)"
     )
     labels: List[str] = Field(
         default_factory=lambda: ["release", "devops", "infrastructure"],
@@ -223,6 +225,13 @@ class PRCodeTemplateConfig(BaseModel):
                     "and content compares against previous final version. "
                     "'include-rcs': RC documentation files include RC suffix (e.g., 11.0.0-rc.1.md) "
                     "and use standard version comparison. Only affects output_path in this template."
+    )
+    consolidated_code_repos_aliases: Optional[List[str]] = Field(
+        default=None,
+        description="List of code repo aliases to consolidate changes from. "
+                    "When null (default), only includes changes from the current repo. "
+                    "When a list, includes changes that touched ANY of the listed repos (union). "
+                    "Example: ['step', 'docs'] includes changes from both repos."
     )
 
 
@@ -471,6 +480,16 @@ class ReleaseNoteConfig(BaseModel):
     )
 
 
+class RepoInfo(BaseModel):
+    """Repository information with link and alias."""
+    link: str = Field(
+        description="Full repository name (owner/name), e.g., 'sequentech/step'"
+    )
+    alias: str = Field(
+        description="Short identifier for referencing in templates and other config, e.g., 'step'"
+    )
+
+
 class PullConfig(BaseModel):
     """Pull configuration for GitHub data fetching."""
     cutoff_date: Optional[str] = Field(
@@ -480,14 +499,6 @@ class PullConfig(BaseModel):
     parallel_workers: int = Field(
         default=20,
         description="Number of parallel workers for GitHub API calls"
-    )
-    clone_code_repo: bool = Field(
-        default=True,
-        description="Whether to clone/pull the code repository locally for offline operation"
-    )
-    code_repo_path: Optional[str] = Field(
-        default=None,
-        description="Local path to clone code repository. Defaults to .release_tool_cache/{repo_name}"
     )
     clone_method: CloneMethod = Field(
         default=CloneMethod.AUTO,
@@ -505,12 +516,12 @@ class PullConfig(BaseModel):
 
 class RepositoryConfig(BaseModel):
     """Repository configuration."""
-    code_repo: str = Field(
-        description="Full name of code repository (owner/name)"
+    code_repos: List[RepoInfo] = Field(
+        description="List of code repositories with link and alias. First repo is used as primary."
     )
-    issue_repos: List[str] = Field(
+    issue_repos: List[RepoInfo] = Field(
         default_factory=list,
-        description="List of issue repository names (owner/name). If empty, uses code_repo."
+        description="List of issue repositories with link and alias. If empty, uses code_repos."
     )
     default_branch: Optional[str] = Field(
         default=None,
@@ -553,9 +564,10 @@ class DatabaseConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output configuration for release notes."""
-    pr_code: PRCodeConfig = Field(
-        default_factory=PRCodeConfig,
-        description="PR code generation templates configuration"
+    pr_code: Dict[str, PRCodeConfig] = Field(
+        default_factory=dict,
+        description="PR code generation templates configuration, keyed by code repo alias. "
+                    "Example: pr_code.step for sequentech/step repo, pr_code.docs for sequentech/docs repo"
     )
     draft_output_path: str = Field(
         default=".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md",
@@ -678,19 +690,56 @@ class Config(BaseModel):
         """Load configuration from dictionary."""
         return cls(**data)
 
-    def get_issue_repos(self) -> List[str]:
-        """Get the list of issue repositories (defaults to code repo if not specified)."""
-        if self.repository.issue_repos:
-            return self.repository.issue_repos
-        return [self.repository.code_repo]
+    def get_code_repo_by_alias(self, alias: str) -> Optional[RepoInfo]:
+        """Get a code repository by its alias.
 
-    def get_code_repo_path(self) -> str:
-        """Get the local path for the cloned code repository."""
-        if self.pull.code_repo_path:
-            return self.pull.code_repo_path
-        # Default to .release_tool_cache/{repo_name}
-        repo_name = self.repository.code_repo.split('/')[-1]
-        return str(Path.cwd() / '.release_tool_cache' / repo_name)
+        Args:
+            alias: The repository alias to search for
+
+        Returns:
+            RepoInfo if found, None otherwise
+        """
+        for repo in self.repository.code_repos:
+            if repo.alias == alias:
+                return repo
+        return None
+
+    def get_issue_repos(self) -> List[str]:
+        """Get the list of issue repository links (defaults to code repos if not specified).
+
+        Returns:
+            List of repository full names (owner/name)
+        """
+        if self.repository.issue_repos:
+            return [repo.link for repo in self.repository.issue_repos]
+        return [repo.link for repo in self.repository.code_repos]
+
+    def get_code_repo_path(self, alias: str) -> str:
+        """Get the local path for the cloned code repository with the given alias.
+
+        Always uses .release_tool_cache/{repo_alias} pattern.
+
+        Args:
+            alias: The repository alias
+
+        Returns:
+            Path to the local repository clone
+
+        Raises:
+            ValueError: If repository with given alias is not found
+        """
+        repo = self.get_code_repo_by_alias(alias)
+        if not repo:
+            raise ValueError(f"No code repository found with alias '{alias}'")
+        return str(Path.cwd() / '.release_tool_cache' / repo.alias)
+
+    def get_pr_code_repos(self) -> List[str]:
+        """Get list of code repo aliases that have pr_code configuration.
+
+        Returns:
+            List of repository aliases with pr_code config
+        """
+        return list(self.output.pr_code.keys())
 
     def get_category_map(self) -> Dict[str, List[str]]:
         """Get a mapping of category names to their labels."""

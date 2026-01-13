@@ -21,8 +21,8 @@ def test_config():
     """Create test configuration."""
     config_dict = {
         "repository": {
-            "code_repo": "sequentech/step",
-            "issue_repos": ["sequentech/meta"],
+            "code_repos": [{"link": "sequentech/step", "alias": "step"}],
+            "issue_repos": [{"link": "sequentech/meta", "alias": "meta"}],
             "default_branch": "main"
         },
         "github": {
@@ -30,8 +30,7 @@ def test_config():
         },
         "pull": {
             "parallel_workers": 2,
-            "show_progress": False,
-            "clone_code_repo": False
+            "show_progress": False
         }
     }
     return Config.from_dict(config_dict)
@@ -162,7 +161,7 @@ def test_config_get_issue_repos_defaults_to_code_repo():
     """Test that issue_repos defaults to code_repo if not specified."""
     config_dict = {
         "repository": {
-            "code_repo": "sequentech/step"
+            "code_repos": [{"link": "sequentech/step", "alias": "step"}]
         },
         "github": {
             "token": "test_token"
@@ -175,41 +174,22 @@ def test_config_get_issue_repos_defaults_to_code_repo():
 
 def test_config_get_code_repo_path_default(test_config):
     """Test default code repo path generation."""
-    path = test_config.get_code_repo_path()
+    path = test_config.get_code_repo_path("step")
     assert "step" in path
     assert ".release_tool_cache" in path
-
-
-def test_config_get_code_repo_path_custom():
-    """Test custom code repo path."""
-    config_dict = {
-        "repository": {
-            "code_repo": "sequentech/step"
-        },
-        "github": {
-            "token": "test_token"
-        },
-        "pull": {
-            "code_repo_path": "/custom/path/to/repo"
-        }
-    }
-    config = Config.from_dict(config_dict)
-    path = config.get_code_repo_path()
-    assert path == "/custom/path/to/repo"
 
 
 def test_pull_config_defaults():
     """Test sync configuration defaults."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         }
     }
     config = Config.from_dict(config_dict)
 
     assert config.pull.parallel_workers == 20
     assert config.pull.show_progress is True
-    assert config.pull.clone_code_repo is True
     assert config.pull.cutoff_date is None
 
 
@@ -217,7 +197,7 @@ def test_pull_config_cutoff_date():
     """Test sync configuration with cutoff date."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "pull": {
             "cutoff_date": "2024-01-01"
@@ -230,9 +210,6 @@ def test_pull_config_cutoff_date():
 @patch('release_tool.pull_manager.subprocess.run')
 def test_pull_git_repository_clone(mock_run, test_config, tmp_path):
     """Test cloning a new git repository."""
-    # Update config to use temp path
-    test_config.pull.code_repo_path = str(tmp_path / "test_repo")
-
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
 
@@ -254,12 +231,10 @@ def test_pull_git_repository_clone(mock_run, test_config, tmp_path):
 @patch('release_tool.pull_manager.subprocess.run')
 def test_pull_git_repository_update(mock_run, test_config, tmp_path):
     """Test updating an existing git repository."""
-    # Create fake repo directory with .git
-    repo_path = tmp_path / "test_repo"
-    repo_path.mkdir()
+    # Create fake repo directory with .git at the expected location
+    repo_path = Path(test_config.get_code_repo_path("step"))
+    repo_path.mkdir(parents=True, exist_ok=True)
     (repo_path / ".git").mkdir()
-
-    test_config.pull.code_repo_path = str(repo_path)
 
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
@@ -329,7 +304,7 @@ def test_parallel_workers_config():
     """Test that parallel_workers configuration is respected."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "pull": {
             "parallel_workers": 20

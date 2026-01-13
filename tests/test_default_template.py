@@ -16,7 +16,7 @@ def test_default_template_structure():
     # Use default config (no customization)
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -115,7 +115,7 @@ def test_default_template_with_alias():
     """Test that category alias works in default template."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -135,7 +135,7 @@ def test_default_template_skips_empty_sections():
     """Test that empty sections are not shown."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -177,7 +177,7 @@ def test_default_template_categories_ordering():
     """Test that categories appear in the correct order."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -234,7 +234,7 @@ def test_default_categories_match_backup_config():
     """Test that default categories match the backup config."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         }
     }
     config = Config.from_dict(config_dict)

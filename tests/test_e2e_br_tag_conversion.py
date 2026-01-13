@@ -59,7 +59,7 @@ Paragraph one<br><br>Paragraph two
             release_version_policy="final-only"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -131,7 +131,7 @@ Paragraph one<br><br>Paragraph two
         repo_path = Path(git_scenario.repo.working_dir)
         db, repo_id, test_data = populated_db
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         # Need to configure at least one pr_code template for draft file generation
         pr_code_template = create_pr_code_template(
@@ -219,7 +219,7 @@ Preserve&nbsp;&nbsp;double&nbsp;nbsp<br>With line break""",
             release_version_policy="final-only"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -288,7 +288,7 @@ Preserve&nbsp;&nbsp;double&nbsp;nbsp<br>With line break""",
             release_version_policy="include-rcs"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",
@@ -359,7 +359,7 @@ Following content""",
             release_version_policy="final-only"
         )
 
-        draft_output_path = str(tmp_path / "drafts" / "{{code_repo}}" / "{{version}}-{{output_file_type}}.md")
+        draft_output_path = str(tmp_path / "drafts" / "{{code_repo.current.slug}}" / "{{version}}-{{output_file_type}}.md")
 
         config_dict = create_test_config(
             code_repo="test/repo",

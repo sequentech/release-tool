@@ -779,10 +779,23 @@ class ReleaseNoteGenerator:
 
         results = []
 
-        # Check if pr_code templates are configured
-        if self.config.output.pr_code.templates:
+        # Check if pr_code templates are configured (handle both old and new format)
+        # New format: pr_code is Dict[str, PRCodeConfig]
+        # For backward compatibility with direct method calls, check if any repo has templates
+        has_pr_code_templates = False
+        pr_code_templates = []
+
+        if isinstance(self.config.output.pr_code, dict):
+            # New multi-repo format
+            # Collect all templates from all repos
+            for repo_alias, pr_code_config in self.config.output.pr_code.items():
+                if pr_code_config.templates:
+                    has_pr_code_templates = True
+                    pr_code_templates.extend(pr_code_config.templates)
+
+        if has_pr_code_templates:
             # Use pr_code templates
-            for i, template_config in enumerate(self.config.output.pr_code.templates):
+            for i, template_config in enumerate(pr_code_templates):
                 # Get output path (from output_paths list or from template config)
                 output_path = None
                 if output_paths and i < len(output_paths):
@@ -808,8 +821,8 @@ class ReleaseNoteGenerator:
                 results.append((content, output_path))
 
             # Check if there's an additional output_path for draft file (added by generate.py)
-            # This happens when pr_code.templates is configured but we also need a draft file
-            num_templates = len(self.config.output.pr_code.templates)
+            # This happens when pr_code templates are configured but we also need a draft file
+            num_templates = len(pr_code_templates)
             if output_paths and len(output_paths) > num_templates:
                 # Generate draft file using standard release notes template
                 draft_path = output_paths[num_templates]  # The extra path is the draft

@@ -16,7 +16,7 @@ from ..config import Config
 from ..db import Database
 from ..github_utils import GitHubClient
 from ..models import SemanticVersion, Release
-from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError
+from ..template_utils import render_template, validate_template_vars, get_template_variables, TemplateError, build_repo_context
 from ..git_ops import GitOperations, determine_release_branch_strategy
 
 console = Console()
@@ -26,11 +26,14 @@ def _get_issues_repo(config: Config) -> str:
     """
     Get the issues repository from config.
 
-    Returns the first issue_repos entry if available, otherwise falls back to code_repo.
+    Returns the first issue_repos entry if available, otherwise falls back to first code_repo.
     """
     if config.repository.issue_repos and len(config.repository.issue_repos) > 0:
-        return config.repository.issue_repos[0]
-    return config.repository.code_repo
+        return config.repository.issue_repos[0].link
+    # Fallback to first code repo
+    if config.repository.code_repos:
+        return config.repository.code_repos[0].link
+    raise ValueError("No issue_repos or code_repos configured")
 
 
 def _create_release_issue(
@@ -39,6 +42,7 @@ def _create_release_issue(
     db: Database,
     template_context: dict,
     version: str,
+    prs: list = None,
     override: bool = False,
     dry_run: bool = False,
     debug: bool = False
@@ -50,8 +54,9 @@ def _create_release_issue(
         config: Configuration object
         github_client: GitHub client instance
         db: Database instance for checking/saving associations
-        template_context: Template context for rendering issue templates
+        template_context: Template context for rendering issue templates (must include 'prs' if available)
         version: Release version
+        prs: List of PR dictionaries with keys: repo_alias, repo_link, number, url, branch
         override: If True, reuse existing issue if found
         dry_run: If True, only show what would be created
         debug: If True, show verbose output
@@ -65,7 +70,8 @@ def _create_release_issue(
         return None
 
     issues_repo = _get_issues_repo(config)
-    repo_full_name = config.repository.code_repo
+    # Use first code repo as the reference repo for issue associations
+    repo_full_name = config.repository.code_repos[0].link if config.repository.code_repos else issues_repo
 
     # Prepare labels
     final_labels = config.output.issue_templates.labels.copy()
@@ -89,6 +95,10 @@ def _create_release_issue(
     # Check for existing issue association if override is enabled
     existing_association = db.get_issue_association(repo_full_name, version) if not dry_run else None
     result = None
+
+    # Ensure prs is in the template context (even if empty list)
+    if 'prs' not in template_context:
+        template_context['prs'] = prs if prs else []
 
     # Render issue templates
     try:
@@ -238,34 +248,70 @@ def _create_release_issue(
     return result
 
 
-def _find_draft_releases(config: Config, version_filter: Optional[str] = None) -> list[Path]:
+def _find_draft_releases(config: Config, version_filter: Optional[str] = None, repo_alias_filter: Optional[str] = None) -> list[Path]:
     """
     Find draft release files matching the configured path template.
 
     Args:
         config: Configuration object
         version_filter: Optional version string to filter results (e.g., "9.2.0")
+        repo_alias_filter: Optional repo alias to filter results (e.g., "step")
 
     Returns:
         List of Path objects for draft release files, sorted by modification time (newest first)
     """
     template = config.output.draft_output_path
 
+    # If repo_alias_filter is provided, convert alias to the format used in file paths
+    # (repo full name with / replaced by -)
+    code_repo_value = "*"
+    if repo_alias_filter:
+        repo_info = config.get_code_repo_by_alias(repo_alias_filter)
+        if repo_info:
+            code_repo_value = repo_info.link.replace('/', '-')
+        else:
+            # Fallback to alias if repo not found
+            code_repo_value = repo_alias_filter
+
     # Create a glob pattern that matches ALL repos and versions
     # We replace Jinja2 placeholders {{variable}} with * to match any value
-    if version_filter:
-        # If filtering by version, keep the version in the pattern
-        glob_pattern = template.replace("{{code_repo}}", "*")\
+    # Handle both old-style {{code_repo}} and new-style {{code_repo.current.slug}} patterns
+    def replace_code_repo_patterns(pattern: str, value: str) -> str:
+        """Replace all code_repo pattern variants with the given value."""
+        return pattern.replace("{{code_repo.current.slug}}", value)\
+                      .replace("{{code_repo.current.link}}", value)\
+                      .replace("{{code_repo}}", value)
+
+    if version_filter and repo_alias_filter:
+        # Filter by both version and repo
+        glob_pattern = replace_code_repo_patterns(template, code_repo_value)\
                                .replace("{{issue_repo}}", "*")\
                                .replace("{{version}}", version_filter)\
                                .replace("{{major}}", "*")\
                                .replace("{{minor}}", "*")\
+                               .replace("{{patch}}", "*")\
+                               .replace("{{output_file_type}}", "*")
+    elif version_filter:
+        # If filtering by version, keep the version in the pattern
+        glob_pattern = replace_code_repo_patterns(template, "*")\
+                               .replace("{{issue_repo}}", "*")\
+                               .replace("{{version}}", version_filter)\
+                               .replace("{{major}}", "*")\
+                               .replace("{{minor}}", "*")\
+                               .replace("{{patch}}", "*")\
+                               .replace("{{output_file_type}}", "*")
+    elif repo_alias_filter:
+        # Filter by repo only
+        glob_pattern = replace_code_repo_patterns(template, code_repo_value)\
+                               .replace("{{issue_repo}}", "*")\
+                               .replace("{{version}}", "*")\
+                               .replace("{{major}}", "*")\
                                .replace("{{minor}}", "*")\
                                .replace("{{patch}}", "*")\
                                .replace("{{output_file_type}}", "*")
     else:
-        # Match all versions
-        glob_pattern = template.replace("{{code_repo}}", "*")\
+        # Match all versions and repos
+        glob_pattern = replace_code_repo_patterns(template, "*")\
                                .replace("{{issue_repo}}", "*")\
                                .replace("{{version}}", "*")\
                                .replace("{{major}}", "*")\
@@ -532,15 +578,15 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
             mode = force
         else:
             mode = release_mode if release_mode is not None else config.output.release_mode
-        
+
         # Handle mark-published mode: only mark existing draft release as published
         is_mark_published = (mode == 'mark-published')
         is_draft = (mode == 'draft')
 
         # Handle tri-state prerelease: "auto", "true", "false"
         prerelease_value = prerelease if prerelease is not None else config.output.prerelease
-        # Check if pr_code templates are configured (replaces doc_output_path check)
-        doc_output_enabled = bool(config.output.pr_code.templates)
+        # Check if pr_code templates are configured for ANY repo
+        doc_output_enabled = any(len(pr_config.templates) > 0 for pr_config in config.output.pr_code.values())
 
         # Convert string values to appropriate types
         if isinstance(prerelease_value, str):
@@ -561,7 +607,7 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         if debug:
             console.print("\n[bold cyan]Debug Mode: Configuration & Settings[/bold cyan]")
             console.print("[dim]" + "=" * 60 + "[/dim]")
-            console.print(f"[dim]Repository:[/dim] {config.repository.code_repo}")
+            console.print(f"[dim]Code repositories:[/dim] {', '.join([repo.alias for repo in config.repository.code_repos])}")
             console.print(f"[dim]Dry run:[/dim] {dry_run}")
             console.print(f"[dim]Operations that will be performed:[/dim]")
             console.print(f"[dim]  • Create GitHub release: {create_release} (CLI override: {create_release is not None})[/dim]")
@@ -740,14 +786,23 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
 
         # Initialize GitHub client and database
         github_client = None if dry_run else GitHubClient(config)
-        repo_name = config.repository.code_repo
+
+        # For GitHub release operations, use first code repo as the reference
+        # (GitHub releases are typically per-repo, but we create PRs for all repos)
+        first_code_repo = config.repository.code_repos[0] if config.repository.code_repos else None
+        if not first_code_repo:
+            console.print("[red]Error: No code repositories configured[/red]")
+            sys.exit(1)
+        repo_name = first_code_repo.link
 
         # Calculate issue_repo_name
         issues_repo = _get_issues_repo(config)
         issue_repo_name = issues_repo.split('/')[-1] if '/' in issues_repo else issues_repo
 
-        # Initialize GitOperations and determine target_branch
-        git_ops = GitOperations('.')
+        # Initialize GitOperations for the first code repo
+        # (This is used for branch/tag operations for GitHub releases)
+        first_repo_path = config.get_code_repo_path(first_code_repo.alias)
+        git_ops = GitOperations(first_repo_path)
         # Fetch remote refs first to ensure accurate branch detection
         git_ops.fetch_remote_refs()
         available_versions = git_ops.get_version_tags()
@@ -1068,373 +1123,373 @@ def push(ctx, version: Optional[str], list_drafts: bool, delete_drafts: bool, no
         elif dry_run:
             console.print(f"[yellow]Would NOT create GitHub release (--no-release or config setting)[/yellow]\n")
 
-        # Create PR
+        # Create PRs for all repos with draft notes
+        created_prs = []  # List of PR info dicts: {repo_alias, repo_link, number, url, branch}
+
         if create_pr:
-            if not notes_path:
-                console.print("[yellow]Warning: No release notes available, skipping PR creation.[/yellow]")
-                console.print("[dim]Tip: Generate release notes first or specify with --notes-file[/dim]")
+            # Get list of repos that have pr_code configuration
+            pr_code_repo_aliases = config.get_pr_code_repos()
+
+            if not pr_code_repo_aliases:
+                console.print("[yellow]Warning: No pr_code templates configured for any repository, skipping PR creation.[/yellow]")
+                console.print("[dim]Tip: Configure [[output.pr_code.<alias>.templates]] in your config[/dim]")
             else:
-                # Build template context with all available variables
-                # Try to count changes from release notes for PR body template
-                num_changes = 0
-                num_categories = 0
-                if release_notes:
-                    # Simple heuristic: count markdown list items (lines starting with - or *)
-                    lines = release_notes.split('\n')
-                    num_changes = sum(1 for line in lines if line.strip().startswith(('- ', '* ')))
-                    # Count category headers (lines starting with ###)
-                    num_categories = sum(1 for line in lines if line.strip().startswith('###'))
+                # Loop through each repo that has pr_code configuration
+                console.print(f"[bold blue]Creating PRs for {len(pr_code_repo_aliases)} repository(ies)...[/bold blue]\n")
 
-                # Build initial template context
-                issues_repo = _get_issues_repo(config)
-                
-                # Calculate date-based variables
-                now = datetime.now()
-                quarter = (now.month - 1) // 3 + 1
-                quarter_uppercase = f"Q{quarter}"
+                for repo_alias in pr_code_repo_aliases:
+                    console.print(f"\n[bold magenta]{'='*60}[/bold magenta]")
+                    console.print(f"[bold magenta]Processing repository: {repo_alias}[/bold magenta]")
+                    console.print(f"[bold magenta]{'='*60}[/bold magenta]\n")
 
-                template_context = {
-                    'code_repo': config.repository.code_repo.replace('/', '-'),
-                    'issue_repo': issues_repo,
-                    'issue_repo_name': issue_repo_name,
-                    'pr_link': 'PR_LINK_PLACEHOLDER',
-                    'version': version,
-                    'major': str(target_version.major),
-                    'minor': str(target_version.minor),
-                    'patch': str(target_version.patch),
-                    'year': str(now.year),
-                    'quarter_uppercase': quarter_uppercase,
-                    'num_changes': num_changes if num_changes > 0 else 'several',
-                    'num_categories': num_categories if num_categories > 0 else 'multiple',
-                    'target_branch': target_branch
-                }
+                    repo_info = config.get_code_repo_by_alias(repo_alias)
+                    if not repo_info:
+                        console.print(f"[yellow]Warning: Could not find repo info for alias '{repo_alias}', skipping[/yellow]")
+                        continue
 
-                # Create release tracking issue if enabled
-                issue_result = None
-                
-                # If issue number provided explicitly, use it directly
-                if config.output.create_issue and issue and not dry_run:
-                    try:
-                        issue_obj = github_client.gh.get_repo(issues_repo).get_issue(issue)
-                        issue_result = {'number': str(issue_obj.number), 'url': issue_obj.html_url}
-                        console.print(f"[blue]Using provided issue #{issue}[/blue]")
-                        # Save association to database
-                        db.save_issue_association(
-                            repo_full_name=repo_name,
-                            version=version,
-                            issue_number=issue_obj.number,
-                            issue_url=issue_obj.html_url
-                        )
+                    current_repo_name = repo_info.link
+                    current_repo_path = config.get_code_repo_path(repo_alias)
+
+                    # Get pr_code config for this specific repo
+                    repo_pr_code = config.output.pr_code[repo_alias]
+
+                    if not repo_pr_code.templates:
                         if debug:
-                            console.print(f"[dim]Saved issue association to database[/dim]")
-                    except Exception as e:
-                        console.print(f"[yellow]Warning: Could not use issue #{issue}: {e}[/yellow]")
-                        issue_result = None
-                
-                # If force=draft, try to find existing issue automatically (non-interactive)
-                if config.output.create_issue and force == 'draft' and not dry_run and not issue_result:
-                     existing_association = db.get_issue_association(repo_name, version)
-                     if not existing_association:
-                         issue_result = _find_existing_issue_auto(config, github_client, version, debug)
-                         if issue_result:
-                             console.print(f"[blue]Auto-selected open issue #{issue_result['number']}[/blue]")
-                             # Save association
-                             db.save_issue_association(
-                                repo_full_name=repo_name,
-                                version=version,
-                                issue_number=int(issue_result['number']),
-                                issue_url=issue_result['url']
-                            )
+                            console.print(f"[dim]No templates configured for {repo_alias}, skipping[/dim]")
+                        continue
 
-                if not issue_result:
-                    issue_result = _create_release_issue(
-                        config=config,
-                        github_client=github_client,
-                        db=db,
-                        template_context=template_context,
-                        version=version,
-                        override=(force != 'none'),
-                        dry_run=dry_run,
-                        debug=debug
+                    # Find draft notes for this repo and version
+                    if debug:
+                        console.print(f"[dim]Looking for draft notes for {repo_alias} version {version}...[/dim]")
+
+                    matching_drafts = _find_draft_releases(config, version_filter=version, repo_alias_filter=repo_alias)
+
+                    if not matching_drafts:
+                        console.print(f"[yellow]No draft notes found for {repo_alias} version {version}, skipping PR creation[/yellow]")
+                        if debug:
+                            # Show the actual glob pattern used for searching
+                            repo_info = config.get_code_repo_by_alias(repo_alias)
+                            code_repo_rendered = repo_info.link.replace('/', '-') if repo_info else repo_alias
+                            search_pattern = config.output.draft_output_path\
+                                                                              .replace("{{code_repo.current.slug}}", code_repo_rendered)\
+                                                                              .replace("{{code_repo}}", code_repo_rendered)\
+                                                                              .replace("{{version}}", version)\
+                                                                              .replace("{{output_file_type}}", "*")
+                            console.print(f"[dim]Search pattern: {search_pattern}[/dim]")
+                        continue
+
+                    # Find code-0 file (primary PR file)
+                    code_candidates = [d for d in matching_drafts if "-code-0" in d.stem]
+
+                    if not code_candidates:
+                        console.print(f"[yellow]No code-0 draft found for {repo_alias}, skipping[/yellow]")
+                        if debug:
+                            console.print(f"[dim]Found drafts: {[str(d) for d in matching_drafts]}[/dim]")
+                        continue
+
+                    pr_draft_path = code_candidates[0]
+                    pr_draft_content = pr_draft_path.read_text()
+
+                    if debug:
+                        console.print(f"[dim]Found PR draft: {pr_draft_path}[/dim]")
+                        console.print(f"[dim]Content size: {len(pr_draft_content)} characters[/dim]")
+                    else:
+                        console.print(f"[blue]Found PR draft: {pr_draft_path}[/blue]")
+
+                    # Count changes from PR draft content for template context
+                    num_changes = 0
+                    num_categories = 0
+                    if pr_draft_content:
+                        # Simple heuristic: count markdown list items (lines starting with - or *)
+                        lines = pr_draft_content.split('\n')
+                        num_changes = sum(1 for line in lines if line.strip().startswith(('- ', '* ')))
+                        # Count category headers (lines starting with ###)
+                        num_categories = sum(1 for line in lines if line.strip().startswith('###'))
+
+                    # Build template context for PR templates
+                    issues_repo = _get_issues_repo(config)
+
+                    # Calculate date-based variables
+                    now = datetime.now()
+                    quarter = (now.month - 1) // 3 + 1
+                    quarter_uppercase = f"Q{quarter}"
+
+                    # Initialize GitOperations for this repo
+                    repo_git_ops = GitOperations(current_repo_path)
+                    repo_git_ops.fetch_remote_refs()
+                    repo_available_versions = repo_git_ops.get_version_tags()
+
+                    # Determine target_branch for this repo
+                    repo_target_branch, repo_source_branch, repo_should_create_branch = determine_release_branch_strategy(
+                        version=target_version,
+                        git_ops=repo_git_ops,
+                        available_versions=repo_available_versions,
+                        branch_template=config.branch_policy.release_branch_template,
+                        default_branch=config.branch_policy.default_branch,
+                        branch_from_previous=config.branch_policy.branch_from_previous_release
                     )
 
-                # Add issue variables to context if issue was created
-                if issue_result:
+                    # Build template context with repo namespaces
+                    template_context = build_repo_context(config, current_repo_alias=repo_alias)
                     template_context.update({
-                        'issue_number': issue_result['number'],
-                        'issue_link': issue_result['url']
+                        'issue_repo': issues_repo,
+                        'issue_repo_name': issue_repo_name,
+                        'pr_link': 'PR_LINK_PLACEHOLDER',
+                        'version': version,
+                        'major': str(target_version.major),
+                        'minor': str(target_version.minor),
+                        'patch': str(target_version.patch),
+                        'year': str(now.year),
+                        'quarter_uppercase': quarter_uppercase,
+                        'num_changes': num_changes if num_changes > 0 else 'several',
+                        'num_categories': num_categories if num_categories > 0 else 'multiple',
+                        'target_branch': repo_target_branch,
+                        'code_repo_alias': repo_alias
                     })
 
-                    if debug:
-                        console.print("\n[bold cyan]Debug Mode: Issue Information[/bold cyan]")
-                        console.print("[dim]" + "=" * 60 + "[/dim]")
-                        console.print(f"[dim]Issue created:[/dim] Yes")
-                        console.print(f"[dim]Issue number:[/dim] {issue_result['number']}")
-                        console.print(f"[dim]Issue URL:[/dim] {issue_result['url']}")
-                        console.print(f"[dim]Repository:[/dim] {_get_issues_repo(config)}")
-                        console.print(f"\n[dim]Template variables now available:[/dim]")
-                        for var in sorted(template_context.keys()):
-                            console.print(f"[dim]  • {{{{{var}}}}}: {template_context[var]}[/dim]")
-                        console.print("[dim]" + "=" * 60 + "[/dim]\n")
-                elif debug:
-                    console.print("\n[bold cyan]Debug Mode: Issue Information[/bold cyan]")
-                    console.print("[dim]" + "=" * 60 + "[/dim]")
-                    console.print(f"[dim]Issue creation:[/dim] {'Disabled (create_issue=false)' if not config.output.create_issue else 'Failed or dry-run'}")
-                    console.print(f"\n[dim]Template variables available (without issue):[/dim]")
-                    for var in sorted(template_context.keys()):
-                        console.print(f"[dim]  • {{{{{{var}}}}}}: {template_context[var]}[/dim]")
-                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
+                    # Render PR templates using Jinja2
+                    try:
+                        branch_name = render_template(config.output.pr_templates.branch_template, template_context)
+                        pr_title = render_template(config.output.pr_templates.title_template, template_context)
+                        pr_body = render_template(config.output.pr_templates.body_template, template_context)
 
-                # Define which variables are available
-                available_vars = set(template_context.keys())
-                issue_vars = {'issue_number', 'issue_link'}
+                        # Determine which file(s) to include in the PR
+                        # For each pr_code template in this repo, find its draft file and map it to its output_path
+                        additional_files = {}
+                        pr_file_path = None
+                        pr_content = None
 
-                # Validate templates don't use issue variables when they're not available
-                # (either because create_issue=false or issue creation failed)
-                if not issue_result:
-                    # Check each template for issue variables
-                    for template_name, template_str in [
-                        ('branch_template', config.output.pr_templates.branch_template),
-                        ('title_template', config.output.pr_templates.title_template),
-                        ('body_template', config.output.pr_templates.body_template)
-                    ]:
-                        try:
-                            used_vars = get_template_variables(template_str)
-                            invalid_vars = used_vars & issue_vars
-                            if invalid_vars:
-                                console.print(
-                                    f"[red]Error: PR {template_name} uses issue variables "
-                                    f"({', '.join(sorted(invalid_vars))}) but create_issue is disabled[/red]"
-                                )
-                                console.print("[yellow]Either enable create_issue in config or update the template.[/yellow]")
-                                sys.exit(1)
-                        except TemplateError as e:
-                            console.print(f"[red]Error in PR {template_name}: {e}[/red]")
-                            sys.exit(1)
+                        if repo_pr_code.templates:
+                            # For each pr_code template, find its draft file and map it to its output_path
+                            for idx, pr_code_template in enumerate(repo_pr_code.templates):
+                                # Build context for rendering paths
+                                path_template_context = build_repo_context(config, current_repo_alias=repo_alias)
+                                path_template_context.update({
+                                    'version': version,
+                                    'major': str(target_version.major),
+                                    'minor': str(target_version.minor),
+                                    'patch': str(target_version.patch),
+                                    'output_file_type': f'code-{idx}'
+                                })
 
-                # Render templates using Jinja2
-                try:
-                    branch_name = render_template(config.output.pr_templates.branch_template, template_context)
-                    pr_title = render_template(config.output.pr_templates.title_template, template_context)
-                    pr_body = render_template(config.output.pr_templates.body_template, template_context)
+                                # Determine the draft file path (where we READ from)
+                                draft_file_path = render_template(config.output.draft_output_path, path_template_context)
 
-                    # Determine which file(s) to include in the PR
-                    # If pr_code templates are configured, commit ALL code-N files to their output_path
-                    additional_files = {}
-                    pr_file_path = None
-                    pr_content = None
+                                # Determine the output path (where we COMMIT to)
+                                commit_file_path = render_template(pr_code_template.output_path, path_template_context)
 
-                    if doc_output_enabled and config.output.pr_code.templates:
-                        # For each pr_code template, find its draft file and map it to its output_path
-                        for idx, pr_code_template in enumerate(config.output.pr_code.templates):
-                            # Build context for rendering paths
-                            path_template_context = {
-                                'code_repo': config.repository.code_repo.replace('/', '-'),
-                                'version': version,
-                                'major': str(target_version.major),
-                                'minor': str(target_version.minor),
-                                'patch': str(target_version.patch),
-                                'output_file_type': f'code-{idx}'
-                            }
+                                # Try to read content from draft file or from matching_drafts
+                                content = None
 
-                            # Determine the draft file path (where we READ from)
-                            draft_file_path = render_template(config.output.draft_output_path, path_template_context)
+                                # Check if we already have this content from auto-detection
+                                if matching_drafts:
+                                    code_candidates_for_idx = [d for d in matching_drafts if f"-code-{idx}" in d.stem]
+                                    if code_candidates_for_idx:
+                                        content = code_candidates_for_idx[0].read_text()
+                                        if debug:
+                                            console.print(f"[dim]Auto-detected code-{idx} draft: {code_candidates_for_idx[0]}[/dim]")
 
-                            # Determine the output path (where we COMMIT to)
-                            commit_file_path = render_template(pr_code_template.output_path, path_template_context)
+                                # If not found in auto-detection, try reading from rendered draft path
+                                if not content:
+                                    draft_path_obj = Path(draft_file_path)
+                                    if draft_path_obj.exists():
+                                        content = draft_path_obj.read_text()
+                                        if debug:
+                                            console.print(f"[dim]Found code-{idx} draft at: {draft_file_path}[/dim]")
 
-                            # Try to read content from draft file or from matching_drafts
-                            content = None
+                                # If we have content, add to PR
+                                if content:
+                                    if idx == 0:
+                                        # First template becomes the primary PR file
+                                        pr_file_path = commit_file_path
+                                        pr_content = content
+                                        if debug:
+                                            console.print(f"[dim]Primary PR file (code-0):[/dim]")
+                                            console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
+                                            console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
+                                    else:
+                                        # Additional templates go into additional_files
+                                        additional_files[commit_file_path] = content
+                                        if debug:
+                                            console.print(f"[dim]Additional PR file (code-{idx}):[/dim]")
+                                            console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
+                                            console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
+                                elif debug:
+                                    console.print(f"[dim]No draft found for code-{idx} at {draft_file_path}[/dim]")
 
-                            # Check if we already have this content from auto-detection
-                            if matching_drafts:
-                                code_candidates = [d for d in matching_drafts if f"-code-{idx}" in d.stem]
-                                if code_candidates:
-                                    content = code_candidates[0].read_text()
-                                    if debug:
-                                        console.print(f"[dim]Auto-detected code-{idx} draft: {code_candidates[0]}[/dim]")
-
-                            # If not found in auto-detection, try reading from rendered draft path
-                            if not content:
-                                draft_path_obj = Path(draft_file_path)
-                                if draft_path_obj.exists():
-                                    content = draft_path_obj.read_text()
-                                    if debug:
-                                        console.print(f"[dim]Found code-{idx} draft at: {draft_file_path}[/dim]")
-
-                            # If we have content, add to PR
-                            if content:
-                                if idx == 0:
-                                    # First template becomes the primary PR file
-                                    pr_file_path = commit_file_path
-                                    pr_content = content
-                                    if debug:
-                                        console.print(f"[dim]Primary PR file (code-0):[/dim]")
-                                        console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
-                                        console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
-                                else:
-                                    # Additional templates go into additional_files
-                                    additional_files[commit_file_path] = content
-                                    if debug:
-                                        console.print(f"[dim]Additional PR file (code-{idx}):[/dim]")
-                                        console.print(f"[dim]  Draft source: {draft_file_path}[/dim]")
-                                        console.print(f"[dim]  Commit destination: {commit_file_path}[/dim]")
-                            elif debug:
-                                console.print(f"[dim]No draft found for code-{idx} at {draft_file_path}[/dim]")
-
-                        # Fallback if no pr_code files found
-                        if not pr_file_path:
+                            # Fallback if no pr_code files found
+                            if not pr_file_path:
+                                pr_file_path = None
+                                pr_content = pr_draft_content  # Use PR draft content we found earlier
+                                if debug:
+                                    console.print(f"[dim]No pr_code draft files found, PR will have no file attachments[/dim]")
+                        else:
+                            # No templates configured - skip PR file
                             pr_file_path = None
-                            pr_content = release_notes
+                            pr_content = pr_draft_content
                             if debug:
-                                console.print(f"[dim]No pr_code draft files found, PR will have no file attachments[/dim]")
-                    else:
-                         # No templates configured - skip PR file
-                         pr_file_path = None
-                         pr_content = release_notes
-                         if debug:
-                             console.print(f"[dim]No pr_code templates configured, skipping PR file[/dim]")
+                                console.print(f"[dim]No pr_code templates configured, skipping PR file[/dim]")
 
-                except TemplateError as e:
-                    console.print(f"[red]Error rendering PR template: {e}[/red]")
+                    except TemplateError as e:
+                        console.print(f"[red]Error rendering PR template for {repo_alias}: {e}[/red]")
+                        if debug:
+                            raise
+                        continue  # Skip this repo and continue with others
+
                     if debug:
-                        raise
-                    sys.exit(1)
+                        console.print("\n[bold cyan]Debug Mode: Pull Request Details[/bold cyan]")
+                        console.print("[dim]" + "=" * 60 + "[/dim]")
+                        console.print(f"[dim]Repository:[/dim] {current_repo_name} ({repo_alias})")
+                        console.print(f"[dim]Branch name:[/dim] {branch_name}")
+                        console.print(f"[dim]PR title:[/dim] {pr_title}")
+                        console.print(f"[dim]Target branch:[/dim] {repo_target_branch}")
+                        if pr_file_path:
+                            console.print(f"[dim]Primary file (will be committed to):[/dim] {pr_file_path}")
+                        if additional_files:
+                            console.print(f"[dim]Additional files (will be committed to):[/dim]")
+                            for path in additional_files:
+                                console.print(f"[dim]  - {path}[/dim]")
+                        console.print(f"\n[dim]PR body:[/dim]")
+                        console.print(f"[dim]{pr_body}[/dim]")
+                        console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
-                if debug:
-                    console.print("\n[bold cyan]Debug Mode: Pull Request Details[/bold cyan]")
-                    console.print("[dim]" + "=" * 60 + "[/dim]")
-                    console.print(f"[dim]Branch name:[/dim] {branch_name}")
-                    console.print(f"[dim]PR title:[/dim] {pr_title}")
-                    console.print(f"[dim]Target branch:[/dim] {target_branch}")
-                    if pr_file_path:
-                        console.print(f"[dim]Primary file (will be committed to):[/dim] {pr_file_path}")
-                    if additional_files:
-                        console.print(f"[dim]Additional files (will be committed to):[/dim]")
-                        for path in additional_files:
-                            console.print(f"[dim]  - {path}[/dim]")
-                    console.print(f"\n[dim]PR body:[/dim]")
-                    console.print(f"[dim]{pr_body}[/dim]")
-                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
+                    if dry_run:
+                        console.print(f"[yellow]Would create pull request for {repo_alias}:[/yellow]")
+                        console.print(f"[yellow]  Repository: {current_repo_name}[/yellow]")
+                        console.print(f"[yellow]  Branch: {branch_name}[/yellow]")
+                        console.print(f"[yellow]  Title: {pr_title}[/yellow]")
+                        console.print(f"[yellow]  Target: {repo_target_branch}[/yellow]")
+                        if pr_file_path:
+                            console.print(f"[yellow]  Primary file (will be committed to): {pr_file_path}[/yellow]")
+                        if additional_files:
+                            console.print(f"[yellow]  Additional files (will be committed to):[/yellow]")
+                            for path in additional_files:
+                                console.print(f"[yellow]    - {path}[/yellow]")
+                        console.print(f"\n[yellow]PR body:[/yellow]")
+                        console.print(f"[dim]{pr_body}[/dim]\n")
 
-                if dry_run:
-                    console.print(f"[yellow]Would create pull request:[/yellow]")
-                    console.print(f"[yellow]  Branch: {branch_name}[/yellow]")
-                    console.print(f"[yellow]  Title: {pr_title}[/yellow]")
-                    console.print(f"[yellow]  Target: {target_branch}[/yellow]")
-                    if pr_file_path:
-                        console.print(f"[yellow]  Primary file (will be committed to): {pr_file_path}[/yellow]")
-                    if additional_files:
-                        console.print(f"[yellow]  Additional files (will be committed to):[/yellow]")
-                        for path in additional_files:
-                            console.print(f"[yellow]    - {path}[/yellow]")
-                    console.print(f"\n[yellow]PR body:[/yellow]")
-                    console.print(f"[dim]{pr_body}[/dim]\n")
-                else:
-                    console.print(f"[blue]Creating PR with release notes...[/blue]")
-                    pr_url = github_client.create_pr_for_release_notes(
-                        repo_name,
-                        pr_title,
-                        pr_file_path,
-                        pr_content,
-                        branch_name,
-                        target_branch,
-                        pr_body,
-                        additional_files=additional_files
-                    )
-                    
-                    if pr_url:
-                        console.print(f"[green]✓ Pull request processed successfully[/green]")
-
-                        # Update issue body with real PR link
-                        if issue_result and not dry_run:
-                            try:
-                                repo = github_client.gh.get_repo(issues_repo)
-                                issue = repo.get_issue(int(issue_result['number']))
-                                
-                                # Check if we need to update the link
-                                if issue.body and 'PR_LINK_PLACEHOLDER' in issue.body:
-                                    new_body = issue.body.replace('PR_LINK_PLACEHOLDER', pr_url)
-                                    github_client.update_issue_body(issues_repo, int(issue_result['number']), new_body)
-                                    console.print(f"[green]Updated issue #{issue_result['number']} with PR link[/green]")
-                            except Exception as e:
-                                console.print(f"[yellow]Warning: Could not update issue body with PR link: {e}[/yellow]")
+                        # In dry-run, create a mock PR info
+                        pr_info = {
+                            'repo_alias': repo_alias,
+                            'repo_link': current_repo_name,
+                            'number': 'XXX',
+                            'url': f'https://github.com/{current_repo_name}/pull/XXX',
+                            'branch': branch_name
+                        }
+                        created_prs.append(pr_info)
                     else:
-                        console.print(f"[red]✗ Failed to create or find PR[/red]")
-                        console.print(f"[red]Error: PR creation failed. See error message above for details.[/red]")
-                        sys.exit(1)
+                        console.print(f"[blue]Creating PR for {repo_alias} with release notes...[/blue]")
+                        pr_url = github_client.create_pr_for_release_notes(
+                            current_repo_name,
+                            pr_title,
+                            pr_file_path,
+                            pr_content,
+                            branch_name,
+                            repo_target_branch,
+                            pr_body,
+                            additional_files=additional_files
+                        )
+
+                        if pr_url:
+                            console.print(f"[green]✓ Pull request for {repo_alias} processed successfully[/green]")
+                            console.print(f"[blue]→ {pr_url}[/blue]")
+
+                            # Extract PR number from URL
+                            pr_number = pr_url.split('/')[-1] if '/' in pr_url else 'unknown'
+
+                            # Collect PR info
+                            pr_info = {
+                                'repo_alias': repo_alias,
+                                'repo_link': current_repo_name,
+                                'number': pr_number,
+                                'url': pr_url,
+                                'branch': branch_name
+                            }
+                            created_prs.append(pr_info)
+                        else:
+                            console.print(f"[red]✗ Failed to create PR for {repo_alias}[/red]")
+                            # Continue with other repos even if one fails
+
+                # After PR loop, create tracking issue with all PR info
+                if config.output.create_issue and created_prs:
+                    console.print(f"\n[bold blue]Creating release tracking issue with {len(created_prs)} PR(s)...[/bold blue]\n")
+
+                    # Build template context for issue
+                    issues_repo = _get_issues_repo(config)
+                    now = datetime.now()
+                    quarter = (now.month - 1) // 3 + 1
+                    quarter_uppercase = f"Q{quarter}"
+
+                    issue_template_context = build_repo_context(config)
+                    issue_template_context.update({
+                        'issue_repo': issues_repo,
+                        'issue_repo_name': issue_repo_name,
+                        'version': version,
+                        'major': str(target_version.major),
+                        'minor': str(target_version.minor),
+                        'patch': str(target_version.patch),
+                        'year': str(now.year),
+                        'quarter_uppercase': quarter_uppercase,
+                        'num_changes': 'multiple',
+                        'num_categories': 'multiple',
+                        'prs': created_prs  # Pass the list of PRs to the template
+                    })
+
+                    # If issue number provided explicitly, use it directly
+                    issue_result = None
+                    if issue and not dry_run:
+                        try:
+                            issue_obj = github_client.gh.get_repo(issues_repo).get_issue(issue)
+                            issue_result = {'number': str(issue_obj.number), 'url': issue_obj.html_url}
+                            console.print(f"[blue]Using provided issue #{issue}[/blue]")
+                            # Save association to database
+                            db.save_issue_association(
+                                repo_full_name=repo_name,
+                                version=version,
+                                issue_number=issue_obj.number,
+                                issue_url=issue_obj.html_url
+                            )
+                            if debug:
+                                console.print(f"[dim]Saved issue association to database[/dim]")
+                        except Exception as e:
+                            console.print(f"[yellow]Warning: Could not use issue #{issue}: {e}[/yellow]")
+                            issue_result = None
+
+                    # If force=draft, try to find existing issue automatically
+                    if force == 'draft' and not dry_run and not issue_result:
+                        existing_association = db.get_issue_association(repo_name, version)
+                        if not existing_association:
+                            issue_result = _find_existing_issue_auto(config, github_client, version, debug)
+                            if issue_result:
+                                console.print(f"[blue]Auto-selected open issue #{issue_result['number']}[/blue]")
+                                # Save association
+                                db.save_issue_association(
+                                    repo_full_name=repo_name,
+                                    version=version,
+                                    issue_number=int(issue_result['number']),
+                                    issue_url=issue_result['url']
+                                )
+
+                    # Create or update issue
+                    if not issue_result:
+                        issue_result = _create_release_issue(
+                            config=config,
+                            github_client=github_client,
+                            db=db,
+                            template_context=issue_template_context,
+                            version=version,
+                            prs=created_prs,
+                            override=(force != 'none'),
+                            dry_run=dry_run,
+                            debug=debug
+                        )
+
+                    if issue_result:
+                        console.print(f"[green]✓ Release tracking issue: #{issue_result['number']}[/green]")
+                        console.print(f"[blue]→ {issue_result['url']}[/blue]")
+
         elif dry_run:
             console.print(f"[yellow]Would NOT create pull request (--no-pr or config setting)[/yellow]\n")
-
-        # Handle Docusaurus file if configured (only if PR creation didn't handle it)
-        if doc_output_enabled and not create_pr:
-            template_context_doc = {
-                'code_repo': config.repository.code_repo.replace('/', '-'),
-                'version': version,
-                'major': str(target_version.major),
-                'minor': str(target_version.minor),
-                'patch': str(target_version.patch),
-                'output_file_type': 'code-0'  # First pr_code template
-            }
-            try:
-                doc_path = render_template(config.output.draft_output_path, template_context_doc)
-            except TemplateError as e:
-                console.print(f"[red]Error rendering draft_output_path for code-0: {e}[/red]")
-                if debug:
-                    raise
-                sys.exit(1)
-            doc_file = Path(doc_path)
-
-            if debug:
-                console.print("\n[bold cyan]Debug Mode: Documentation Release Notes[/bold cyan]")
-                console.print("[dim]" + "=" * 60 + "[/dim]")
-                console.print(f"[dim]Doc template configured:[/dim] {bool(config.output.pr_code.templates)}")
-                console.print(f"[dim]Draft output path template:[/dim] {config.output.draft_output_path}")
-                console.print(f"[dim]Resolved code-0 path:[/dim] {doc_path}")
-                console.print(f"[dim]Draft source path:[/dim] {doc_notes_path if doc_notes_path else 'None'}")
-                console.print(f"[dim]Draft content found:[/dim] {doc_notes_content is not None}")
-
-            if doc_notes_content:
-                # We have draft content to write
-                console.print(f"\n[bold]Full Doc Notes Content:[/bold]")
-                console.print(f"[dim]{'─' * 60}[/dim]")
-                console.print(doc_notes_content)
-                console.print(f"[dim]{'─' * 60}[/dim]")
-                console.print("[dim]" + "=" * 60 + "[/dim]\n")
-
-                if dry_run:
-                    console.print(f"[yellow]Would write documentation to: {doc_path}[/yellow]")
-                    console.print(f"[yellow]  Source: {doc_notes_path}[/yellow]")
-                    console.print(f"[yellow]  Size: {len(doc_notes_content)} characters[/yellow]")
-                else:
-                    doc_file.parent.mkdir(parents=True, exist_ok=True)
-                    doc_file.write_text(doc_notes_content)
-                    console.print(f"[green]✓ Documentation written to:[/green]")
-                    console.print(f"[green]  {doc_file}[/green]")
-                    
-            elif doc_file.exists():
-                # Fallback: File exists but we didn't find a draft. 
-                # This might happen if we didn't run generate or if we're just re-publishing.
-                # Just report it.
-                if debug:
-                    try:
-                        existing_content = doc_file.read_text()
-                        console.print(f"[dim]Existing file size:[/dim] {len(existing_content)} characters")
-                    except Exception as e:
-                        console.print(f"[dim]Error reading file:[/dim] {e}")
-                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
-
-                if dry_run:
-                    console.print(f"[yellow]Existing Docusaurus file found: {doc_path}[/yellow]")
-                    console.print(f"[dim]No new draft content found to update it.[/dim]")
-                elif not debug:
-                    console.print(f"[blue]Existing Docusaurus file found at {doc_file}[/blue]")
-            else:
-                if debug:
-                    console.print(f"[dim]Status:[/dim] No draft found and no existing file")
-                    console.print("[dim]" + "=" * 60 + "[/dim]\n")
-                elif dry_run:
-                    console.print(f"[dim]No documentation draft found and no existing file at {doc_path}[/dim]")
 
         # Dry-run summary
         if dry_run:

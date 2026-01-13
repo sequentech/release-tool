@@ -16,7 +16,7 @@ def test_config_with_release_output_template():
     """Create a test configuration with pr_code templates."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -30,6 +30,7 @@ def test_config_with_release_output_template():
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -43,6 +44,7 @@ def test_config_with_release_output_template():
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -54,7 +56,7 @@ def test_config_flat_list():
     """Config with flat list output template."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -68,6 +70,7 @@ def test_config_flat_list():
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -78,6 +81,7 @@ def test_config_flat_list():
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -89,7 +93,7 @@ def test_config_with_migrations():
     """Config with migrations section."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -102,6 +106,7 @@ def test_config_with_migrations():
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -121,6 +126,7 @@ def test_config_with_migrations():
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -215,7 +221,7 @@ def test_legacy_format_without_release_output_template():
     """Test that legacy format still works when release_output_template is not set."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -247,7 +253,7 @@ def test_render_entry_includes_all_fields():
     """Test that render_entry correctly passes all fields to entry template."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -289,13 +295,14 @@ def test_html_whitespace_processing_in_release_output_template():
     """Test that HTML-like whitespace processing works in pr_code templates."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -305,6 +312,7 @@ and<br>line break""",
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -325,13 +333,14 @@ def test_nbsp_entity_preservation():
     """Test that &nbsp; entities are preserved as spaces and not collapsed."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -342,6 +351,7 @@ Mixed:&nbsp;&nbsp;preserved    and   collapsed""",
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -364,7 +374,7 @@ def test_nbsp_in_entry_template():
     """Test that &nbsp; works correctly in entry_template."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
