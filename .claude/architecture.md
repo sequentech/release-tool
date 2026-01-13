@@ -154,8 +154,8 @@ Users should be able to:
 The release tool uses semantic versioning for config files to handle breaking changes and new features gracefully.
 
 ### Current Version
-- **Latest**: 1.9 (defined in `src/release_tool/migrations/manager.py`)
-- Stored in config file as `config_version = "1.9"`
+- **Latest**: 1.10 (defined in `src/release_tool/migrations/manager.py`)
+- Stored in config file as `config_version = "1.10"`
 
 ### Version History
 - **1.0**: Initial config format
