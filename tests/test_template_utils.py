@@ -9,8 +9,11 @@ from release_tool.template_utils import (
     render_template,
     validate_template_vars,
     get_template_variables,
+    build_repo_context,
     TemplateError
 )
+from release_tool.config import Config, RepositoryConfig, RepoInfo
+from unittest.mock import MagicMock
 
 
 def test_render_template_simple():
@@ -159,3 +162,161 @@ This PR adds release notes for {{version}} with {{num_changes}} changes across {
     assert "Parent issue: https://github.com/sequentech/meta/issues/8853" in result
     assert "version 9.2.0" in result
     assert "with 10 changes across 3 categories" in result
+
+
+# Tests for build_repo_context
+
+def _create_mock_config(code_repos, issue_repos=None):
+    """Create a mock config with specified repos."""
+    config = MagicMock()
+    config.repository = MagicMock()
+    config.repository.code_repos = [
+        MagicMock(link=r['link'], alias=r['alias']) for r in code_repos
+    ]
+    config.repository.issue_repos = [
+        MagicMock(link=r['link'], alias=r['alias']) for r in (issue_repos or [])
+    ]
+    return config
+
+
+def test_build_repo_context_single_repo():
+    """Test build_repo_context with a single code repo."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'}
+    ])
+
+    context = build_repo_context(config)
+
+    # Should have code_repo with alias key
+    assert 'code_repo' in context
+    assert 'step' in context['code_repo']
+    assert context['code_repo']['step']['link'] == 'sequentech/step'
+    assert context['code_repo']['step']['slug'] == 'sequentech-step'
+    assert context['code_repo']['step']['alias'] == 'step'
+
+    # Should have code_repo_list
+    assert 'code_repo_list' in context
+    assert len(context['code_repo_list']) == 1
+    assert context['code_repo_list'][0]['link'] == 'sequentech/step'
+
+    # Should NOT have 'current' without current_repo_alias
+    assert 'current' not in context['code_repo']
+
+
+def test_build_repo_context_multiple_repos():
+    """Test build_repo_context with multiple code repos."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'},
+        {'link': 'sequentech/docs', 'alias': 'docs'},
+        {'link': 'sequentech/api', 'alias': 'api'}
+    ])
+
+    context = build_repo_context(config)
+
+    # Should have all repos by alias
+    assert 'step' in context['code_repo']
+    assert 'docs' in context['code_repo']
+    assert 'api' in context['code_repo']
+
+    # code_repo_list should have all repos
+    assert len(context['code_repo_list']) == 3
+
+    # Should NOT have 'current' without current_repo_alias
+    assert 'current' not in context['code_repo']
+
+
+def test_build_repo_context_with_current_alias():
+    """Test build_repo_context with current_repo_alias set."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'},
+        {'link': 'sequentech/docs', 'alias': 'docs'}
+    ])
+
+    context = build_repo_context(config, current_repo_alias='docs')
+
+    # Should have 'current' pointing to docs
+    assert 'current' in context['code_repo']
+    assert context['code_repo']['current']['link'] == 'sequentech/docs'
+    assert context['code_repo']['current']['slug'] == 'sequentech-docs'
+    assert context['code_repo']['current']['alias'] == 'docs'
+
+    # 'current' should be the same object as 'docs'
+    assert context['code_repo']['current'] is context['code_repo']['docs']
+
+
+def test_build_repo_context_with_invalid_current_alias():
+    """Test build_repo_context with non-existent current_repo_alias."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'}
+    ])
+
+    context = build_repo_context(config, current_repo_alias='nonexistent')
+
+    # Should NOT have 'current' when alias doesn't exist
+    assert 'current' not in context['code_repo']
+
+
+def test_build_repo_context_with_issue_repos():
+    """Test build_repo_context includes issue repos."""
+    config = _create_mock_config(
+        code_repos=[{'link': 'sequentech/step', 'alias': 'step'}],
+        issue_repos=[{'link': 'sequentech/meta', 'alias': 'meta'}]
+    )
+
+    context = build_repo_context(config)
+
+    # Should have issue_repo namespace
+    assert 'issue_repo' in context
+    assert 'meta' in context['issue_repo']
+    assert context['issue_repo']['meta']['link'] == 'sequentech/meta'
+    assert context['issue_repo']['meta']['slug'] == 'sequentech-meta'
+
+    # Should have issue_repo_list
+    assert 'issue_repo_list' in context
+    assert len(context['issue_repo_list']) == 1
+
+
+def test_build_repo_context_template_rendering():
+    """Test that build_repo_context output works with template rendering."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'}
+    ])
+
+    context = build_repo_context(config, current_repo_alias='step')
+    context['version'] = '1.0.0'
+
+    # Test template with code_repo.current
+    template = ".release_tool_cache/{{code_repo.current.slug}}/{{version}}.md"
+    result = render_template(template, context)
+    assert result == ".release_tool_cache/sequentech-step/1.0.0.md"
+
+
+def test_build_repo_context_current_raises_error_when_not_set():
+    """Test that accessing code_repo.current raises error when not in context."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'}
+    ])
+
+    # No current_repo_alias provided
+    context = build_repo_context(config)
+    context['version'] = '1.0.0'
+
+    # Template using code_repo.current should fail
+    template = "{{code_repo.current.slug}}"
+    with pytest.raises(TemplateError) as exc_info:
+        render_template(template, context)
+    assert "undefined" in str(exc_info.value).lower()
+
+
+def test_build_repo_context_code_repo_list_iteration():
+    """Test that code_repo_list can be iterated in templates."""
+    config = _create_mock_config([
+        {'link': 'sequentech/step', 'alias': 'step'},
+        {'link': 'sequentech/docs', 'alias': 'docs'}
+    ])
+
+    context = build_repo_context(config)
+
+    template = "{% for repo in code_repo_list %}{{ repo.alias }}{% if not loop.last %},{% endif %}{% endfor %}"
+    result = render_template(template, context)
+    assert result == "step,docs"

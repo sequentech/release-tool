@@ -21,7 +21,7 @@ class MigrationError(Exception):
 class MigrationManager:
     """Manages config file migrations."""
 
-    CURRENT_VERSION = "1.9"  # Latest config version
+    CURRENT_VERSION = "1.10"  # Latest config version
 
     def __init__(self):
         # Since manager.py is in the migrations/ directory, parent IS the migrations dir
@@ -286,12 +286,20 @@ class MigrationManager:
                 "  • Changed repository.issue_repos (list of strings) → list of RepoInfo objects\n"
                 "  • Each repository now has 'link' and 'alias' fields\n"
                 "  • Aliases used in templates: {{code_repo.<alias>.link}}, {{code_repo.<alias>.slug}}\n"
-                "  • Primary repository: {{code_repo.primary.link}}, {{code_repo.primary.slug}}\n"
                 "  • Removed pull.clone_code_repo field (code repos are always cloned now)\n"
                 "  • Removed pull.code_repo_path field (path always uses .release_tool_cache/{repo_alias})\n"
                 "  • Migration auto-generates aliases from repository names\n"
-                "  • BREAKING: Template variables changed from {{code_repo}} to {{code_repo.primary.slug}}\n"
                 "  • Automatic config migration preserves all repository settings"
+            ),
+            ("1.9", "1.10"): (
+                "Version 1.10 replaces code_repo.primary with code_repo.current:\n"
+                "  • BREAKING: {{code_repo.primary.*}} replaced with {{code_repo.current.*}}\n"
+                "  • code_repo.current is context-aware (set during repo iteration loops)\n"
+                "  • code_repo.current raises error when used outside of repo context\n"
+                "  • Added code_repo_list and issue_repo_list for template iteration\n"
+                "  • Fixed bug where code_repo dict was overwritten with string\n"
+                "  • Use {{code_repo.<alias>.*}} for specific repos by name\n"
+                "  • Migration auto-updates templates from primary → current"
             ),
         }
 

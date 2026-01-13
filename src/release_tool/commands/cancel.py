@@ -340,7 +340,11 @@ def cancel(
     debug = ctx.obj.get('debug', False)
     assume_yes = ctx.obj.get('assume_yes', False)
 
-    repo_full_name = config.repository.code_repo
+    # Use first code repo as default
+    if not config.repository.code_repos:
+        console.print("[red]Error: No code repositories configured[/red]")
+        sys.exit(1)
+    repo_full_name = config.repository.code_repos[0].link
 
     # Connect to database
     db = Database(config.database.path)

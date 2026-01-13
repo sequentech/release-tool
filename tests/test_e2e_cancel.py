@@ -22,7 +22,7 @@ def test_config(tmp_path):
     db_path = tmp_path / "test.db"
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -565,7 +565,8 @@ class TestE2ECancelPatternMatching:
         db.close()
 
         # Update config to use sequentech/meta repo
-        test_config.repository.code_repo = "sequentech/meta"
+        from release_tool.config import RepoInfo
+        test_config.repository.code_repos = [RepoInfo(link="sequentech/meta", alias="meta")]
 
         # Run cancel command with issue #64 in dry-run mode
         runner = CliRunner()

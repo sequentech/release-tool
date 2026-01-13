@@ -39,13 +39,14 @@ def test_pr_code_template_uses_custom_template(sample_notes):
     """Test that pr_code templates use their custom output_template, not DEFAULT_RELEASE_NOTES_TEMPLATE."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """CUSTOM PR CODE TEMPLATE
@@ -57,6 +58,7 @@ def test_pr_code_template_uses_custom_template(sample_notes):
                         "output_path": "custom.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -66,7 +68,7 @@ def test_pr_code_template_uses_custom_template(sample_notes):
     grouped = generator.group_by_category(sample_notes)
 
     # Simulate pr_code template generation
-    pr_code_template = config.output.pr_code.templates[0]
+    pr_code_template = config.output.pr_code["repo"].templates[0]
     result = generator._format_with_pr_code_template(
         pr_code_template.output_template,
         grouped,
@@ -91,13 +93,14 @@ def test_draft_file_uses_default_release_template(sample_notes):
     """Test that draft file (for GitHub releases) uses DEFAULT_RELEASE_NOTES_TEMPLATE."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """CUSTOM PR CODE TEMPLATE
@@ -105,6 +108,7 @@ def test_draft_file_uses_default_release_template(sample_notes):
                         "output_path": "custom.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -136,13 +140,14 @@ def test_br_tags_work_in_pr_code_templates():
     """Test that <br> tags are converted to line breaks in pr_code templates."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -153,6 +158,7 @@ But<br>breaks<br>should<br>work""",
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -160,7 +166,7 @@ But<br>breaks<br>should<br>work""",
 
     generator = ReleaseNoteGenerator(config)
 
-    pr_code_template = config.output.pr_code.templates[0]
+    pr_code_template = config.output.pr_code["repo"].templates[0]
     result = generator._format_with_pr_code_template(
         pr_code_template.output_template,
         {},
@@ -183,13 +189,14 @@ def test_double_br_tags_create_blank_lines():
     """Test that consecutive <br><br> tags create blank lines (paragraph breaks)."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -199,6 +206,7 @@ Line one<br><br><br>Line two with extra space""",
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -206,7 +214,7 @@ Line one<br><br><br>Line two with extra space""",
 
     generator = ReleaseNoteGenerator(config)
 
-    pr_code_template = config.output.pr_code.templates[0]
+    pr_code_template = config.output.pr_code["repo"].templates[0]
     result = generator._format_with_pr_code_template(
         pr_code_template.output_template,
         {},
@@ -226,7 +234,7 @@ def test_br_tags_work_in_default_release_template():
     """Test that <br> tags work in DEFAULT_RELEASE_NOTES_TEMPLATE (draft/GitHub releases)."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
@@ -268,13 +276,14 @@ def test_multiple_pr_code_templates_each_use_own_template(sample_notes):
     """Test that multiple pr_code templates each use their own output_template."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """TEMPLATE ONE: {{ title }}
@@ -291,6 +300,7 @@ def test_multiple_pr_code_templates_each_use_own_template(sample_notes):
                         "output_path": "output2.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -300,7 +310,7 @@ def test_multiple_pr_code_templates_each_use_own_template(sample_notes):
     grouped = generator.group_by_category(sample_notes)
 
     # Generate with first template
-    template1 = config.output.pr_code.templates[0]
+    template1 = config.output.pr_code["repo"].templates[0]
     result1 = generator._format_with_pr_code_template(
         template1.output_template,
         grouped,
@@ -310,7 +320,7 @@ def test_multiple_pr_code_templates_each_use_own_template(sample_notes):
     )
 
     # Generate with second template
-    template2 = config.output.pr_code.templates[1]
+    template2 = config.output.pr_code["repo"].templates[1]
     result2 = generator._format_with_pr_code_template(
         template2.output_template,
         grouped,
@@ -334,13 +344,14 @@ def test_nbsp_preserved_in_pr_code_templates():
     """Test that &nbsp; entities are preserved in pr_code templates."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         "output_template": """# {{ title }}
@@ -350,6 +361,7 @@ Normal    spaces   collapse""",
                         "output_path": "test.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -357,7 +369,7 @@ Normal    spaces   collapse""",
 
     generator = ReleaseNoteGenerator(config)
 
-    pr_code_template = config.output.pr_code.templates[0]
+    pr_code_template = config.output.pr_code["repo"].templates[0]
     result = generator._format_with_pr_code_template(
         pr_code_template.output_template,
         {},
@@ -377,13 +389,14 @@ def test_draft_file_has_different_content_than_pr_code_template(sample_notes):
     """Test that draft file and pr_code file have intentionally different content."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "github": {
             "token": "test_token"
         },
         "output": {
             "pr_code": {
+                "repo": {
                 "templates": [
                     {
                         # Minimal pr_code template
@@ -394,6 +407,7 @@ def test_draft_file_has_different_content_than_pr_code_template(sample_notes):
                         "output_path": "docs.md"
                     }
                 ]
+                }
             }
         }
     }
@@ -403,7 +417,7 @@ def test_draft_file_has_different_content_than_pr_code_template(sample_notes):
     grouped = generator.group_by_category(sample_notes)
 
     # Generate pr_code template output
-    pr_code_template = config.output.pr_code.templates[0]
+    pr_code_template = config.output.pr_code["repo"].templates[0]
     pr_code_result = generator._format_with_pr_code_template(
         pr_code_template.output_template,
         grouped,

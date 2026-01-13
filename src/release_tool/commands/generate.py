@@ -13,7 +13,7 @@ from ..db import Database
 from ..github_utils import GitHubClient
 from ..git_ops import GitOperations, get_release_commit_range, determine_release_branch_strategy, find_comparison_version, find_comparison_version_for_docs
 from ..models import SemanticVersion
-from ..template_utils import render_template, TemplateError
+from ..template_utils import render_template, TemplateError, build_repo_context
 from ..policies import (
     IssueExtractor,
     CommitConsolidator,
@@ -31,11 +31,71 @@ def _get_issues_repo(config: Config) -> str:
     """
     Get the issues repository from config.
 
-    Returns the first issue_repos entry if available, otherwise falls back to code_repo.
+    Returns the first issue_repos entry if available, otherwise falls back to first code_repo.
     """
     if config.repository.issue_repos and len(config.repository.issue_repos) > 0:
-        return config.repository.issue_repos[0]
-    return config.repository.code_repo
+        return config.repository.issue_repos[0].link
+    return config.repository.code_repos[0].link
+
+
+def _filter_changes_by_repos(consolidated_changes: List, target_repo_aliases: Optional[List[str]],
+                              current_repo_alias: str, config: Config, db: Database) -> List:
+    """
+    Filter consolidated changes based on which repos they touched.
+
+    Args:
+        consolidated_changes: List of ConsolidatedChange objects
+        target_repo_aliases: List of repo aliases to include changes from, or None for current repo only
+        current_repo_alias: The current code repo alias being generated for
+        config: Config object
+        db: Database object
+
+    Returns:
+        Filtered list of changes
+    """
+    if target_repo_aliases is None:
+        # Only include changes from current repo
+        target_repo_aliases = [current_repo_alias]
+
+    # Build map of repo link -> alias
+    repo_link_to_alias = {repo.link: repo.alias for repo in config.repository.code_repos}
+
+    # Get repo_ids for target aliases
+    target_repo_ids = set()
+    for alias in target_repo_aliases:
+        repo_info = config.get_code_repo_by_alias(alias)
+        if repo_info:
+            # Get repo from database
+            repo = db.get_repository(repo_info.link)
+            if repo:
+                target_repo_ids.add(repo.id)
+
+    if not target_repo_ids:
+        # No matching repos found, return all changes (fallback)
+        return consolidated_changes
+
+    # Filter changes: include if any commit or PR is from target repos
+    filtered_changes = []
+    for change in consolidated_changes:
+        include_change = False
+
+        # Check commits
+        for commit in change.commits:
+            if commit.repo_id in target_repo_ids:
+                include_change = True
+                break
+
+        # Check PRs
+        if not include_change:
+            for pr in change.prs:
+                if pr.repo_id in target_repo_ids:
+                    include_change = True
+                    break
+
+        if include_change:
+            filtered_changes.append(change)
+
+    return filtered_changes
 
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
@@ -99,7 +159,9 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 # Load config early to access repo path
                 cfg = ctx.obj['config']
                 try:
-                    git_ops_temp = GitOperations(cfg.get_code_repo_path())
+                    # Use first code repo for version checking
+                    first_repo_alias = cfg.repository.code_repos[0].alias
+                    git_ops_temp = GitOperations(cfg.get_code_repo_path(first_repo_alias))
                     existing_versions = git_ops_temp.get_version_tags()
                     base_exists = any(
                         v.major == base_version.major and
@@ -151,7 +213,8 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     db = Database(cfg.database.path)
                     db.connect()
 
-                    repo_name = cfg.repository.code_repo
+                    # Use first code repo for version checking
+                    repo_name = cfg.repository.code_repos[0].link
                     repo = db.get_repository(repo_name)
 
                     if repo:
@@ -216,7 +279,9 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 # If detect_mode is 'published', we should rely on DB because git tags don't have draft status
                 if (detect_mode_enum == DetectMode.ALL or not checked_db):
                     try:
-                        repo_path = cfg.get_code_repo_path()
+                        # Use first code repo for version checking
+                        first_repo_alias = cfg.repository.code_repos[0].alias
+                        repo_path = cfg.get_code_repo_path(first_repo_alias)
                         from pathlib import Path
                         if Path(repo_path).exists():
                             git_ops_temp = GitOperations(repo_path)
@@ -287,27 +352,55 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
     config: Config = ctx.obj['config']
 
-    # Determine repo path (use pulled repo as default)
-    if not repo_path:
-        repo_path = config.get_code_repo_path()
-        console.print(f"[blue]Using pulled repository: {repo_path}[/blue]")
+    # Get list of repos to generate for (repos with pr_code configuration)
+    pr_code_repo_aliases = config.get_pr_code_repos()
 
-    # Verify repo path exists
-    from pathlib import Path
-    if not Path(repo_path).exists():
-        console.print(f"[red]Error: Repository path does not exist: {repo_path}[/red]")
-        if not config.pull.code_repo_path:
-            console.print("[yellow]Tip: Run 'release-tool pull' first to clone the repository[/yellow]")
+    if not pr_code_repo_aliases:
+        console.print("[yellow]No pr_code configurations found. Please configure [output.pr_code.<alias>] sections in your config.[/yellow]")
         return
 
-    try:
-        # Initialize components
-        db = Database(config.database.path)
-        db.connect()
+    # If repo_path is explicitly provided, use it for the first repo only (backward compat)
+    if repo_path:
+        console.print(f"[yellow]Warning: --repo-path is deprecated with multi-repo support. Using for first repo only.[/yellow]")
+        explicit_repo_path = repo_path
+    else:
+        explicit_repo_path = None
 
-        try:
-            # Get repository
-            repo_name = config.repository.code_repo
+    console.print(f"[bold cyan]Generating release notes for {len(pr_code_repo_aliases)} repository(ies)[/bold cyan]")
+
+    # Initialize database once (shared across all repos)
+    db = Database(config.database.path)
+    db.connect()
+
+    try:
+        # Loop through each repo that has pr_code configuration
+        for repo_alias in pr_code_repo_aliases:
+            console.print(f"\n[bold magenta]{'='*60}[/bold magenta]")
+            console.print(f"[bold magenta]Processing repository: {repo_alias}[/bold magenta]")
+            console.print(f"[bold magenta]{'='*60}[/bold magenta]\n")
+
+            repo_info = config.get_code_repo_by_alias(repo_alias)
+            if not repo_info:
+                console.print(f"[red]Error: Repository alias '{repo_alias}' not found in configuration[/red]")
+                continue
+
+            # Determine repo path (use pulled repo as default, or explicit if provided)
+            if explicit_repo_path and repo_alias == pr_code_repo_aliases[0]:
+                current_repo_path = explicit_repo_path
+                console.print(f"[blue]Using explicitly provided path: {current_repo_path}[/blue]")
+            else:
+                current_repo_path = config.get_code_repo_path(repo_alias)
+                console.print(f"[blue]Using pulled repository: {current_repo_path}[/blue]")
+
+            # Verify repo path exists
+            from pathlib import Path
+            if not Path(current_repo_path).exists():
+                console.print(f"[red]Error: Repository path does not exist: {current_repo_path}[/red]")
+                console.print(f"[yellow]Tip: Run 'release-tool pull' first to clone the repository[/yellow]")
+                continue  # Skip this repo, move to next
+
+            # Get repository from database
+            repo_name = repo_info.link
             repo = db.get_repository(repo_name)
             if not repo:
                 console.print(f"[yellow]Repository {repo_name} not found in database. Running pull...[/yellow]")
@@ -317,7 +410,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             repo_id = repo.id
 
             # Initialize Git operations
-            git_ops = GitOperations(repo_path)
+            git_ops = GitOperations(current_repo_path)
 
             # Auto-calculate version if using bump options
             if new:
@@ -634,6 +727,27 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                     debug
                 )
 
+                # Filter by consolidated_code_repos_aliases (multi-repo filtering)
+                # Get the consolidated repos from the first template (all templates in a policy group should have same value)
+                template_list_for_policy = templates_by_policy.get(policy, [])
+                if template_list_for_policy:
+                    first_template = template_list_for_policy[0][1]  # (idx, template_config)
+                    target_repo_aliases = first_template.consolidated_code_repos_aliases
+
+                    if debug:
+                        console.print(f"[dim]Filtering changes: target_repo_aliases={target_repo_aliases}, current_repo={repo_alias}[/dim]")
+
+                    consolidated_changes = _filter_changes_by_repos(
+                        consolidated_changes,
+                        target_repo_aliases,
+                        repo_alias,
+                        config,
+                        db
+                    )
+
+                    if debug:
+                        console.print(f"[dim]After repo filtering: {len(consolidated_changes)} changes[/dim]")
+
                 # Generate release notes
                 note_generator = ReleaseNoteGenerator(config)
                 release_notes = []
@@ -649,13 +763,16 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             # Parse explicit from_version if provided
             explicit_from_ver = SemanticVersion.parse(from_version) if from_version else None
 
+            # Get pr_code config for this specific repo
+            repo_pr_code = config.output.pr_code[repo_alias]
+
             # Group templates by their release_version_policy to optimize note generation
             # Templates with the same policy can share the same generated notes
             from collections import defaultdict
             templates_by_policy = defaultdict(list)
 
-            if config.output.pr_code.templates:
-                for idx, template_config in enumerate(config.output.pr_code.templates):
+            if repo_pr_code.templates:
+                for idx, template_config in enumerate(repo_pr_code.templates):
                     templates_by_policy[template_config.release_version_policy].append((idx, template_config))
 
             # Generate notes for each unique policy
@@ -672,7 +789,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
 
             # Ensure INCLUDE_RCS notes are generated for draft file (GitHub releases)
             # if not already present from pr_code templates
-            if config.output.pr_code.templates and ReleaseVersionPolicy.INCLUDE_RCS not in notes_by_policy:
+            if repo_pr_code.templates and ReleaseVersionPolicy.INCLUDE_RCS not in notes_by_policy:
                 console.print(f"\n[bold cyan]Generating notes with policy: {ReleaseVersionPolicy.INCLUDE_RCS} (for draft file)[/bold cyan]")
                 grouped_notes, comparison_version, commits = generate_notes_for_policy(ReleaseVersionPolicy.INCLUDE_RCS, explicit_from_ver)
                 notes_by_policy[ReleaseVersionPolicy.INCLUDE_RCS] = {
@@ -683,7 +800,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 }
 
             # For GitHub releases (no pr_code templates), use standard comparison
-            if not config.output.pr_code.templates:
+            if not repo_pr_code.templates:
                 console.print(f"\n[bold cyan]Generating notes for GitHub release[/bold cyan]")
                 # Use standard comparison for GitHub releases
                 grouped_notes, comparison_version, commits = generate_notes_for_policy(ReleaseVersionPolicy.INCLUDE_RCS, explicit_from_ver)
@@ -692,7 +809,7 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
             if format_enum == OutputFormat.JSON:
                 import json
                 # For JSON format, use the first policy's notes (or standard if no templates)
-                if config.output.pr_code.templates:
+                if repo_pr_code.templates:
                     first_policy = list(notes_by_policy.keys())[0]
                     policy_data = notes_by_policy[first_policy]
                     grouped_notes = policy_data['grouped_notes']
@@ -723,20 +840,19 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 doc_formatted_output = None
             else:
                 # Build template context for path rendering
-                template_context = {
-                    'code_repo': repo_name.replace('/', '-'),
-                    'issue_repo': _get_issues_repo(config),
+                template_context = build_repo_context(config, current_repo_alias=repo_alias)
+                template_context.update({
                     'version': version,
                     'major': str(target_version.major),
                     'minor': str(target_version.minor),
                     'patch': str(target_version.patch),
-                }
+                })
 
                 formatted_outputs = []
 
                 # If explicit output provided, use the first policy's notes (or standard if no templates)
                 if output:
-                    if config.output.pr_code.templates:
+                    if repo_pr_code.templates:
                         first_policy = list(notes_by_policy.keys())[0]
                         policy_data = notes_by_policy[first_policy]
                         grouped_notes = policy_data['grouped_notes']
@@ -762,10 +878,10 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                         formatted_outputs.append({'content': result, 'path': output})
 
                 # Process each pr_code template with its own policy's notes
-                elif config.output.pr_code.templates:
+                elif repo_pr_code.templates:
                     note_generator = ReleaseNoteGenerator(config)
 
-                    for idx, template_config in enumerate(config.output.pr_code.templates):
+                    for idx, template_config in enumerate(repo_pr_code.templates):
                         template_policy = template_config.release_version_policy
                         path_context = template_context.copy()
 
@@ -906,14 +1022,15 @@ def generate(ctx, version: Optional[str], from_version: Optional[str], repo_path
                 else:
                     console.print(f"[yellow]⚠ No output files were written. Configure pr_code.templates in your config.[/yellow]")
 
-        finally:
-            db.close()
+            # End of for loop over pr_code repos
 
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        if '--debug' in sys.argv:
+        console.print(f"[red]Error generating release notes: {e}[/red]")
+        if debug:
             raise
         sys.exit(1)
+    finally:
+        db.close()
 
 
 def _get_extraction_source(change, commits_map=None, prs_map=None):

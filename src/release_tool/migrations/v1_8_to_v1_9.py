@@ -10,12 +10,18 @@ Changes in 1.9:
 - Removed pull.clone_code_repo field (always clone now)
 - Removed pull.code_repo_path field (always uses .release_tool_cache/{repo_alias})
 - Each repository now has a 'link' and 'alias' for template referencing
+- Changed [output.pr_code] to [output.pr_code.<alias>] for multi-repo support
+- Added consolidated_code_repos_aliases field to pr_code templates
+- Updated issue body template to include PR list
 
 This migration:
 - Converts code_repo string to code_repos list with auto-generated alias
 - Converts issue_repos strings to list of RepoInfo with auto-generated aliases
 - Removes pull.clone_code_repo field
 - Removes pull.code_repo_path field
+- Converts [output.pr_code] to [output.pr_code.<alias>] for each code repo
+- Adds consolidated_code_repos_aliases = null to each pr_code template
+- Updates issue body template with {{prs}} loop
 - Updates config_version to "1.9"
 """
 
@@ -116,5 +122,70 @@ def migrate(config_dict: Dict[str, Any]) -> Dict[str, Any]:
     if 'pull' in doc and 'code_repo_path' in doc['pull']:
         del doc['pull']['code_repo_path']
         print("  • Removed pull.code_repo_path (path always uses .release_tool_cache/{repo_alias})")
+
+    # Migrate output.pr_code to multi-repo format
+    if 'output' in doc and 'pr_code' in doc['output']:
+        old_pr_code = doc['output']['pr_code']
+
+        # Check if it's already in the new format (table with alias keys)
+        # If pr_code has 'templates' key directly, it's the old format
+        if 'templates' in old_pr_code:
+            # Get all code repo aliases
+            code_repo_aliases = []
+            if 'repository' in doc and 'code_repos' in doc['repository']:
+                for repo in doc['repository']['code_repos']:
+                    if isinstance(repo, dict) and 'alias' in repo:
+                        code_repo_aliases.append(repo['alias'])
+
+            if code_repo_aliases:
+                # Remove old pr_code
+                del doc['output']['pr_code']
+
+                # Create new pr_code table with alias keys
+                new_pr_code = tomlkit.table()
+
+                for alias in code_repo_aliases:
+                    # Create a pr_code section for this alias
+                    alias_section = tomlkit.table()
+
+                    # Copy templates array
+                    if 'templates' in old_pr_code:
+                        templates_array = tomlkit.aot()
+
+                        for template in old_pr_code['templates']:
+                            new_template = tomlkit.table()
+                            # Copy existing fields
+                            for key, value in template.items():
+                                new_template[key] = value
+
+                            # Add consolidated_code_repos_aliases if not present
+                            if 'consolidated_code_repos_aliases' not in new_template:
+                                new_template['consolidated_code_repos_aliases'] = None
+
+                            templates_array.append(new_template)
+
+                        alias_section['templates'] = templates_array
+
+                    new_pr_code[alias] = alias_section
+
+                doc['output']['pr_code'] = new_pr_code
+                print(f"  • Converted [output.pr_code] to [output.pr_code.<alias>] for {len(code_repo_aliases)} repo(s)")
+                print(f"  • Added consolidated_code_repos_aliases = null to all templates")
+
+    # Update issue body template to include PR list
+    if 'output' in doc and 'issue_templates' in doc['output']:
+        if 'body_template' in doc['output']['issue_templates']:
+            old_body = doc['output']['issue_templates']['body_template']
+
+            # Check if it already has the {% for pr in prs %} loop
+            if '{% for pr in prs %}' not in old_body:
+                # Replace the old "- [ ] PR 1" line with the new loop
+                if '- [ ] PR 1' in old_body:
+                    new_body = old_body.replace(
+                        '- [ ] PR 1',
+                        '{% for pr in prs %}- [ ] {{pr.repo_alias}}: {{pr.url}}\n{% endfor %}'
+                    )
+                    doc['output']['issue_templates']['body_template'] = new_body
+                    print("  • Updated issue body template to include PR list loop")
 
     return doc

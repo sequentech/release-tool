@@ -169,10 +169,12 @@ class IssueTemplateConfig(BaseModel):
             "- [ ] Deploy in `qa`\n"
             "- [ ] Positive Test in `qa`\n\n"
             "### PRs to deploy new version in different environments\n\n"
-            "- [ ] PR 1"
+            "{% for pr in prs %}"
+            "- [ ] {{pr.repo_alias}}: {{pr.url}}\n"
+            "{% endfor %}"
         ),
         description="Issue body template (Jinja2 syntax). Available variables: {{version}}, {{major}}, {{minor}}, {{patch}}, "
-                    "{{num_changes}}, {{num_categories}}"
+                    "{{num_changes}}, {{num_categories}}, {{prs}} (list of PRs with repo_alias, repo_link, number, url, branch)"
     )
     labels: List[str] = Field(
         default_factory=lambda: ["release", "devops", "infrastructure"],
@@ -223,6 +225,13 @@ class PRCodeTemplateConfig(BaseModel):
                     "and content compares against previous final version. "
                     "'include-rcs': RC documentation files include RC suffix (e.g., 11.0.0-rc.1.md) "
                     "and use standard version comparison. Only affects output_path in this template."
+    )
+    consolidated_code_repos_aliases: Optional[List[str]] = Field(
+        default=None,
+        description="List of code repo aliases to consolidate changes from. "
+                    "When null (default), only includes changes from the current repo. "
+                    "When a list, includes changes that touched ANY of the listed repos (union). "
+                    "Example: ['step', 'docs'] includes changes from both repos."
     )
 
 
@@ -555,9 +564,10 @@ class DatabaseConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output configuration for release notes."""
-    pr_code: PRCodeConfig = Field(
-        default_factory=PRCodeConfig,
-        description="PR code generation templates configuration"
+    pr_code: Dict[str, PRCodeConfig] = Field(
+        default_factory=dict,
+        description="PR code generation templates configuration, keyed by code repo alias. "
+                    "Example: pr_code.step for sequentech/step repo, pr_code.docs for sequentech/docs repo"
     )
     draft_output_path: str = Field(
         default=".release_tool_cache/draft-releases/{{code_repo}}/{{version}}.md",
@@ -680,19 +690,6 @@ class Config(BaseModel):
         """Load configuration from dictionary."""
         return cls(**data)
 
-    def get_primary_code_repo(self) -> RepoInfo:
-        """Get the primary (first) code repository.
-
-        Returns:
-            RepoInfo: The first code repository in the list
-
-        Raises:
-            ValueError: If no code repositories are configured
-        """
-        if not self.repository.code_repos:
-            raise ValueError("No code repositories configured")
-        return self.repository.code_repos[0]
-
     def get_code_repo_by_alias(self, alias: str) -> Optional[RepoInfo]:
         """Get a code repository by its alias.
 
@@ -717,13 +714,32 @@ class Config(BaseModel):
             return [repo.link for repo in self.repository.issue_repos]
         return [repo.link for repo in self.repository.code_repos]
 
-    def get_code_repo_path(self) -> str:
-        """Get the local path for the cloned primary code repository.
+    def get_code_repo_path(self, alias: str) -> str:
+        """Get the local path for the cloned code repository with the given alias.
 
         Always uses .release_tool_cache/{repo_alias} pattern.
+
+        Args:
+            alias: The repository alias
+
+        Returns:
+            Path to the local repository clone
+
+        Raises:
+            ValueError: If repository with given alias is not found
         """
-        primary_repo = self.get_primary_code_repo()
-        return str(Path.cwd() / '.release_tool_cache' / primary_repo.alias)
+        repo = self.get_code_repo_by_alias(alias)
+        if not repo:
+            raise ValueError(f"No code repository found with alias '{alias}'")
+        return str(Path.cwd() / '.release_tool_cache' / repo.alias)
+
+    def get_pr_code_repos(self) -> List[str]:
+        """Get list of code repo aliases that have pr_code configuration.
+
+        Returns:
+            List of repository aliases with pr_code config
+        """
+        return list(self.output.pr_code.keys())
 
     def get_category_map(self) -> Dict[str, List[str]]:
         """Get a mapping of category names to their labels."""

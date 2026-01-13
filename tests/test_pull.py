@@ -174,7 +174,7 @@ def test_config_get_issue_repos_defaults_to_code_repo():
 
 def test_config_get_code_repo_path_default(test_config):
     """Test default code repo path generation."""
-    path = test_config.get_code_repo_path()
+    path = test_config.get_code_repo_path("step")
     assert "step" in path
     assert ".release_tool_cache" in path
 
@@ -210,9 +210,6 @@ def test_pull_config_cutoff_date():
 @patch('release_tool.pull_manager.subprocess.run')
 def test_pull_git_repository_clone(mock_run, test_config, tmp_path):
     """Test cloning a new git repository."""
-    # Update config to use temp path
-    test_config.pull.code_repo_path = str(tmp_path / "test_repo")
-
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
 
@@ -234,12 +231,10 @@ def test_pull_git_repository_clone(mock_run, test_config, tmp_path):
 @patch('release_tool.pull_manager.subprocess.run')
 def test_pull_git_repository_update(mock_run, test_config, tmp_path):
     """Test updating an existing git repository."""
-    # Create fake repo directory with .git
-    repo_path = tmp_path / "test_repo"
-    repo_path.mkdir()
+    # Create fake repo directory with .git at the expected location
+    repo_path = Path(test_config.get_code_repo_path("step"))
+    repo_path.mkdir(parents=True, exist_ok=True)
     (repo_path / ".git").mkdir()
-
-    test_config.pull.code_repo_path = str(repo_path)
 
     mock_db = Mock(spec=Database)
     mock_github = Mock(spec=GitHubClient)
@@ -309,7 +304,7 @@ def test_parallel_workers_config():
     """Test that parallel_workers configuration is respected."""
     config_dict = {
         "repository": {
-            "code_repo": "test/repo"
+            "code_repos": [{"link": "test/repo", "alias": "repo"}]
         },
         "pull": {
             "parallel_workers": 20

@@ -15,7 +15,7 @@ from release_tool.models import ReleaseNote, Author
 def config_with_other_category():
     """Config with 'Other' category matching hardcoded fallback."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "release_notes": {
             "categories": [
@@ -31,7 +31,7 @@ def config_with_other_category():
 def config_with_mismatched_other():
     """Config with 'Other Changes' instead of 'Other' (mismatch)."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "release_notes": {
             "categories": [
@@ -47,7 +47,7 @@ def config_with_mismatched_other():
 def config_with_release_output_template():
     """Config with custom release_output_template."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "release_notes": {
             "categories": [
@@ -222,7 +222,7 @@ def test_validation_with_legacy_layout():
     """Test validation works with legacy layout (no release_output_template)."""
     # Config without release_output_template uses legacy layout
     config = Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "release_notes": {
             "categories": [
@@ -338,7 +338,7 @@ def test_custom_fallback_category_name():
     """Test that fallback category can have a custom name as long as alias='other'."""
     # Config with custom "Miscellaneous" name but alias="other"
     config = Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "release_notes": {
             "categories": [

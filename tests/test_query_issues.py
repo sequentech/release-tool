@@ -296,10 +296,12 @@ class TestQueryIssuesCLI:
         config_file = tmp_path / "test_config.toml"
         nonexistent_db = tmp_path / "nonexistent.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -323,10 +325,12 @@ path = "{nonexistent_db}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -353,10 +357,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -387,10 +393,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -420,10 +428,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -458,10 +468,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -493,10 +505,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -527,10 +541,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -565,10 +581,12 @@ class TestSmartIssueKeyParsing:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -598,10 +616,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -631,10 +651,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -665,10 +687,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -699,10 +723,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -733,10 +759,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -767,10 +795,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -806,10 +836,12 @@ class TestOutputFormats:
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -844,10 +876,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -877,10 +911,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"
@@ -941,10 +977,12 @@ path = "{db_copy_path}"
         config_file = tmp_path / "test_config.toml"
         db_copy_path = tmp_path / "release_tool.db"
         config_content = f"""
-config_version = "1.8"
+config_version = "1.10"
 
 [repository]
-code_repo = "test/repo"
+code_repos = [
+    {{link = "test/repo", alias = "repo"}}
+]
 
 [github]
 token = "fake-token"

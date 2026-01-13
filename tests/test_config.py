@@ -20,8 +20,11 @@ def test_config_from_dict(monkeypatch):
         }
     }
     config = Config.from_dict(config_dict)
-    assert config.get_primary_code_repo().link == "test/repo"
-    assert config.get_primary_code_repo().alias == "repo"
+    # Access first code repo directly
+    assert config.repository.code_repos[0].link == "test/repo"
+    assert config.repository.code_repos[0].alias == "repo"
+    # Or use get_code_repo_by_alias
+    assert config.get_code_repo_by_alias("repo").link == "test/repo"
     assert config.github.token == "test_token"
 
 
@@ -44,8 +47,8 @@ tag_prefix = "release-"
 
     # With auto_upgrade, old format should be migrated to new format
     config = Config.from_file(str(config_file), auto_upgrade=True)
-    assert config.get_primary_code_repo().link == "owner/repo"
-    assert config.get_primary_code_repo().alias == "repo"
+    assert config.repository.code_repos[0].link == "owner/repo"
+    assert config.repository.code_repos[0].alias == "repo"  # Auto-generated from "owner/repo"
     assert config.version_policy.tag_prefix == "release-"
     assert config.github.token == "fake-token"
 

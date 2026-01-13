@@ -287,7 +287,11 @@ def _resolve_version_pr_issue(
         Tuple of (version, pr_number, issue_number, issue_repo_full_name) or (None, None, None, None) if resolution fails
         issue_repo_full_name is the repository where the issue was found
     """
-    repo_full_name = config.repository.code_repo
+    # Use first code repo as default
+    if not config.repository.code_repos:
+        console.print("[red]Error: No code repositories configured[/red]")
+        return None, None, None, None
+    repo_full_name = config.repository.code_repos[0].link
     issue_repo_full_name = None
 
     # Case 1: Issue number provided
@@ -492,7 +496,11 @@ def merge(ctx, version: Optional[str], issue: Optional[int], pr: Optional[int], 
     debug: bool = ctx.obj.get('debug', False)
     auto_mode: bool = ctx.obj.get('auto', False) or ctx.obj.get('assume_yes', False)
 
-    repo_full_name = config.repository.code_repo
+    # Use first code repo as default
+    if not config.repository.code_repos:
+        console.print("[red]Error: No code repositories configured[/red]")
+        sys.exit(1)
+    repo_full_name = config.repository.code_repos[0].link
 
     # Initialize clients
     github_client = GitHubClient(config)

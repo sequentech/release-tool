@@ -14,7 +14,7 @@ from release_tool.models import ConsolidatedChange, Author
 def config_default_policy():
     """Config with default inclusion policy ["issues", "pull-requests"]."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": ["issues", "pull-requests"]
@@ -26,7 +26,7 @@ def config_default_policy():
 def config_issues_only():
     """Config with issues-only policy."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": ["issues"]
@@ -38,7 +38,7 @@ def config_issues_only():
 def config_commits_only():
     """Config with commits-only policy."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": ["commits"]
@@ -50,7 +50,7 @@ def config_commits_only():
 def config_all_types():
     """Config including all types."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": ["issues", "pull-requests", "commits"]
@@ -62,7 +62,7 @@ def config_all_types():
 def config_prs_only():
     """Config with PRs-only policy."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": ["pull-requests"]
@@ -74,7 +74,7 @@ def config_prs_only():
 def config_empty_policy():
     """Config with empty inclusion policy."""
     return Config.from_dict({
-        "repository": {"code_repo": "test/repo"},
+        "repository": {"code_repos": [{"link": "test/repo", "alias": "repo"}]},
         "github": {"token": "test_token"},
         "issue_policy": {
             "release_notes_inclusion_policy": []

@@ -4,7 +4,7 @@
 
 """Template rendering utilities using Jinja2."""
 
-from typing import Dict, Set, Any, TYPE_CHECKING
+from typing import Dict, Set, Any, List, Optional, TYPE_CHECKING
 from jinja2 import Template, TemplateSyntaxError, UndefinedError, StrictUndefined
 
 if TYPE_CHECKING:
@@ -111,49 +111,61 @@ def get_template_variables(template_str: str) -> Set[str]:
         raise TemplateError(f"Error parsing template: {e}")
 
 
-def build_repo_context(config: "Config") -> Dict[str, Any]:
+def build_repo_context(
+    config: "Config",
+    current_repo_alias: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Build template context for repository variables.
 
     Creates a nested structure for accessing code repos and issue repos by alias:
-    - code_repo.primary.link: Primary code repo link (e.g., 'sequentech/step')
-    - code_repo.primary.slug: Primary code repo slug (e.g., 'sequentech-step')
-    - code_repo.<alias>.link: Code repo link by alias
-    - code_repo.<alias>.slug: Code repo slug by alias
+    - code_repo.<alias>.link: Code repo link by alias (e.g., 'sequentech/step')
+    - code_repo.<alias>.slug: Code repo slug by alias (e.g., 'sequentech-step')
+    - code_repo.current.link: Current repo in context (only when current_repo_alias provided)
     - issue_repo.<alias>.link: Issue repo link by alias
     - issue_repo.<alias>.slug: Issue repo slug by alias
 
     Args:
         config: Configuration object
+        current_repo_alias: Optional alias of the current repo being processed.
+            If provided, code_repo.current will be set. If not, accessing
+            code_repo.current will raise an error (Jinja2 StrictUndefined).
 
     Returns:
-        Dictionary with 'code_repo' and 'issue_repo' namespaces
+        Dictionary with 'code_repo', 'code_repo_list', and 'issue_repo' namespaces
     """
-    code_repo_context = {}
-    issue_repo_context = {}
-
-    # Add primary code repo
-    primary_repo = config.get_primary_code_repo()
-    code_repo_context['primary'] = {
-        'link': primary_repo.link,
-        'slug': primary_repo.link.replace('/', '-')
-    }
+    code_repo_context: Dict[str, Any] = {}
+    code_repo_list: List[Dict[str, str]] = []
+    issue_repo_context: Dict[str, Any] = {}
+    issue_repo_list: List[Dict[str, str]] = []
 
     # Add all code repos by alias
     for repo in config.repository.code_repos:
-        code_repo_context[repo.alias] = {
+        repo_data = {
             'link': repo.link,
-            'slug': repo.link.replace('/', '-')
+            'slug': repo.link.replace('/', '-'),
+            'alias': repo.alias
         }
+        code_repo_context[repo.alias] = repo_data
+        code_repo_list.append(repo_data)
+
+    # Set 'current' only if we have a current repo context
+    if current_repo_alias and current_repo_alias in code_repo_context:
+        code_repo_context['current'] = code_repo_context[current_repo_alias]
 
     # Add all issue repos by alias
     for repo in config.repository.issue_repos:
-        issue_repo_context[repo.alias] = {
+        repo_data = {
             'link': repo.link,
-            'slug': repo.link.replace('/', '-')
+            'slug': repo.link.replace('/', '-'),
+            'alias': repo.alias
         }
+        issue_repo_context[repo.alias] = repo_data
+        issue_repo_list.append(repo_data)
 
     return {
         'code_repo': code_repo_context,
-        'issue_repo': issue_repo_context
+        'code_repo_list': code_repo_list,
+        'issue_repo': issue_repo_context,
+        'issue_repo_list': issue_repo_list
     }

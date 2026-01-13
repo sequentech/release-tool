@@ -1,4 +1,4 @@
-config_version = "1.9"
+config_version = "1.10"
 
 # =============================================================================
 # Release Tool Configuration
@@ -700,8 +700,8 @@ alias = "other"
 # Files are saved here for review/editing before pushing to GitHub
 #
 # Available variables:
-#   - {{code_repo.primary.slug}}: Primary code repository name sanitized (e.g., "sequentech-step")
-#   - {{code_repo.primary.link}}: Primary code repository link (e.g., "sequentech/step")
+#   - {{code_repo.current.slug}}: Current code repository slug (e.g., "sequentech-step")
+#   - {{code_repo.current.link}}: Current code repository link (e.g., "sequentech/step")
 #   - {{code_repo.<alias>.slug}}: Code repository by alias, sanitized (e.g., "sequentech-step")
 #   - {{code_repo.<alias>.link}}: Code repository by alias, link format
 #   - {{version}}: Full version string
@@ -716,16 +716,16 @@ alias = "other"
 #       - "doc": (deprecated, use code-N instead)
 #
 # Examples:
-#   - ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
+#   - ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
 #     This will create files like:
 #       - "1.0.0-release.md" (GitHub release draft)
 #       - "1.0.0-code-0.md" (first pr_code template)
 #       - "1.0.0-code-1.md" (second pr_code template)
 #   - "drafts/{{major}}.{{minor}}.{{patch}}-{{output_file_type}}.md": Simple draft folder
-#   - "/tmp/releases/{{code_repo.primary.slug}}-{{version}}-{{output_file_type}}.md": Temporary location
+#   - "/tmp/releases/{{code_repo.current.slug}}-{{version}}-{{output_file_type}}.md": Temporary location
 #
-# Default: ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
-draft_output_path = ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
+# Default: ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md"
 
 # assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
 # Images and videos referenced in issue descriptions will be downloaded here
@@ -800,16 +800,26 @@ prerelease = "auto"
 create_issue = true
 
 # =============================================================================
-# PR Code Generation Templates
+# PR Code Generation Templates (Multi-Repository Support)
 # =============================================================================
-# Configure multiple code generation templates. Each template generates a separate
-# output file from the release notes data.
+# Configure code generation templates for each code repository.
+# Format: [output.pr_code.<alias>] where <alias> matches a repository alias from [[repository.code_repos]]
 #
-# You can have multiple [[output.pr_code.templates]] entries to generate different outputs
-# (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
+# Each repository can have multiple [[output.pr_code.<alias>.templates]] entries to generate
+# different outputs (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
+#
+# Example:
+#   [[repository.code_repos]]
+#   link = "sequentech/step"
+#   alias = "step"
+#
+#   [output.pr_code.step]
+#   [[output.pr_code.step.templates]]
+#   # ... template configuration ...
 
-[output.pr_code]
-[[output.pr_code.templates]]
+# PR code templates for the "step" repository
+[output.pr_code.step]
+[[output.pr_code.step.templates]]
 # output_template: Jinja2 template for the output file content
 # This is a POWERFUL template that gives you complete control over the output
 # structure. Use Jinja2 syntax including conditionals, loops, filters, and all
@@ -1026,6 +1036,29 @@ output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release
 # Default: "final-only"
 release_version_policy = "final-only"
 
+# consolidated_code_repos_aliases: List of code repository aliases to consolidate changes from (OPTIONAL)
+# Controls which repositories' changes are included in this template's output.
+#
+# When null (DEFAULT): Only includes changes from the current repository (the one this template belongs to)
+# When a list: Includes changes that touched ANY of the listed repositories (union logic)
+#
+# Use case: When you have multiple related repositories and want to generate a single
+# consolidated changelog that includes changes from all of them.
+#
+# Examples:
+#   - null: Only "step" changes appear in step's release notes (DEFAULT)
+#   - ["step", "docs"]: Changes from both "step" and "docs" repos appear in this output
+#   - ["step", "docs", "meta"]: Changes from all three repos are consolidated
+#
+# How it works:
+#   - A change is included if ANY of its commits or PRs belong to one of the listed repos
+#   - Uses union logic (OR): change touches repo1 OR repo2 OR repo3
+#   - The repo aliases must match those defined in [[repository.code_repos]]
+#
+# Default: null (current repo only)
+# consolidated_code_repos_aliases = ["step", "docs"]
+# consolidated_code_repos_aliases = null
+
 # =============================================================================
 # Release Tracking Issue Templates (for create_issue)
 # =============================================================================
@@ -1048,8 +1081,14 @@ title_template = "✨ Prepare Release {{version}}"
 #   - {{version}}: Full version string (e.g., "1.2.3")
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}, {{num_categories}}: Release notes statistics
-#   - {{pr_link}}: Link to the release notes PR (will be populated after PR creation)
+#   - {{prs}}: List of PRs created across all repositories
+#       Each PR has: repo_alias, repo_link, number, url, branch
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
+#
+# Example PR list rendering:
+#   {% for pr in prs %}
+#   - [ ] {{pr.repo_alias}}: {{pr.url}}
+#   {% endfor %}
 #
 # Default: Release preparation checklist based on step's .github release template
 body_template = '''### DevOps Tasks
@@ -1069,9 +1108,10 @@ NOTE: Please also update deployment status when a release is deployed in an envi
 - [ ] Deploy in `qa`
 - [ ] Positive Test in `qa`
 
-### PRs
+### PRs to deploy new version in different environments
 
-- {{pr_link}}'''
+{% for pr in prs %}- [ ] {{pr.repo_alias}}: {{pr.url}}
+{% endfor %}'''
 
 # labels: Labels to apply to the release tracking issue
 # Default: ["release", "devops", "infrastructure"]
@@ -1147,8 +1187,8 @@ milestone = "{{year}}_{{quarter_uppercase}}"
 # Available variables (always):
 #   - {{version}}: Full version string (e.g., "1.2.3")
 #   - {{major}}, {{minor}}, {{patch}}: Version components
-#   - {{code_repo.primary.slug}}: Primary code repository sanitized name (e.g., "sequentech-step")
-#   - {{code_repo.primary.link}}: Primary code repository link (e.g., "sequentech/step")
+#   - {{code_repo.current.slug}}: Current code repository slug (e.g., "sequentech-step")
+#   - {{code_repo.current.link}}: Current code repository link (e.g., "sequentech/step")
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
@@ -1173,7 +1213,7 @@ branch_template = "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.current.slug}}, {{code_repo.current.link}}: Current code repository
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name
 #
@@ -1194,7 +1234,7 @@ title_template = "Release notes for {{version}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.current.slug}}, {{code_repo.current.link}}: Current code repository
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name
 #   - {{issue_repo_name}}: Short name of issues repo

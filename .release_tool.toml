@@ -1,4 +1,4 @@
-config_version = "1.9"
+config_version = "1.10"
 
 # =============================================================================
 # Release Tool Configuration
@@ -21,6 +21,10 @@ config_version = "1.9"
 [[repository.code_repos]]
 link = "sequentech/release-tool"
 alias = "release-tool"
+
+[[repository.code_repos]]
+link = "sequentech/release-bot"
+alias = "release-bot"
 
 # issue_repos: List of repositories where issues/tickets are tracked
 # Each repository must have a 'link' (owner/repo format) and an 'alias' for referencing
@@ -74,6 +78,32 @@ parallel_workers = 10
 
 # NOTE: Code repositories are always cloned to .release_tool_cache/{repo_alias}
 # This path is no longer configurable to ensure consistency
+
+# clone_method: Method for cloning repositories
+# Options:
+#   - "https": Clone using HTTPS with GitHub token authentication
+#              Recommended for GitHub Actions with GITHUB_TOKEN
+#   - "ssh": Clone using SSH (git@github.com:owner/repo.git)
+#            Requires SSH keys to be configured
+#   - "auto": Try HTTPS first, fallback to SSH if it fails (DEFAULT)
+#             Provides flexibility across different environments
+# Default: "auto"
+# Use case:
+#   - GitHub Actions: Use "https" or "auto" (default)
+#   - Local development with SSH keys: Use "ssh" or "auto"
+#   - GitHub Enterprise: Use "https" with custom clone_url_template
+clone_method = "auto"
+
+# clone_url_template: Custom clone URL template for non-standard Git hosting
+# Use {repo_full_name} as a placeholder for the repository (e.g., "owner/repo")
+# This is useful for GitHub Enterprise or custom Git servers
+# If not specified, uses standard GitHub URLs based on clone_method
+# Default: null (uses github.com)
+# Examples:
+#   - GitHub Enterprise: "https://github.enterprise.com/{repo_full_name}.git"
+#   - Custom Git server: "https://git.company.com/{repo_full_name}.git"
+#   - SSH on custom port: "ssh://git@gitlab.company.com:2222/{repo_full_name}.git"
+# clone_url_template = "https://github.enterprise.com/{repo_full_name}.git"
 
 # show_progress: Show progress updates during pull
 # When true, displays messages like "pulling 13 / 156 issues (10% done)"
@@ -643,23 +673,33 @@ labels = ["security"]
 order = 5
 alias = "security"
 
+# IMPORTANT: Fallback Category
+# The category with alias="other" serves as the fallback for any issues/PRs
+# that don't match any other category labels. You can name it whatever you want
+# (e.g., "Other", "Miscellaneous", "Other Changes"), but the alias MUST be "other".
+#
+# - name: Display name for this category (customizable)
+# - labels: Should be empty [] to catch unmatched items
+# - order: Should be high (e.g., 99) to appear last
+# - alias: MUST be "other" for the tool to recognize this as the fallback category
 [[release_notes.categories]]
-name = "Other Changes"
+name = "Other"
 labels = []
 order = 99
 alias = "other"
 
 # =============================================================================
-# PR Code Generation Templates
+# PR Code Generation Templates (Multi-Repository Support)
 # =============================================================================
-# Configure multiple code generation templates. Each template generates a separate
-# output file from the release notes data.
+# Configure code generation templates for each code repository.
+# Format: [output.pr_code.<alias>] where <alias> matches a repository alias from [[repository.code_repos]]
 #
-# You can have multiple [[output.pr_code.templates]] entries to generate different outputs
-# (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
+# Each repository can have multiple [[output.pr_code.<alias>.templates]] entries to generate
+# different outputs (e.g., Docusaurus docs, CHANGELOG.md, custom formats).
 
-[output.pr_code]
-[[output.pr_code.templates]]
+# PR code templates for the "release-tool" repository
+[output.pr_code.release-tool]
+[[output.pr_code.release-tool.templates]]
 # output_template: Jinja2 template for the output file content
 # This is a POWERFUL template that gives you complete control over the output
 # structure. Use Jinja2 syntax including conditionals, loops, filters, and all
@@ -811,6 +851,52 @@ output_path = "docs/docusaurus/docs/releases/release-{{major}}.{{minor}}/release
 # Default: "final-only"
 release_version_policy = "final-only"
 
+# consolidated_code_repos_aliases: List of code repository aliases to consolidate changes from (OPTIONAL)
+# Controls which repositories' changes are included in this template's output.
+#
+# When null (DEFAULT): Only includes changes from the current repository (the one this template belongs to)
+# When a list: Includes changes that touched ANY of the listed repositories (union logic)
+#
+# Use case: When you have multiple related repositories and want to generate a single
+# consolidated changelog that includes changes from all of them.
+#
+# Examples:
+#   - null: Only "release-tool" changes appear in release-tool's release notes (DEFAULT)
+#   - ["release-tool", "release-bot"]: Changes from both repos appear in this output
+#   - ["release-tool", "release-bot", "meta"]: Changes from all three repos are consolidated
+#
+# How it works:
+#   - A change is included if ANY of its commits or PRs belong to one of the listed repos
+#   - Uses union logic (OR): change touches repo1 OR repo2 OR repo3
+#   - The repo aliases must match those defined in [[repository.code_repos]]
+#
+# Default: null (current repo only)
+# consolidated_code_repos_aliases = ["release-tool", "release-bot"]
+# consolidated_code_repos_aliases = null
+
+# =============================================================================
+# PR code templates for the "release-bot" repository
+# =============================================================================
+[output.pr_code.release-bot]
+[[output.pr_code.release-bot.templates]]
+# Template for release-bot - simpler than release-tool (no Docusaurus frontmatter)
+output_template = '''<!--
+SPDX-FileCopyrightText: {{year}} Sequent Tech Inc <legal@sequentech.io>
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+# Release {{version}}
+
+{{ render_release_notes() }}'''
+
+# Output path: One file per version in docs/releases/
+output_path = "docs/releases/{{version}}.md"
+
+# Use final-only policy like release-tool
+release_version_policy = "final-only"
+
+# Only include changes from release-bot repo (not release-tool)
+# consolidated_code_repos_aliases = null
+
 # =============================================================================
 # Release Notes Formatting and Content
 # =============================================================================
@@ -818,25 +904,35 @@ release_version_policy = "final-only"
 [output]
 # draft_output_path: Path template for draft release notes (generate command, Jinja2 syntax)
 # This is where 'generate' command saves files by default (when --output not specified)
-# Files are saved here for review/editing before push to GitHub
+# Files are saved here for review/editing before pushing to GitHub
 #
 # Available variables:
-#   - {{code_repo.primary.slug}}: Primary code repository sanitized (e.g., "sequentech-release-tool")
-#   - {{code_repo.primary.link}}: Primary code repository link (e.g., "sequentech/release-tool")
-#   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
+#   - {{code_repo.current.slug}}: Current code repository slug (e.g., "sequentech-release-tool")
+#   - {{code_repo.current.link}}: Current code repository link (e.g., "sequentech/release-tool")
+#   - {{code_repo.<alias>.slug}}: Code repository by alias, sanitized (e.g., "sequentech-release-tool")
+#   - {{code_repo.<alias>.link}}: Code repository by alias, link format
 #   - {{version}}: Full version string
 #   - {{major}}: Major version number
 #   - {{minor}}: Minor version number
 #   - {{patch}}: Patch version number
-#   - {{output_file_type}}: Type of output file ("release" or "doc")
+#   - {{output_file_type}}: Type of output file:
+#       - "release": GitHub release notes draft
+#       - "code-0": First pr_code template output
+#       - "code-1": Second pr_code template output
+#       - "code-N": Nth pr_code template output
+#       - "doc": (deprecated, use code-N instead)
 #
 # Examples:
-#   - ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
+#   - ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md": Organized by repo and version (DEFAULT)
+#     This will create files like:
+#       - "1.0.0-release.md" (GitHub release draft)
+#       - "1.0.0-code-0.md" (first pr_code template)
+#       - "1.0.0-code-1.md" (second pr_code template)
 #   - "drafts/{{major}}.{{minor}}.{{patch}}-{{output_file_type}}.md": Simple draft folder
-#   - "/tmp/releases/{{code_repo.primary.slug}}-{{version}}-{{output_file_type}}.md": Temporary location
+#   - "/tmp/releases/{{code_repo.current.slug}}-{{version}}-{{output_file_type}}.md": Temporary location
 #
-# Default: ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
-draft_output_path = ".release_tool_cache/draft-releases/{{code_repo.primary.slug}}/{{version}}-{{output_file_type}}.md"
+# Default: ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md"
+draft_output_path = ".release_tool_cache/draft-releases/{{code_repo.current.slug}}/{{version}}-{{output_file_type}}.md"
 
 # assets_path: Path template for downloaded media assets (images, videos, Jinja2 syntax)
 # Images and videos referenced in issue descriptions will be downloaded here
@@ -887,7 +983,7 @@ create_pr = true
 #   - "published": Releases are published immediately
 # Default: "draft"
 # CLI override: --release-mode draft|published
-# Use case: Set to "draft" if you want to review releases before pushing
+# Use case: Set to "draft" if you want to review releases before publishing
 release_mode = "draft"
 
 # prerelease: Mark GitHub releases as prereleases
@@ -932,17 +1028,20 @@ title_template = "✨ Prepare Release {{version}}"
 #   - {{version}}: Full version string (e.g., "1.2.3")
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}, {{num_categories}}: Release notes statistics
-#   - {{pr_link}}: Link to the release notes PR (will be populated after PR creation)
+#   - {{prs}}: List of PRs created across all repositories
+#       Each PR has: repo_alias, repo_link, number, url, branch
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
+#
+# Example PR list rendering:
+#   {% for pr in prs %}
+#   - [ ] {{pr.repo_alias}}: {{pr.url}}
+#   {% endfor %}
 #
 # Default: Release preparation checklist based on step's .github release template
 body_template = '''### DevOps Tasks
 
 - [ ] Github release notes: correct and complete
 - [ ] Docusaurus release notes: correct and complete
-- [ ] BEYOND-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)
-- [ ] GITOPS-PR-HERE for a new default tenant/election-event template and any new other changes (branch should be `release/{{major}}.{{minor}}`)
-- [ ] Request in Environments spreadsheet to get deployment approval by environment owners
 
 NOTE: Please also update deployment status when a release is deployed in an environment.
 
@@ -953,9 +1052,10 @@ NOTE: Please also update deployment status when a release is deployed in an envi
 - [ ] Deploy in `qa`
 - [ ] Positive Test in `qa`
 
-### PRs
+### PRs to deploy new version in different environments
 
-- {{pr_link}}'''
+{% for pr in prs %}- [ ] {{pr.repo_alias}}: {{pr.url}}
+{% endfor %}'''
 
 # labels: Labels to apply to the release tracking issue
 # Default: ["release", "devops", "infrastructure"]
@@ -1031,7 +1131,7 @@ milestone = "{{year}}_{{quarter_uppercase}}"
 # Available variables (always):
 #   - {{version}}: Full version string (e.g., "1.2.3")
 #   - {{major}}, {{minor}}, {{patch}}: Version components
-#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.current.slug}}, {{code_repo.current.link}}: Current code repository
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name (e.g., "sequentech/meta")
 #   - {{issue_repo_name}}: Short name of issues repo (e.g. "meta" from "sequentech/meta")
@@ -1056,7 +1156,7 @@ branch_template = "docs/{{issue_repo_name}}-{{issue_number}}/{{target_branch}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.current.slug}}, {{code_repo.current.link}}: Current code repository
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name
 #
@@ -1077,7 +1177,7 @@ title_template = "Release notes for {{version}}"
 #   - {{major}}, {{minor}}, {{patch}}: Version components
 #   - {{num_changes}}: Number of changes in release notes
 #   - {{num_categories}}: Number of categories
-#   - {{code_repo.primary.slug}}, {{code_repo.primary.link}}: Primary code repository
+#   - {{code_repo.current.slug}}, {{code_repo.current.link}}: Current code repository
 #   - {{code_repo.<alias>.slug}}, {{code_repo.<alias>.link}}: Code repo by alias
 #   - {{issue_repo}}: Issues repository name
 #   - {{issue_repo_name}}: Short name of issues repo

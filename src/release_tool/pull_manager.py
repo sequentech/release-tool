@@ -59,28 +59,35 @@ class PullManager:
             stats['issues'] += issue_count
             stats['repos_pulled'].add(repo_full_name)
 
-        # Pull PRs from code repo
-        code_repo = self.config.get_primary_code_repo().link
-        if self.config.pull.show_progress:
-            console.print(f"[cyan]Pulling pull requests from {code_repo}...[/cyan]")
+        # Pull PRs and git repos from all code repos
+        git_repos_paths = []
+        for code_repo_info in self.config.repository.code_repos:
+            code_repo = code_repo_info.link
 
-        pr_count = self._pull_pull_requests_for_repo(code_repo)
-        stats['pull_requests'] = pr_count
-        stats['repos_pulled'].add(code_repo)
+            if self.config.pull.show_progress:
+                console.print(f"[cyan]Pulling pull requests from {code_repo}...[/cyan]")
 
-        # Pull git repository (always enabled)
-        if self.config.pull.show_progress:
-            console.print(f"[cyan]Pulling git repository for {code_repo}...[/cyan]")
+            pr_count = self._pull_pull_requests_for_repo(code_repo)
+            stats['pull_requests'] += pr_count
+            stats['repos_pulled'].add(code_repo)
 
-        git_path = self._pull_git_repository(code_repo)
-        stats['git_repo_path'] = git_path
+            # Pull git repository (always enabled)
+            if self.config.pull.show_progress:
+                console.print(f"[cyan]Pulling git repository for {code_repo} (alias: {code_repo_info.alias})...[/cyan]")
+
+            git_path = self._pull_git_repository(code_repo)
+            git_repos_paths.append(f"{code_repo_info.alias}:{git_path}")
+
+        stats['git_repo_paths'] = git_repos_paths
 
         if self.config.pull.show_progress:
             console.print("[bold green]Pull completed successfully![/bold green]")
             console.print(f"  Issues: {stats['issues']}")
             console.print(f"  Pull Requests: {stats['pull_requests']}")
-            if stats.get('git_repo_path'):
-                console.print(f"  Git repo pulled to: {stats['git_repo_path']}")
+            if stats.get('git_repo_paths'):
+                console.print(f"  Git repos pulled:")
+                for repo_path in stats['git_repo_paths']:
+                    console.print(f"    {repo_path}")
 
         stats['repos_pulled'] = list(stats['repos_pulled'])
         return stats
@@ -329,7 +336,17 @@ class PullManager:
         Returns:
             Path to the pulled git repository
         """
-        repo_path = Path(self.config.get_code_repo_path())
+        # Find the repo by link to get its alias
+        repo_info = None
+        for repo in self.config.repository.code_repos:
+            if repo.link == repo_full_name:
+                repo_info = repo
+                break
+
+        if not repo_info:
+            raise ValueError(f"Repository {repo_full_name} not found in code_repos configuration")
+
+        repo_path = Path(self.config.get_code_repo_path(repo_info.alias))
 
         # Check if repo already exists
         if repo_path.exists() and (repo_path / '.git').exists():

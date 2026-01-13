@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import sys
 from typing import Optional
 import click
 from rich.console import Console
@@ -44,7 +45,14 @@ def list_releases(ctx, version: Optional[str], repository: Optional[str], limit:
       release-tool list-releases --before 2024-06-01        # Before June 2024
     """
     config: Config = ctx.obj['config']
-    repo_name = repository or config.repository.code_repo
+    # Default to first code repo if no repository specified
+    if not repository:
+        if not config.repository.code_repos:
+            console.print("[red]Error: No repository specified and no code repositories configured[/red]")
+            sys.exit(1)
+        repo_name = config.repository.code_repos[0].link
+    else:
+        repo_name = repository
 
     # Parse after date if provided
     after_date = None
